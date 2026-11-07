@@ -19,6 +19,8 @@ type Paths struct {
 	ConfigDir  string // ~/.config/dermaga
 	DataDir    string // ~/.local/share/dermaga
 	RuntimeDir string // $XDG_RUNTIME_DIR/dermaga
+	QuadletDir string // ~/.config/containers/systemd (generated dg-* units)
+	TraefikDir string // ~/.config/traefik (traefik.yml, dynamic/)
 }
 
 func DefaultPaths() (Paths, error) {
@@ -42,6 +44,8 @@ func DefaultPaths() (Paths, error) {
 		ConfigDir:  filepath.Join(cfg, name.Name),
 		DataDir:    filepath.Join(data, name.Name),
 		RuntimeDir: filepath.Join(run, name.Name),
+		QuadletDir: filepath.Join(cfg, "containers", "systemd"),
+		TraefikDir: filepath.Join(cfg, "traefik"),
 	}, nil
 }
 
@@ -49,6 +53,7 @@ func (p Paths) ConfigFile() string { return filepath.Join(p.ConfigDir, "config.t
 func (p Paths) MasterKey() string  { return filepath.Join(p.ConfigDir, "master.key") }
 func (p Paths) DB() string         { return filepath.Join(p.DataDir, name.Name+".db") }
 func (p Paths) Socket() string     { return filepath.Join(p.RuntimeDir, name.Name+".sock") }
+func (p Paths) DynamicDir() string { return filepath.Join(p.TraefikDir, "dynamic") }
 
 // Config holds the non-secret settings that must be known before the database is open.
 type Config struct {

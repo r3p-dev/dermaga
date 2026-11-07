@@ -4,6 +4,7 @@ package daemon
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -18,9 +19,12 @@ import (
 	"github.com/r3p-dev/dermaga/internal/api"
 	"github.com/r3p-dev/dermaga/internal/auth"
 	"github.com/r3p-dev/dermaga/internal/config"
+	"github.com/r3p-dev/dermaga/internal/host"
 	"github.com/r3p-dev/dermaga/internal/name"
+	"github.com/r3p-dev/dermaga/internal/reconcile"
 	"github.com/r3p-dev/dermaga/internal/secrets"
 	"github.com/r3p-dev/dermaga/internal/store"
+	"github.com/r3p-dev/dermaga/internal/traefik"
 )
 
 func refuseRoot(euid int) error {
@@ -63,6 +67,7 @@ func Run() error {
 		return err
 	}
 	defer db.Close()
+	reconcileAtStart(db, p)
 
 	sockLn, err := listenUnix(p.Socket())
 	if err != nil {
@@ -122,4 +127,29 @@ func listenUnix(path string) (net.Listener, error) {
 		return nil, err
 	}
 	return ln, nil
+}
+
+// reconcileAtStart repairs drift between the database and the generated units
+// and Traefik files before anything else runs. Failures are logged; the
+// daemon still starts, so the panel and CLI stay usable to fix them.
+func reconcileAtStart(db *sql.DB, p config.Paths) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	apps, err := reconcile.LoadApps(ctx, db)
+	if err != nil {
+		slog.Error("reconcile: loading apps", "err", err)
+		return
+	}
+	// shortcut: built-in Site defaults until the installer (M8) stores host settings
+	r := reconcile.Run(ctx, host.Host{QuadletDir: p.QuadletDir, DynamicDir: p.DynamicDir()}, apps, traefik.Site{})
+	for _, s := range r.Repaired {
+		slog.Info("reconcile: repaired", "what", s)
+	}
+	for _, s := range r.Drift {
+		slog.Warn("reconcile: drift", "what", s)
+	}
+	for _, s := range r.Errors {
+		slog.Error("reconcile: failed", "what", s)
+	}
+	slog.Info("reconcile: done", "apps", len(apps), "repaired", len(r.Repaired), "drift", len(r.Drift), "errors", len(r.Errors))
 }
