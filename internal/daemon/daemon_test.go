@@ -41,3 +41,23 @@ func TestListenUnixModeStaleAndRunning(t *testing.T) {
 	}
 	ln.Close()
 }
+
+func TestSameFileAndCopyFile(t *testing.T) {
+	dir := t.TempDir()
+	a, b := filepath.Join(dir, "a"), filepath.Join(dir, "b")
+	os.WriteFile(a, []byte("binary v1"), 0o755)
+	if sameFile(a, b) {
+		t.Fatal("missing file reported equal")
+	}
+	if err := copyFile(a, b); err != nil {
+		t.Fatal(err)
+	}
+	fi, _ := os.Stat(b)
+	if !sameFile(a, b) || fi.Mode().Perm() != 0o755 {
+		t.Fatalf("copy differs or mode %v", fi.Mode().Perm())
+	}
+	os.WriteFile(a, []byte("binary v2"), 0o755) // same size, different content
+	if sameFile(a, b) {
+		t.Fatal("different content reported equal")
+	}
+}

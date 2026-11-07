@@ -7,11 +7,10 @@ package reconcile
 import (
 	"bytes"
 	"context"
-	"database/sql"
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 
 	"github.com/r3p-dev/dermaga/internal/name"
 	"github.com/r3p-dev/dermaga/internal/quadlet"
@@ -32,8 +31,8 @@ type Host interface {
 	ActiveState(ctx context.Context, unit string) (string, error)
 	Start(ctx context.Context, unit string) error
 	DaemonReload(ctx context.Context) error
-	RemoveContainer(ctx context.Context, container string, stopTimeout int) error
-	ReadAppFile(name string) ([]byte, error) // nil, nil if missing
+	RemoveContainer(ctx context.Context, container string, stopTimeout int) error // called concurrently
+	ReadAppFile(name string) ([]byte, error)                                      // nil, nil if missing
 	WriteAppFile(name string, data []byte) error
 	RemoveAppFile(name string) error
 }
@@ -71,7 +70,8 @@ func Run(ctx context.Context, h Host, apps []App, site traefik.Site) Report {
 	if err != nil {
 		fail("listing units: %v", err)
 	}
-	liveSeen, removed := map[string]bool{}, false
+	liveSeen := map[string]bool{}
+	var orphans []string
 	for _, u := range units {
 		base := strings.TrimSuffix(strings.TrimPrefix(u, name.Unit), ".container")
 		if base == "hooks" || strings.HasPrefix(base, "db-") {
@@ -89,14 +89,25 @@ func Run(ctx context.Context, h Host, apps []App, site traefik.Site) Report {
 		case m[2] == a.Live:
 			liveSeen[a.Spec.Name] = true
 		default:
-			c := strings.TrimSuffix(u, ".container")
-			if err := h.RemoveContainer(ctx, c, StopTimeout); err != nil {
-				fail("removing orphaned release %s: %v", c, err)
-				continue
-			}
-			removed = true
-			r.Repaired = append(r.Repaired, fmt.Sprintf("%s: removed orphaned release (not live)", c))
+			orphans = append(orphans, strings.TrimSuffix(u, ".container"))
 		}
+	}
+	// in parallel, so start waits one StopTimeout, not one per orphan
+	errs := make([]error, len(orphans))
+	var wg sync.WaitGroup
+	for i, c := range orphans {
+		wg.Add(1)
+		go func() { defer wg.Done(); errs[i] = h.RemoveContainer(ctx, c, StopTimeout) }()
+	}
+	wg.Wait()
+	removed := false
+	for i, c := range orphans {
+		if errs[i] != nil {
+			fail("removing orphaned release %s: %v", c, errs[i])
+			continue
+		}
+		removed = true
+		r.Repaired = append(r.Repaired, fmt.Sprintf("%s: removed orphaned release (not live)", c))
 	}
 	if removed {
 		if err := h.DaemonReload(ctx); err != nil {
@@ -118,7 +129,7 @@ func Run(ctx context.Context, h Host, apps []App, site traefik.Site) Report {
 			fail("state of %s: %v", c, err)
 			continue
 		}
-		if state == "active" || state == "activating" || state == "reloading" {
+		if state == "active" || state == "activating" || state == "reloading" || state == "queued" {
 			continue
 		}
 		if err := h.Start(ctx, c+".service"); err != nil {
@@ -176,51 +187,4 @@ func Run(ctx context.Context, h Host, apps []App, site traefik.Site) Report {
 		r.Repaired = append(r.Repaired, fmt.Sprintf("%s: %s, re-rendered", f, why))
 	}
 	return r
-}
-
-// LoadApps reads every app with its domains and live release.
-func LoadApps(ctx context.Context, db *sql.DB) ([]App, error) {
-	rows, err := db.QueryContext(ctx, `
-		SELECT a.id, a.name, a.spec, coalesce(r.rel8, '')
-		FROM apps a LEFT JOIN releases r ON r.app_id = a.id AND r.status = 'live'
-		ORDER BY a.name`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var apps []App
-	var ids []string
-	for rows.Next() {
-		var id, js string
-		var a App
-		if err := rows.Scan(&id, &a.Spec.Name, &js, &a.Live); err != nil {
-			return nil, err
-		}
-		if err := json.Unmarshal([]byte(js), &a.Spec); err != nil {
-			return nil, fmt.Errorf("app %s: spec: %w", a.Spec.Name, err)
-		}
-		apps, ids = append(apps, a), append(ids, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	for i := range apps {
-		ds, err := db.QueryContext(ctx, `SELECT host, is_primary, redirect FROM domains WHERE app_id = ? ORDER BY is_primary DESC, host`, ids[i])
-		if err != nil {
-			return nil, err
-		}
-		for ds.Next() {
-			var d spec.Domain
-			if err := ds.Scan(&d.Host, &d.Primary, &d.Redirect); err != nil {
-				ds.Close()
-				return nil, err
-			}
-			apps[i].Spec.Domains = append(apps[i].Spec.Domains, d)
-		}
-		ds.Close()
-		if err := ds.Err(); err != nil {
-			return nil, err
-		}
-	}
-	return apps, nil
 }

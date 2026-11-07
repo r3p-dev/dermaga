@@ -7,7 +7,11 @@ package traefik
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -147,6 +151,55 @@ const (
 )
 
 var tokenRE = regexp.MustCompile(`^[0-9a-f]{32,64}$`)
+
+// GlobalFile and CustomFile are the other files in the dynamic directory.
+const (
+	GlobalFile = "00-global.yml"
+	CustomFile = "99-custom.yml"
+)
+
+// customPlaceholder is written once if 99-custom.yml is missing; dermaga
+// never touches the file again (BRIEF §3.3).
+const customPlaceholder = `# 99-custom.yml: your own Traefik dynamic configuration (file provider).
+# dermaga created this file once and never changes or deletes it.
+# Anything here is hot-reloaded. An invalid file stops Traefik from loading
+# ANY dynamic change (dermaga's deploys then fail verification and roll back):
+# check "journalctl --user -u traefik" after editing.
+#
+# The websecure entrypoint has no middlewares of its own (ARCHITECTURE D27).
+# Routes defined here must name secure@file to get the default security
+# headers, rate limit and compression, for example:
+#
+# http:
+#   routers:
+#     my-route:
+#       rule: Host(` + "`example.com`" + `)
+#       entryPoints: [websecure]
+#       tls: {certResolver: le}
+#       middlewares: [secure@file]
+#       service: my-service
+#   services:
+#     my-service:
+#       loadBalancer:
+#         servers:
+#           - url: http://my-container:8080
+`
+
+// WriteCustomPlaceholder creates 99-custom.yml in dir unless it exists.
+func WriteCustomPlaceholder(dir string) error {
+	f, err := os.OpenFile(filepath.Join(dir, CustomFile), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if errors.Is(err, fs.ErrExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if _, err := f.WriteString(customPlaceholder); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
+}
 
 // AppFileName is the dynamic file of an app.
 func AppFileName(app string) string { return name.AppFile + app + ".yml" }

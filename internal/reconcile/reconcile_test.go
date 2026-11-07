@@ -5,17 +5,18 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	_ "github.com/r3p-dev/dermaga/internal/golden" // accepts go test ./... -update
 	"github.com/r3p-dev/dermaga/internal/spec"
-	"github.com/r3p-dev/dermaga/internal/store"
 	"github.com/r3p-dev/dermaga/internal/traefik"
 )
 
 // fakeHost is a machine with unit files, their systemd states and Traefik files.
 type fakeHost struct {
+	mu     sync.Mutex        // RemoveContainer runs concurrently
 	units  map[string]string // dg-*.container → ActiveState of its service
 	files  map[string][]byte // app-*.yml (and foreign files, which must stay)
 	calls  []string
@@ -23,6 +24,8 @@ type fakeHost struct {
 }
 
 func (f *fakeHost) call(s string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.calls = append(f.calls, s)
 	if f.failOn != "" && strings.HasPrefix(s, f.failOn) {
 		return context.DeadlineExceeded
@@ -70,7 +73,10 @@ func (f *fakeHost) RemoveContainer(_ context.Context, c string, _ int) error {
 	if err := f.call("remove " + c); err != nil {
 		return err
 	}
+	f.mu.Lock()
 	delete(f.units, c+".container")
+	f.mu.Unlock()
+	time.Sleep(50 * time.Millisecond) // stands in for StopTimeout
 	return nil
 }
 
@@ -93,7 +99,7 @@ func (f *fakeHost) RemoveAppFile(n string) error {
 }
 
 func shop(live string) App {
-	return App{Live: live, Spec: spec.App{Name: "shop", Port: 8080,
+	return App{Live: live, Spec: spec.App{Name: "shop", Port: 8080, Source: spec.Source{Type: "image", Image: "docker.io/library/nginx:1"},
 		Domains:    []spec.Domain{{Host: "shop.example.com", Primary: true}},
 		Middleware: spec.Middleware{BasicAuth: []spec.BasicAuthUser{{User: "a", Hash: "$2a$10$XHrAnsxjPHLuFmCNWUIDdeat./VrrO97Hsg2DjDInBZAYmb2bWA5y"}}},
 	}}
@@ -217,39 +223,22 @@ func TestLiveUnitMissingIsDriftAndErrorsContinue(t *testing.T) {
 	}
 }
 
-func TestLoadApps(t *testing.T) {
-	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
-	if err != nil {
-		t.Fatal(err)
+func TestOrphansRemovedInParallel(t *testing.T) {
+	h := &fakeHost{units: map[string]string{}, files: map[string][]byte{}}
+	for _, r := range []string{"11111111", "22222222", "33333333", "44444444", "55555555"} {
+		h.units["dg-shop-"+r+".container"] = "active"
 	}
-	defer db.Close()
-	now := time.Now().Unix()
-	for _, q := range []string{
-		`INSERT INTO apps (id, name, spec, created_at) VALUES ('id1', 'shop', '{"port":8080,"readOnly":true}', ?)`,
-		`INSERT INTO apps (id, name, spec, created_at) VALUES ('id2', 'blog', '{"port":3000}', ?)`,
-		`INSERT INTO domains (host, app_id, is_primary, redirect) VALUES ('www.shop.example.com', 'id1', 0, 1), ('shop.example.com', 'id1', 1, 0), ('blog.example.com', 'id2', 1, 0)`,
-		`INSERT INTO releases (app_id, rel8, image, status, created_at) VALUES ('id1', 'aaaaaaaa', 'localhost/dermaga/shop:1', 'superseded', ?), ('id1', 'bbbbbbbb', 'localhost/dermaga/shop:2', 'live', ?)`,
-	} {
-		if _, err := db.Exec(q, now, now); err != nil {
-			t.Fatal(q, err)
-		}
+	start := time.Now()
+	r := Run(context.Background(), h, []App{shop("")}, traefik.Site{})
+	if d := time.Since(start); d > 200*time.Millisecond || len(r.Repaired) != 5 || len(h.units) != 0 {
+		t.Errorf("took %v (5 x 50 ms serially = 250 ms), repaired %q, left %v", d, r.Repaired, h.units)
 	}
-	apps, err := LoadApps(context.Background(), db)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(apps) != 2 || apps[0].Spec.Name != "blog" || apps[0].Live != "" || apps[1].Live != "bbbbbbbb" ||
-		!apps[1].Spec.ReadOnly || apps[1].Spec.Primary() != "shop.example.com" || len(apps[1].Spec.Domains) != 2 {
-		t.Fatalf("%+v", apps)
-	}
-	if err := apps[1].Spec.Validate(); err != nil {
-		t.Error(err)
-	}
-	// the schema keeps one live release and one primary domain per app
-	if _, err := db.Exec(`UPDATE releases SET status = 'live' WHERE rel8 = 'aaaaaaaa'`); err == nil {
-		t.Error("second live release accepted")
-	}
-	if _, err := db.Exec(`UPDATE domains SET is_primary = 1, redirect = 0 WHERE host = 'www.shop.example.com'`); err == nil {
-		t.Error("second primary domain accepted")
+}
+
+func TestQueuedLiveUnitIsLeftToSystemd(t *testing.T) {
+	h := &fakeHost{units: map[string]string{"dg-shop-aaaaaaaa.container": "queued"}, files: map[string][]byte{}}
+	r := Run(context.Background(), h, []App{shop("aaaaaaaa")}, traefik.Site{})
+	if slices.ContainsFunc(h.calls, func(c string) bool { return strings.HasPrefix(c, "start") }) || len(r.Errors) > 0 {
+		t.Errorf("calls %q errors %q", h.calls, r.Errors)
 	}
 }

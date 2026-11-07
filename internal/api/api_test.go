@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/r3p-dev/dermaga/internal/apps"
 	"github.com/r3p-dev/dermaga/internal/auth"
 	"github.com/r3p-dev/dermaga/internal/secrets"
 	"github.com/r3p-dev/dermaga/internal/store"
@@ -26,7 +27,7 @@ func newServer(t *testing.T) *Server {
 	}
 	t.Cleanup(func() { db.Close() })
 	box, _ := secrets.New(bytes.Repeat([]byte{3}, 32))
-	s := &Server{DB: db, Auth: auth.New(db, box), Port: 7070, Started: time.Now()}
+	s := &Server{DB: db, Auth: auth.New(db, box), Port: 7070, Started: time.Now(), Apps: apps.Store{DB: db, Box: box}}
 	if err := s.Auth.SetPassword(pw); err != nil {
 		t.Fatal(err)
 	}
@@ -169,5 +170,26 @@ func TestServerTimeouts(t *testing.T) {
 	srv := NewHTTPServer(http.NotFoundHandler())
 	if srv.ReadHeaderTimeout <= 0 || srv.ReadTimeout <= 0 || srv.WriteTimeout <= 0 || srv.IdleTimeout <= 0 {
 		t.Fatalf("missing timeout: %+v", srv)
+	}
+}
+
+func TestAppRoutesOnPanelNeedSessionAndOrigin(t *testing.T) {
+	s := newServer(t)
+	h := s.Panel()
+	if w := do(h, req{method: "GET", path: "/api/apps"}); w.Code != http.StatusUnauthorized {
+		t.Fatalf("no session: %d", w.Code)
+	}
+	c := login(t, h)
+	if w := do(h, req{method: "GET", path: "/api/apps", cookie: c}); w.Code != http.StatusOK || strings.TrimSpace(w.Body.String()) != "[]" {
+		t.Fatalf("with session: %d %s", w.Code, w.Body)
+	}
+	body := `{"name":"x","domains":[{"host":"x.example.com","primary":true}],"spec":{"port":80,"source":{"type":"image","image":"docker.io/library/nginx:1"}}}`
+	if w := do(h, req{method: "POST", path: "/api/apps", cookie: c, body: body}); w.Code != http.StatusForbidden {
+		t.Fatalf("POST without Origin: %d", w.Code)
+	}
+	for _, p := range []string{"/api/apps/x/env?reveal=1", "/api/apps/x/webhook"} {
+		if w := do(h, req{method: "GET", path: p}); w.Code != http.StatusUnauthorized {
+			t.Errorf("%s without session: %d", p, w.Code)
+		}
 	}
 }

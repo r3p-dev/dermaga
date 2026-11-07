@@ -40,6 +40,15 @@ func commands() map[string]command {
 		"admin":      {cmdAdmin, "set-password | totp enable | totp disable"},
 		"panel":      {cmdPanel, "print the SSH tunnel snippet and the panel URL [--host H]"},
 		"doctor":     {cmdDoctor, "check the host and the daemon [--json]"},
+		"apps":       {cmdApps, "list | show | create | edit | remove | webhook"},
+		"deploy":     {cmdDeploy, "deploy <app> [--ref SHA] [--no-follow]"},
+		"logs":       {cmdLogs, "logs <app> [-f] [-n N] [--build latest|RELEASE]"},
+		"env":        {cmdEnv, "env <app> [list [--reveal] | set K=V… | unset K… | edit]"},
+		"domains":    {cmdDomains, "domains <app> [add HOST [--redirect] | remove HOST | primary HOST]"},
+		"middleware": {cmdMiddleware, "middleware <app> [show | basic-auth add|remove USER]"},
+		"github":     {cmdGitHub, "known-hosts: pin GitHub's SSH host keys"},
+		"settings":   {cmdSettings, "show or change settings [--hook-host H]"},
+		"traefik":    {cmdTraefik, "static: print traefik.yml [--acme-email E] [--acme-staging]"},
 		"version":    {func([]string) error { fmt.Println(name.Name, name.Version()); return nil }, "print the version"},
 		"hook-relay": {cmdHookRelay, "TCP → hooks.sock relay (runs inside the dg-hooks container)"},
 		"probe":      {cmdProbe, "HTTP health probe (runs inside the rootless netns)"},
@@ -49,7 +58,8 @@ func commands() map[string]command {
 func usage(w io.Writer) {
 	fmt.Fprintf(w, "usage: %s <command> [flags]\n\ncommands:\n", name.Name)
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	for _, n := range []string{"status", "audit", "admin", "panel", "doctor", "daemon", "version", "hook-relay", "probe"} {
+	for _, n := range []string{"status", "apps", "deploy", "logs", "env", "domains", "middleware", "settings", "github",
+		"audit", "admin", "panel", "doctor", "traefik", "daemon", "version", "hook-relay", "probe"} {
 		fmt.Fprintf(tw, "  %s\t%s\n", n, commands()[n].usage)
 	}
 	tw.Flush()
