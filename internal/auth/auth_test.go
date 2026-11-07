@@ -3,6 +3,7 @@ package auth
 import (
 	"bytes"
 	"errors"
+	_ "github.com/r3p-dev/dermaga/internal/golden" // accepts go test ./... -update
 	"path/filepath"
 	"strings"
 	"testing"

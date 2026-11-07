@@ -2,6 +2,7 @@ package relay
 
 import (
 	"fmt"
+	_ "github.com/r3p-dev/dermaga/internal/golden" // accepts go test ./... -update
 	"io"
 	"net"
 	"net/http"

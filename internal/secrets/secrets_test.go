@@ -3,6 +3,7 @@ package secrets
 import (
 	"bytes"
 	"encoding/base64"
+	_ "github.com/r3p-dev/dermaga/internal/golden" // accepts go test ./... -update
 	"os"
 	"path/filepath"
 	"strings"

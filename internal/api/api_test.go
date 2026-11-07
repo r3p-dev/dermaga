@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	_ "github.com/r3p-dev/dermaga/internal/golden" // accepts go test ./... -update
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"

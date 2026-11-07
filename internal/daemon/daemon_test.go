@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	_ "github.com/r3p-dev/dermaga/internal/golden" // accepts go test ./... -update
 	"os"
 	"path/filepath"
 	"testing"
