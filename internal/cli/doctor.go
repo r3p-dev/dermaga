@@ -151,10 +151,33 @@ func checkClock() check {
 	if err != nil {
 		return check{"clock", "fail", "timedatectl: " + err.Error()}
 	}
-	if out != "yes" {
-		return check{"clock", "fail", "not NTP-synchronised (TOTP and certificates need a correct clock): timedatectl status"}
+	return clockCheck(out == "yes", uptime())
+}
+
+// clockCheck tolerates an unsynchronised clock right after boot: timesyncd's
+// first sync takes about 30 s, and doctor may run before it (e.g. at boot).
+func clockCheck(synced bool, up time.Duration) check {
+	switch {
+	case synced:
+		return check{"clock", "ok", "NTP-synchronised"}
+	case up < 5*time.Minute:
+		return check{"clock", "warn", fmt.Sprintf("not NTP-synchronised yet (booted %s ago): re-run in a minute", up.Round(time.Second))}
 	}
-	return check{"clock", "ok", "NTP-synchronised"}
+	return check{"clock", "fail", "not NTP-synchronised (TOTP and certificates need a correct clock): timedatectl status"}
+}
+
+// uptime is the time since boot, or a large value if /proc/uptime is unreadable.
+func uptime() time.Duration {
+	b, err := os.ReadFile("/proc/uptime")
+	f := strings.Fields(string(b))
+	if err != nil || len(f) == 0 {
+		return 24 * time.Hour
+	}
+	s, err := strconv.ParseFloat(f[0], 64)
+	if err != nil {
+		return 24 * time.Hour
+	}
+	return time.Duration(s * float64(time.Second))
 }
 
 func checkDisk() check {

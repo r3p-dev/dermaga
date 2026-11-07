@@ -1,11 +1,13 @@
 package cli
 
 import (
+	_ "github.com/r3p-dev/dermaga/internal/golden" // accepts go test ./... -update
 	"os"
 	"os/user"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestSubIDCount(t *testing.T) {
@@ -39,6 +41,22 @@ func TestSSHPortAndSnippet(t *testing.T) {
 		"SessionType none", "ExitOnForwardFailure yes", "http://localhost:7070"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("snippet lacks %q", want)
+		}
+	}
+}
+
+func TestClockCheckToleratesEarlyBoot(t *testing.T) {
+	for _, c := range []struct {
+		synced bool
+		up     time.Duration
+		want   string
+	}{
+		{true, time.Second, "ok"},
+		{false, 6 * time.Second, "warn"},
+		{false, 10 * time.Minute, "fail"},
+	} {
+		if got := clockCheck(c.synced, c.up).Status; got != c.want {
+			t.Errorf("synced=%v up=%v: %s, want %s", c.synced, c.up, got, c.want)
 		}
 	}
 }
