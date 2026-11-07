@@ -1,0 +1,15 @@
+# systemd user unit: ~/.config/systemd/user/dermaga.service (the installer writes it in M8).
+[Unit]
+Description=dermaga daemon (single-user PaaS)
+Documentation=https://github.com/r3p-dev/dermaga
+
+[Service]
+Type=exec
+ExecStart=/usr/local/bin/dermaga daemon
+Restart=on-failure
+RestartSec=2s
+# No NoNewPrivileges=: from M3 on the daemon runs rootless podman, which needs
+# the setuid/file-capability helpers newuidmap and newgidmap.
+
+[Install]
+WantedBy=default.target
