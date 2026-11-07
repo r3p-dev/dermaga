@@ -1,6 +1,6 @@
 # dermaga architecture
 
-Status: **after M0, D1 and D7 approved** (2026-11-07). [`BRIEF.md`](BRIEF.md) is the source of truth for goals and
+Status: **after M1** (2026-11-07). D1 and D7 approved, including the token router's middlewares. [`BRIEF.md`](BRIEF.md) is the source of truth for goals and
 constraints. This file records *how* dermaga meets them, and every decision taken along the way with
 its reason. Evidence for the claims marked **[M0-n]** is in [`M0-EVIDENCE.md`](M0-EVIDENCE.md).
 
@@ -57,7 +57,7 @@ Each decision gives its reason and the evidence. "Brief" means the decision is a
 | D4 | **Memory limit via `PodmanArgs=--memory=…`**, not `Memory=`. CPU via `PodmanArgs=--cpus=…`. Pids via `PidsLimit=`. | Podman 5.4.2's Quadlet rejects `Memory=` **[M0-4]**. Same as vps-setup.sh. |
 | D5 | **Every generated unit set is dry-run validated** (`QUADLET_UNIT_DIRS=<staged copy> quadlet -dryrun -user`) before anything is installed. | A rejected unit silently has no `.service` **[M0-4]**. |
 | D6 | **Traefik dynamic files are written as JSON** (`encoding/json` from typed structs) into `app-<name>.yml`. No YAML library. | Traefik accepts JSON in `.yml` **[M0-3]**. Typed serialization is guaranteed, and it removes a dependency. |
-| D7 | **Switch verification uses a per-deploy token router on an internal `verify` entrypoint** (`:8081`, plain HTTP, inside the Traefik container, never published). **Only** `app-<name>-verify` (`Host(<primary>) && Header(X-Dermaga-Verify, <random token>)`) is attached to `verify`. It uses the same service and the same router-level middlewares as the public router (but see the open point below). The public `app-<name>` router stays on `websecure` only. After the atomic write, the probe from D2 polls `http://traefik:8081<health path>` with that Host and token until it succeeds (deadline 10 s). A best-effort `--resolve <domain>:443:127.0.0.1` check follows; it only warns, and only once a certificate exists. *Approved 2026-11-07, with the public router kept off `verify`.* | The token router only exists in the new file, so a 200 proves Traefik loaded *this* file and that the candidate answers through the app's service. The brief's `--resolve` check alone fails under `sniStrict: true` until ACME has issued a cert (every new domain, and the VM always) **[M0-3b]**. `verify` is reachable from every container on `web` and skips the entrypoint-level `secure@file` chain, so attaching public routers to it would expose every app without that chain. Behind a random token, the token router adds nothing beyond the direct container access that `web` already allows (see the residual risk in §1). |
+| D7 | **Switch verification uses a per-deploy token router on an internal `verify` entrypoint** (`:8081`, plain HTTP, inside the Traefik container, never published). **Only** `app-<name>-verify` (`Host(<primary>) && Header(X-Dermaga-Verify, <random token>)`) is attached to `verify`. It uses the same service as the public router and the public router's router-level middlewares **minus `basicAuth` and `ipAllowList`**. The public `app-<name>` router stays on `websecure` only. After the atomic write, the probe from D2 polls `http://traefik:8081<health path>` with that Host and token until it succeeds (deadline 10 s). **Once verification succeeds, the app file is rewritten atomically without `app-<name>-verify`**, so verify routers exist only while a deploy is in progress (startup reconciliation re-renders any app file that still has one, e.g. after a crash mid-deploy). A best-effort `--resolve <domain>:443:127.0.0.1` check follows; it only warns, and only once a certificate exists. *Approved 2026-11-07, with the public router kept off `verify`; middleware subset and router removal approved 2026-11-07.* | The token router only exists in the new file, so a 200 proves Traefik loaded *this* file and that the candidate answers through the app's service. The brief's `--resolve` check alone fails under `sniStrict: true` until ACME has issued a cert (every new domain, and the VM always) **[M0-3b]**. `verify` is reachable from every container on `web` and skips the entrypoint-level `secure@file` chain, so attaching public routers to it would expose every app without that chain. Behind a random token, the token router adds nothing beyond the direct container access that `web` already allows (see the residual risk in §1). `basicAuth` and `ipAllowList` are left off because the probe has no basic-auth password (only bcrypt hashes are stored) and connects from the rootless netns (`10.89.0.1`), so Traefik would answer 401/403 and verification would always fail for protected apps. That doesn't widen access, for the same reason. Removing the router after verification shrinks the window in which a token is valid to the deploy itself. |
 | D8 | **A failed verification counts as "Traefik did not load the config".** The previous app file is restored (snapshot kept in memory) and verified with its own token, then the candidate is removed. The error points at `journalctl --user -u traefik` and `99-custom.yml`. | One invalid file in `dynamic/` freezes **all** updates while the old config keeps serving **[M0-3]**. D7 detects this without dermaga having to parse hand-written YAML. `doctor` also reports Traefik provider errors. |
 | D9 | **Switch timing:** typical switch-to-verified time is about 2.1 s (Traefik's default `providersThrottleDuration` of 2 s). It stays at the default. | **[M0-3]**: 2.04–2.12 s, zero non-200 during 10 switches. |
 | D10 | **Backups stream with `restic backup --stdin-from-command --stdin-filename <db>.<ext> -- podman exec <ctr> <dump argv>`.** Credentials are read inside the container from its own environment (idea from Litepod's `database_backup/engine.rs`; no secrets in host argv). | Debian 13's restic 0.18.0 has the flag. A failing, mid-stream-failing or killed dump gives exit 1 and **no snapshot** **[M0-6]**. |
@@ -72,17 +72,27 @@ Each decision gives its reason and the evidence. "Brief" means the decision is a
 None. D1 and D7 changed mechanisms in §3.1 and §3.5.7, not §2. Both were approved and are now in
 the brief.
 
-### Open point for M2/M4: access-control middlewares on the token router
+### Settled: access-control middlewares on the token router
 
-"Same router-level middlewares" works for headers, compression, buffering, path-prefix stripping
-and rate limiting. It doesn't work for `basicAuth` and `ipAllowList`: the probe has no basic-auth
-password (dermaga stores only bcrypt hashes) and connects from the rootless netns
-(`10.89.0.1`), so Traefik answers 401/403 before reaching the service. Verification would then
-always fail for protected apps. Proposal: the token router gets the public router's middlewares
-**minus** `basicAuth` and `ipAllowList`. This doesn't widen access, for the reason given in D7:
-the token router is reachable only from `web` and only with the per-deploy token, while the app
-container is directly reachable from `web` anyway. To be confirmed before M2 writes the
-generator and its golden tests.
+The open point from M0 (basic auth and IP allowlists would make verification fail for protected
+apps) was settled on 2026-11-07. The token router gets the public router's middlewares minus
+`basicAuth` and `ipAllowList`, and it is removed once verification succeeds. Both points are recorded in D7.
+
+### Decisions taken in M1
+
+| # | Decision | Why |
+|---|---|---|
+| D16 | **Migrations are numbered SQL files; `PRAGMA user_version` holds the last applied number.** Each file runs in one transaction together with the version bump. A gap in the numbering, or a database newer than the binary, is an error. | No migrations table, no library. `user_version` is transactional in SQLite, so a failed migration leaves version and schema unchanged (tested). |
+| D17 | **One SQLite connection** (`SetMaxOpenConns(1)`), WAL, `foreign_keys=ON`, `busy_timeout=5000`, `synchronous=NORMAL`. The database file is created 0600, and SQLite gives `-wal`/`-shm` the same mode. | The daemon's write rate is tiny. One connection rules out `SQLITE_BUSY` between our own connections. 0600 keeps copies and backups private even outside the 0700 directory. |
+| D18 | **argon2id with m=19 MiB, t=2, p=1** (OWASP profile), parameters stored in the PHC string. `debug.FreeOSMemory()` runs after each hash. Logins are serialised by a mutex. | The idle RSS budget is 30 MB. Without the release, RSS stayed at 57 MB after a login; with it, 18.7 MB after 60 s idle (M1 evidence). Serialising keeps login memory to one hash at a time. |
+| D19 | **Sessions:** 256-bit random cookie `dermaga_session` (`HttpOnly; SameSite=Strict; Path=/`, `Max-Age` 7 d, no `Secure` because the panel is plain HTTP on localhost). Only its SHA-256 is stored. Idle 12 h and absolute 7 d are enforced server-side. `last_seen_at` is written at most once a minute. Changing the password deletes every session. | BRIEF §4.3. A stolen database doesn't yield usable cookies. |
+| D20 | **Login backoff is global**, not per IP: the 5th consecutive failure blocks login for 1 s, the 6th for 2 s, then 4 s, 8 s … up to 15 min. During a block every attempt gets HTTP 429 + `Retry-After` without the password being checked. A success resets the counter. | Every panel request comes from 127.0.0.1 through the tunnel, so per-IP state would mean nothing. One admin means a global counter locks out only the attacker's guesses. |
+| D21 | **TOTP**: RFC 6238 SHA-1, 6 digits, 30 s, ±1 step. A code is accepted only once (the last used step is kept in memory). The secret is stored encrypted with AAD `settings.totp_secret`. It is enabled from the CLI (`dermaga admin totp enable` prints the `otpauth://` URI and secret, then requires a valid code before storing it). | Universal authenticator support. Confirming a code before storing prevents a lockout from a mistyped secret. The panel UI for TOTP comes in M7. |
+| D22 | **Secrets are bound to their column**: `Box.Seal(value, aad)` uses the column name as GCM additional data, so a ciphertext copied into another column doesn't decrypt. `master.key` is created via temp file + `link(2)`, so an existing key is never overwritten, and it is refused if it is group- or world-readable. | Losing or replacing the key loses every secret. |
+| D23 | **Admin routes exist only on the Unix socket** (`PUT /api/admin/password`, `PUT`/`DELETE /api/admin/totp`). The panel serves login, logout, status and audit in M1. Panel responses carry `Cache-Control: no-store`, `X-Frame-Options: DENY`, `nosniff` and `Referrer-Policy: no-referrer`. | The socket's file mode is the authentication (BRIEF §3.1). Changing the password from the panel needs the current password, and comes with the Settings page in M7. |
+| D24 | **The user unit has no `NoNewPrivileges=`** (`install/dermaga.service`). | From M3 on the daemon runs rootless Podman, which needs the setuid/file-capability helpers `newuidmap`/`newgidmap`. |
+| D25 | **Linters are pinned as `tool` directives in `go.mod`** (`go tool staticcheck`, `go tool govulncheck`). `make check` runs gofmt, vet, staticcheck, govulncheck and tests, so only a Go toolchain is needed. | Reproducible checks; nothing installed globally. |
+| D26 | **`config.toml` is optional and strict**: defaults apply when it is missing, unknown keys are rejected. M1 has one setting, `[panel] port`. | A typo must not silently fall back to a default. Settings that the UI changes live in SQLite, not here. |
 
 ## 3. Deploy pipeline (blue-green; mechanics proven in M0)
 
@@ -99,7 +109,7 @@ queued → building → starting → healthy → live
    a. HTTP health path → `dermaga probe` inside the rootless netns (D2);
    b. image or unit `HealthCmd` → poll `podman inspect` health status (`Notify=healthy` also makes the unit go `active` exactly then);
    c. neither → "running ≥ N s with zero restarts" (`podman inspect .RestartCount`), flagged as weak in the UI.
-6. **Switch**: snapshot `app-<name>.yml`, write the new one atomically (temp file in the same dir, `fsync`, `rename`, `fsync` dir) with a fresh verify token, then verify (D7). On failure, restore and verify the old file (D8).
+6. **Switch**: snapshot `app-<name>.yml`, write the new one atomically (temp file in the same dir, `fsync`, `rename`, `fsync` dir) with a fresh verify token, then verify (D7). On failure, restore and verify the old file (D8). After a successful verification (of the new file, or of the restored one), rewrite the file without `app-<name>-verify` (D7).
 7. **Drain**: wait the grace period (10 s), stop the old unit, remove its file, `daemon-reload`. Keep the images of the last 5 releases and prune older `localhost/dermaga/<app>` images.
 8. **Any failure before the switch**: remove the candidate (D3). The live release and route are never touched. First deploy: no route file is written until the candidate is healthy, so a failed first deploy leaves nothing.
 9. **`recreate`** (default when the app has named volumes): stop old → start new → health → switch. On failure, restart the previous release from its kept image and restore its route.
@@ -131,7 +141,7 @@ mount and `Requires=podman.socket`; the static config loses the `docker` provide
 | Table | Key columns |
 |---|---|
 | `settings` | single row: admin password hash (argon2id), TOTP secret (enc), hook host, default limits, header/rate-limit defaults (JSON), S3 + restic settings (secrets enc), notify target (enc) |
-| `sessions` | id (hash of cookie), created, last_seen, expires; deleted on logout |
+| `sessions` | id_hash (SHA-256 of the cookie), created_at, last_seen_at; expiry is computed (12 h idle, 7 d absolute); deleted on logout |
 | `apps` | id (random, used in the webhook URL), name UNIQUE, source (`git`/`image`), repo, branch, context, containerfile, image_ref, port, health (path, cmd, K, timeout), limits, strategy, auto_deploy, trigger (`push`/`workflow_run` + workflow name), watch paths (JSON), middleware (JSON of typed struct), deploy key fingerprint, webhook secret (enc) |
 | `domains` | app_id, host UNIQUE, is_primary, redirect_to_primary |
 | `env_vars` | app_id, key, value (enc); UNIQUE(app_id, key) |
@@ -155,7 +165,9 @@ The key is `~/.config/dermaga/master.key` (32 random bytes, 0600). Env files mus
 | modernc.org/sqlite | v1.61.1 (SQLite 3.54.1) | proxy.golang.org |
 | golang.org/x/crypto | v0.58.0 | |
 | github.com/pelletier/go-toml/v2 | v2.4.3 | |
-| tygo (dev tool) | v0.2.21 | |
+| tygo (dev tool, added in M7) | v0.2.21 | |
+| staticcheck (`go tool`) | honnef.co/go/tools v0.8.2 (2026.2.2) | proxy.golang.org |
+| govulncheck (`go tool`) | golang.org/x/vuln v1.9.0 | proxy.golang.org |
 | Bun | 1.4.4 (spike used 1.4.2) | |
 | SvelteKit / Svelte / adapter-static | 3.1.1 / 5.57.3 / 4.0.1 | npm |
 | Tailwind CSS / Vite / vite-plugin-svelte | 4.3.5 / 8.3.6 / 7.3.1 | npm |

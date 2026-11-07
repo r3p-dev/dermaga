@@ -1,7 +1,8 @@
 # dermaga plan
 
-Milestones follow BRIEF §8. Each one ends with `go vet`, `staticcheck`, `govulncheck` and
-`go test ./...` passing, plus the milestone's VM checks run on `dermaga-vm` and recorded as
+Milestones follow BRIEF §8. Each one ends with `make check` passing (gofmt check, `go vet`,
+`go tool staticcheck`, `go tool govulncheck`, `go test`; the linters are pinned as `tool`
+directives in `go.mod`, so only a Go toolchain is needed), plus the milestone's VM checks run on `dermaga-vm` and recorded as
 evidence (commands + output) in the milestone report. Hours are my working estimate, including VM
 testing and docs. They don't include your review time.
 
@@ -23,7 +24,7 @@ confirm. `docs/OPERATIONS.md` documents the harness in M8.
 | # | Milestone | Hours |
 |---|---|---|
 | M0 | Spikes and plan (done) | – |
-| M1 | Daemon core | 16 |
+| M1 | Daemon core (done) | 16 |
 | M2 | Generators + reconciliation | 12 |
 | M3 | Git apps, recreate strategy, portfolio live | 20 |
 | M4 | Zero-downtime | 14 |
@@ -36,6 +37,9 @@ confirm. `docs/OPERATIONS.md` documents the harness in M8.
 | | **Total** | **150** |
 
 ## M1: Daemon core (16 h)
+
+**Done 2026-11-07.** Evidence: [`M1-EVIDENCE.md`](M1-EVIDENCE.md). The spike links in
+`M0-EVIDENCE.md` now point to commit `eb9ad64` on GitHub.
 
 Module layout from BRIEF §7. `internal/name`, `config` (TOML, XDG paths), `store` (SQLite, WAL,
 embedded versioned migrations), `secrets` (AES-256-GCM, `master.key`), `api` (JSON handlers shared
@@ -76,6 +80,11 @@ Acceptance:
 - Golden tests for every generator (`go test ./... -update` refreshes). Cases: minimal app, every
   middleware toggle, aliases + www redirect, path prefix + strip, basic auth, allowlist, body
   limit, custom/removed headers, DB-linked app, `recreate` app with a volume.
+- D7 verify router golden cases: the deploy-time file has `app-<name>-verify` on `verify` only,
+  with the public router's middlewares **minus `basicAuth` and `ipAllowList`** (rendered for an
+  app with basic auth, one with an allowlist, and one with both plus headers/compression/rate
+  limit, to show that the others stay); the steady-state file of the same apps has **no**
+  `app-<name>-verify` router.
 - Injection tests: newline, `%`, `$`, backtick and quote in every user-controlled field are
   rejected or escaped. A domain value cannot break the router rule.
 - `00-global.yml` reproduces vps-setup's `00-vps.yml` (same middlewares, TLS options and
@@ -83,7 +92,8 @@ Acceptance:
   vps-setup's chain in M3.
 - Generated units pass `quadlet -dryrun` (in CI where Podman exists, and always on the VM).
 - Reconciliation tests with a fake host: orphan candidate removed, missing app file re-rendered,
-  stopped live unit started, foreign files untouched.
+  stopped live unit started, foreign files untouched, an app file left with an
+  `app-<name>-verify` router (crash mid-deploy) re-rendered without it.
 
 ## M3: Git apps, `recreate`, portfolio live (20 h)
 
@@ -113,13 +123,23 @@ Acceptance:
 ## M4: Zero-downtime (14 h)
 
 Blue-green pipeline (ARCHITECTURE §3), D2 probe, D7 verify, drain, rollback, release retention,
-image pruning, `superseded`.
+image pruning, `superseded`. Switch steps, in order:
+
+1. Snapshot `app-<name>.yml`, then write the new file with a fresh token router
+   `app-<name>-verify` (on `verify` only, public middlewares minus `basicAuth`/`ipAllowList`).
+2. Poll through `verify` with the token until it succeeds (10 s).
+3. On success, rewrite the file without `app-<name>-verify`, then drain the old release.
+4. On failure (D8), restore the snapshot with its own fresh token router, verify it, rewrite it
+   without the token router, remove the candidate.
 
 Acceptance (BRIEF): `oha` at 50 req/s against portfolio on the VM during
 (a) a successful redeploy and (b) a deploy whose health check fails:
 **0 non-2xx, 0 connection errors**, raw `oha` output recorded. Also: rollback to the previous
 release in < 10 s (no rebuild); a trigger during a running build supersedes the queued one;
-daemon killed mid-deploy → on restart reconciliation leaves exactly one live release and route;
+daemon killed mid-deploy → on restart reconciliation leaves exactly one live release and route
+and no `app-<name>-verify` router; after every deploy (successful, and failed-verify-then-restored)
+`app-<name>.yml` contains no verify router; a deploy of an app with basic auth and an IP allowlist
+verifies successfully;
 deployment state machine fully covered by tests with a fake host.
 
 ## M5: Databases (10 h)
@@ -195,8 +215,9 @@ The real public push-to-live and certificate check happens here, during the actu
 ## Decisions on the M0 questions (2026-11-07)
 
 1. D1 (Unix socket + `dg-hooks` relay): approved.
-2. D7: approved; only the token router is attached to `verify`. One open point remains
-   (ARCHITECTURE §2, access-control middlewares on the token router), to settle before M2.
+2. D7: approved; only the token router is attached to `verify`. The open point was settled
+   later the same day: the token router carries the public router's middlewares minus
+   `basicAuth` and `ipAllowList`, and is removed from the app file once verification succeeds.
 3. S3: local restic repository until M6; you provide an R2/B2 test bucket when M6 starts.
 4. Public reachability: replayed signed deliveries plus `gh webhook forward` in the VM;
    staging/self-signed certificates; the real check happens in M10.
