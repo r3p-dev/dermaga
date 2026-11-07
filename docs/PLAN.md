@@ -25,7 +25,7 @@ confirm. `docs/OPERATIONS.md` documents the harness in M8.
 |---|---|---|
 | M0 | Spikes and plan (done) | – |
 | M1 | Daemon core (done) | 16 |
-| M2 | Generators + reconciliation | 12 |
+| M2 | Generators + reconciliation (done) | 12 |
 | M3 | Git apps, recreate strategy, portfolio live | 20 |
 | M4 | Zero-downtime | 14 |
 | M5 | Databases | 10 |
@@ -72,6 +72,9 @@ Acceptance:
 
 ## M2: Generators + reconciliation (12 h)
 
+**Done 2026-11-07.** Evidence: [`M2-EVIDENCE.md`](M2-EVIDENCE.md). New decisions D27–D33 in
+ARCHITECTURE. D27 and D28 wait for your confirmation.
+
 Typed structs → Quadlet INI (strict writer), Traefik JSON (`00-global.yml`, `app-<name>.yml` with
 the full §3.6 middleware model and the D7 verify router), systemd timer/service units. Startup
 reconciliation (ARCHITECTURE §3.11).
@@ -100,7 +103,9 @@ Acceptance:
 Deploy keys (ed25519, 0600), pinned GitHub host keys (fetched from GitHub's meta API, fingerprints
 shown), bare mirrors, `git archive` export, `podman build` with limits, timeout and masked log
 streaming (SSE), env vars, domains, `image` apps, webhook endpoint with every §4.4 check, D1 hook
-relay, queue (concurrency 1) with supersede, `recreate` strategy, first-deploy semantics.
+relay (socket in `hooks/`, D28), queue (concurrency 1) with supersede, `recreate` strategy,
+first-deploy semantics. CLI for apps, domains and middleware, including bcrypt hashing for basic
+auth (cost chosen then: Traefik verifies the hash on every request).
 
 Acceptance:
 - Webhook tests: bad or missing signature → 401 before JSON parsing; > 1 MiB → 413; wrong branch,
@@ -183,7 +188,9 @@ works end to end against portfolio on the VM; binary size and idle RSS re-measur
 ## M8: Installer and releases (14 h)
 
 `install/install.sh` (hardening ported from vps-setup.sh's listed functions with all safety
-checks, `config-example`, `init --config`), Traefik file-provider-only, `podman.socket` disabled,
+checks, `config-example`, `init --config`), Traefik file-provider-only (`traefik.yml` and
+`00-global.yml` rendered by dermaga, D27; `traefik.container` with `DefaultDependencies=false`,
+D29), `podman.socket` disabled,
 restic/git/curl, binary download + SHA-256 verify, user service + linger, `doctor`, next steps.
 GitHub release workflow (both arches, checksums), `self-update` (checksum verify; also refreshes
 the D1 relay rootfs). `docs/OPERATIONS.md`.

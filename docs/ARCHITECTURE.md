@@ -1,6 +1,7 @@
 # dermaga architecture
 
-Status: **after M1** (2026-11-07). D1 and D7 approved, including the token router's middlewares. [`BRIEF.md`](BRIEF.md) is the source of truth for goals and
+Status: **after M2** (2026-11-07). D1 and D7 approved, including the token router's middlewares. D27 and D28 (M2) change
+how parts of BRIEF §2/§3.1 are met and wait for your confirmation (see "Decisions taken in M2"). [`BRIEF.md`](BRIEF.md) is the source of truth for goals and
 constraints. This file records *how* dermaga meets them, and every decision taken along the way with
 its reason. Evidence for the claims marked **[M0-n]** is in [`M0-EVIDENCE.md`](M0-EVIDENCE.md).
 
@@ -13,7 +14,7 @@ Internet ──► :80/:443  systemd user sockets (traefik-http/https.socket)
                      │  verify :8081: token routers only              │ bind-mounted Unix socket
                      │  (dermaga probe via rootless netns)            │
                      ▼                                                ▼
-              routes PathPrefix(/hooks/) on the hook host ──► $XDG_RUNTIME_DIR/dermaga/hooks.sock
+              routes PathPrefix(/hooks/) on the hook host ──► $XDG_RUNTIME_DIR/dermaga/hooks/hooks.sock
                                                                       │
 Laptop ──ssh -L 7070:127.0.0.1:7070──► sshd :4222 ──► 127.0.0.1:7070 ─┤  dermaga daemon
                                                                       │  (systemd user service,
@@ -25,9 +26,9 @@ Shell on server ──► dermaga CLI ──► $XDG_RUNTIME_DIR/dermaga/dermaga
 | Endpoint | Bound to | Who can reach it | Auth |
 |---|---|---|---|
 | Traefik web/websecure | systemd sockets :80, :443 (tcp+udp) | internet | per-app (basic auth, allowlist) |
-| Traefik `verify` :8081 | inside the Traefik container only | every container on `web` and the rootless netns (dermaga's probe) | only `app-<name>-verify` routers, each matching a random per-deploy token; no public router is attached, because `verify` skips the entrypoint-level `secure@file` chain |
+| Traefik `verify` :8081 | inside the Traefik container only | every container on `web` and the rootless netns (dermaga's probe) | only `app-<name>-verify` routers, each matching a random per-deploy token and existing only during a deploy; no public router is attached (D7) |
 | Hook relay `dg-hooks:8080` | network `web` only | Traefik (and other `web` containers) | HMAC per app |
-| Hook listener | Unix socket `hooks.sock`, 0600 | the relay (container root = uid `server`) | HMAC per app |
+| Hook listener | Unix socket `hooks/hooks.sock` (0600, dir 0700), the dir bind-mounted into the relay (D28) | the relay (container root = uid `server`) | HMAC per app |
 | Panel + JSON API | `127.0.0.1:7070` | SSH local forward only | password (+TOTP), session, Host/Origin checks |
 | CLI API | Unix socket `dermaga.sock`, 0600 | user `server` | file permissions |
 | Databases | `dg-db-<name>` networks | linked app containers | engine credentials |
@@ -51,13 +52,13 @@ Each decision gives its reason and the evidence. "Brief" means the decision is a
 
 | # | Decision | Why |
 |---|---|---|
-| D1 | **Hook path = Unix socket + relay container `dg-hooks`.** The daemon serves `POST /hooks/github/{appId}` and `GET /healthz` on `hooks.sock`. A Quadlet container on `web` runs `dermaga hook-relay` (the same static binary, copied into a bare rootfs dir, `Rootfs=…:O`, read-only, `DropCapability=ALL`, 32 MiB, 32 pids) and forwards TCP :8080 to the socket byte for byte. Traefik routes `Host(<hook host>) && PathPrefix(/hooks/)` to `http://dg-hooks:8080`. | No host TCP port, so exposure doesn't depend on nftables. The alternatives failed: `host.containers.internal` only reaches listeners on the public interface **[M0-1a]**, and pasta `-T` binds the netns loopback only and Debian's pasta rejects an address **[M0-1b]**. Cost: 2.4 MB RSS **[M0-1c]**. No third-party image to pin. All validation (§4.4) stays in the daemon, and the relay is a dumb pipe. *Approved 2026-11-07.* |
+| D1 | **Hook path = Unix socket + relay container `dg-hooks`.** The daemon serves `POST /hooks/github/{appId}` and `GET /healthz` on `hooks.sock`. A Quadlet container on `web` runs `dermaga hook-relay` (the same static binary, copied into a bare rootfs dir, `Rootfs=…:O`, read-only, `DropCapability=ALL`, 32 MiB, 32 pids) and forwards TCP :8080 to the socket byte for byte (the socket's directory is mounted, D28). Traefik routes `Host(<hook host>) && PathPrefix(/hooks/)` to `http://dg-hooks:8080`. | No host TCP port, so exposure doesn't depend on nftables. The alternatives failed: `host.containers.internal` only reaches listeners on the public interface **[M0-1a]**, and pasta `-T` binds the netns loopback only and Debian's pasta rejects an address **[M0-1b]**. Cost: 2.4 MB RSS **[M0-1c]**. No third-party image to pin. All validation (§4.4) stays in the daemon, and the relay is a dumb pipe. *Approved 2026-11-07.* |
 | D2 | **Health probe = `podman unshare --rootless-netns dermaga probe …`**, one exec per deploy. The probe resolves `dg-<app>-<rel8>` through aardvark-dns at the network gateway and reports each attempt as a JSON line on stdout (streamed into the deploy log). It exits 0 after K consecutive successes, non-zero at the deadline. | Bridge IPs are only reachable inside the rootless netns **[M0-2]**. Re-executing our own binary avoids depending on host curl (which can't use aardvark DNS) and avoids one fork per probe. ~55 ms overhead. |
 | D3 | **The daemon owns every deadline; it never blocks on `systemctl start`.** Candidates start with `systemctl --user start --no-block`. Cleanup order: `podman rm -f -t <StopTimeout>` → `systemctl --user stop` → `reset-failed` → remove unit → `daemon-reload`. Units set `StopTimeout=` (container) and `TimeoutStopSec=` (service) explicitly. `Notify=healthy` stays for units with a `HealthCmd`, because it gives correct ordering at boot. | A waiting `Notify=healthy` start ignores SIGTERM: a never-healthy unit took 105 s to fail and leaked its container. Removing the container first is bounded and clean **[M0-4]**. |
 | D4 | **Memory limit via `PodmanArgs=--memory=…`**, not `Memory=`. CPU via `PodmanArgs=--cpus=…`. Pids via `PidsLimit=`. | Podman 5.4.2's Quadlet rejects `Memory=` **[M0-4]**. Same as vps-setup.sh. |
 | D5 | **Every generated unit set is dry-run validated** (`QUADLET_UNIT_DIRS=<staged copy> quadlet -dryrun -user`) before anything is installed. | A rejected unit silently has no `.service` **[M0-4]**. |
 | D6 | **Traefik dynamic files are written as JSON** (`encoding/json` from typed structs) into `app-<name>.yml`. No YAML library. | Traefik accepts JSON in `.yml` **[M0-3]**. Typed serialization is guaranteed, and it removes a dependency. |
-| D7 | **Switch verification uses a per-deploy token router on an internal `verify` entrypoint** (`:8081`, plain HTTP, inside the Traefik container, never published). **Only** `app-<name>-verify` (`Host(<primary>) && Header(X-Dermaga-Verify, <random token>)`) is attached to `verify`. It uses the same service as the public router and the public router's router-level middlewares **minus `basicAuth` and `ipAllowList`**. The public `app-<name>` router stays on `websecure` only. After the atomic write, the probe from D2 polls `http://traefik:8081<health path>` with that Host and token until it succeeds (deadline 10 s). **Once verification succeeds, the app file is rewritten atomically without `app-<name>-verify`**, so verify routers exist only while a deploy is in progress (startup reconciliation re-renders any app file that still has one, e.g. after a crash mid-deploy). A best-effort `--resolve <domain>:443:127.0.0.1` check follows; it only warns, and only once a certificate exists. *Approved 2026-11-07, with the public router kept off `verify`; middleware subset and router removal approved 2026-11-07.* | The token router only exists in the new file, so a 200 proves Traefik loaded *this* file and that the candidate answers through the app's service. The brief's `--resolve` check alone fails under `sniStrict: true` until ACME has issued a cert (every new domain, and the VM always) **[M0-3b]**. `verify` is reachable from every container on `web` and skips the entrypoint-level `secure@file` chain, so attaching public routers to it would expose every app without that chain. Behind a random token, the token router adds nothing beyond the direct container access that `web` already allows (see the residual risk in §1). `basicAuth` and `ipAllowList` are left off because the probe has no basic-auth password (only bcrypt hashes are stored) and connects from the rootless netns (`10.89.0.1`), so Traefik would answer 401/403 and verification would always fail for protected apps. That doesn't widen access, for the same reason. Removing the router after verification shrinks the window in which a token is valid to the deploy itself. |
+| D7 | **Switch verification uses a per-deploy token router on an internal `verify` entrypoint** (`:8081`, plain HTTP, inside the Traefik container, never published). **Only** `app-<name>-verify` (`Host(<primary>) && Header(X-Dermaga-Verify, <random token>)`) is attached to `verify`. It uses the same service as the public router and the public router's router-level middlewares **minus `basicAuth` and `ipAllowList`**. The public `app-<name>` router stays on `websecure` only. After the atomic write, the probe from D2 polls `http://traefik:8081<health path>` with that Host and token until it succeeds (deadline 10 s). **Once verification succeeds, the app file is rewritten atomically without `app-<name>-verify`**, so verify routers exist only while a deploy is in progress (startup reconciliation re-renders any app file that still has one, e.g. after a crash mid-deploy). A best-effort `--resolve <domain>:443:127.0.0.1` check follows; it only warns, and only once a certificate exists. *Approved 2026-11-07, with the public router kept off `verify`; middleware subset and router removal approved 2026-11-07.* | The token router only exists in the new file, so a 200 proves Traefik loaded *this* file and that the candidate answers through the app's service. The brief's `--resolve` check alone fails under `sniStrict: true` until ACME has issued a cert (every new domain, and the VM always) **[M0-3b]**. `verify` is reachable from every container on `web` and is plain HTTP. When D7 was decided, `websecure` applied the `secure@file` chain at the entrypoint, which `verify` skips, so public routers on `verify` would have exposed every app without it. Since D27 the chain is router-level, but keeping `verify` to deploy-time token routers is still the smallest surface. Behind a random token, the token router adds nothing beyond the direct container access that `web` already allows (see the residual risk in §1). `basicAuth` and `ipAllowList` are left off because the probe has no basic-auth password (only bcrypt hashes are stored) and connects from the rootless netns (`10.89.0.1`), so Traefik would answer 401/403 and verification would always fail for protected apps. That doesn't widen access, for the same reason. Removing the router after verification shrinks the window in which a token is valid to the deploy itself. |
 | D8 | **A failed verification counts as "Traefik did not load the config".** The previous app file is restored (snapshot kept in memory) and verified with its own token, then the candidate is removed. The error points at `journalctl --user -u traefik` and `99-custom.yml`. | One invalid file in `dynamic/` freezes **all** updates while the old config keeps serving **[M0-3]**. D7 detects this without dermaga having to parse hand-written YAML. `doctor` also reports Traefik provider errors. |
 | D9 | **Switch timing:** typical switch-to-verified time is about 2.1 s (Traefik's default `providersThrottleDuration` of 2 s). It stays at the default. | **[M0-3]**: 2.04–2.12 s, zero non-200 during 10 switches. |
 | D10 | **Backups stream with `restic backup --stdin-from-command --stdin-filename <db>.<ext> -- podman exec <ctr> <dump argv>`.** Credentials are read inside the container from its own environment (idea from Litepod's `database_backup/engine.rs`; no secrets in host argv). | Debian 13's restic 0.18.0 has the flag. A failing, mid-stream-failing or killed dump gives exit 1 and **no snapshot** **[M0-6]**. |
@@ -69,8 +70,10 @@ Each decision gives its reason and the evidence. "Brief" means the decision is a
 
 ### Changes to BRIEF §2
 
-None. D1 and D7 changed mechanisms in §3.1 and §3.5.7, not §2. Both were approved and are now in
-the brief.
+None so far. D1 and D7 changed mechanisms in §3.1 and §3.5.7, not §2. Both were approved and are
+now in the brief. D27 keeps the entrypoint hardening, but moves vps-setup's response-header,
+rate-limit and compression chain from the `websecure` entrypoint to each app router. If you read
+§2's "global hardening" as covering that chain, D27 is a change to §2 and needs your approval.
 
 ### Settled: access-control middlewares on the token router
 
@@ -94,6 +97,20 @@ apps) was settled on 2026-11-07. The token router gets the public router's middl
 | D25 | **Linters are pinned as `tool` directives in `go.mod`** (`go tool staticcheck`, `go tool govulncheck`). `make check` runs gofmt, vet, staticcheck, govulncheck and tests, so only a Go toolchain is needed. | Reproducible checks; nothing installed globally. |
 | D26 | **`config.toml` is optional and strict**: defaults apply when it is missing, unknown keys are rejected. M1 has one setting, `[panel] port`. | A typo must not silently fall back to a default. Settings that the UI changes live in SQLite, not here. |
 
+### Decisions taken in M2
+
+Evidence: [`M2-EVIDENCE.md`](M2-EVIDENCE.md).
+
+| # | Decision | Why |
+|---|---|---|
+| D27 | **Middleware chains are router-level; the `websecure` entrypoint has none.** Each `app-<name>` router gets its own chain, built from the defaults and the app's overrides: headers, ipAllowList, rateLimit, basicAuth, buffering, compress, stripPrefix. Headers come first, so 401/403/429 answers carry them too. The default headers are vps-setup's `security-headers` plus the per-app `Permissions-Policy`, written as `customResponseHeaders` (`spec.DefaultHeaders`). An app can drop all of them (`Off`), drop some (`Remove`), or add/replace headers (`Set`, where `""` strips a header). `00-global.yml` still defines vps-setup's `secure` chain for the hook route and for `99-custom.yml` (`secure@file`). The entrypoint hardening stays unchanged: HTTP→HTTPS redirect, `aliasHeadersStrategy: delete`, `encodedCharacters`, TLS options. *Waiting for your confirmation:* BRIEF §2 says to keep vps-setup's "global hardening". | BRIEF §3.6 requires per-app toggles for compression, rate limit and default headers. Entrypoint middlewares run outermost and can't be undone by a router (vps-setup's own comment on `Permissions-Policy`). An entrypoint rate limiter would also share one bucket per client IP across all apps. An app on defaults gets the same response headers as before (§3 of the evidence; the `curl -sI` comparison over HTTPS is in M3). The cost is that a route in `99-custom.yml` no longer gets the chain automatically and must name `secure@file`. |
+| D28 | **The hook socket lives in its own directory**, `$XDG_RUNTIME_DIR/dermaga/hooks/hooks.sock` (dir 0700, socket 0600), and `dg-hooks` mounts the **directory** at `/run/dermaga`. *Waiting for your confirmation; BRIEF §3.1 still names `…/dermaga/hooks.sock`.* | A bind-mounted socket file keeps pointing at the old inode once the daemon restarts and recreates the socket, so webhooks would stop until `dg-hooks` restarts (evidence §4). The parent dir can't be mounted, because it holds `dermaga.sock`, whose file mode is the CLI's only authentication. |
+| D29 | **Every generated Quadlet unit has `[Quadlet] DefaultDependencies=false`.** The installer gives `traefik.container` the same (M8). | On Debian 13 nothing pulls in the system `network-online.target`, so Quadlet's `podman-user-wait-network-online.service` runs into its 90 s timeout before **every** container start: Traefik came up 95.6 s after boot (evidence §2b). dermaga's containers need no network to start: images are local (D30). |
+| D30 | **Generated container units:** `Pull=never` (dermaga builds or pulls the image before writing the unit, so a boot never waits for a registry); `Notify=healthy` only with a `HealthCmd` or an image `HEALTHCHECK`; `TimeoutStartSec=` = the app's health timeout (default 120 s); `StopTimeout=10`, `TimeoutStopSec=30` (D3); labels `dermaga.app` and `dermaga.release`; `EnvironmentFile=` as an absolute path. Values never use systemd specifiers (`%h`, `%t`), so the INI writer can double every `%` and `$`. Quadlet passes quotes and backslashes through as they are (evidence §2a). Timers are a generic `dg-<name>.service` + `.timer` pair in `~/.config/systemd/user` (`Persistent=true`, `RandomizedDelaySec=`), whose `ExecStart=` arguments are limited to `[A-Za-z0-9_.:/=@+-]`. | One escaping rule for every value, checked end to end against `podman inspect`. Specifiers would need per-key exceptions. |
+| D31 | **Names:** apps, volumes and databases match `valid_app_name`. Reserved: vps-setup's list (`traefik web podman vps`) plus `hooks db backup dermaga`. App names can't start with `db-`. App volumes are `dg-<app>_<vol>`. | Every unit name stays unambiguous in systemd's single user namespace: `dg-<app>-<rel8>` vs `dg-db-<name>`, `dg-hooks`, `dg-backup-*`. `_` can't occur in names, so `dg-a_b-c` and `dg-a-b_c` can't collide. |
+| D32 | **Reconciliation** (rules in §3.11) runs once at daemon start, **before** the listeners serve, in `internal/reconcile` against `internal/host` (argv-only execs with timeouts). The DB is the source of truth for app files: whenever a file's bytes differ from the rendering, the file is rewritten, so a dermaga upgrade that changes the generator takes effect at the next start. Units and files of apps the DB doesn't know are reported, never deleted. Failures are logged and the daemon starts anyway. | Deterministic and idempotent (a second run repairs nothing, evidence §5). Running first means no deploy can race it. The price is that the CLI and panel wait while orphans stop (up to `StopTimeout` each: 11 s in the evidence). Deleting the unknown would destroy state after a restore from an older backup. |
+| D33 | **App config is one typed JSON column** (`apps.spec`, `spec.App`), validated by `spec.App.Validate` before every rendering. Domains get their own table (`host` PRIMARY KEY), so one host can never belong to two apps. Traefik app files are written 0600. | One `json.Unmarshal` instead of a column per field, and no ORM. The global uniqueness of hosts belongs in the schema. App files hold bcrypt hashes, and Traefik reads them as container root, which is uid `server`. |
+
 ## 3. Deploy pipeline (blue-green; mechanics proven in M0)
 
 ```
@@ -114,7 +131,7 @@ queued → building → starting → healthy → live
 8. **Any failure before the switch**: remove the candidate (D3). The live release and route are never touched. First deploy: no route file is written until the candidate is healthy, so a failed first deploy leaves nothing.
 9. **`recreate`** (default when the app has named volumes): stop old → start new → health → switch. On failure, restart the previous release from its kept image and restore its route.
 10. **Rollback** = steps 4–8 with an existing image (no fetch or build).
-11. **Startup reconciliation**: compare the DB (live release per app) with the `dg-*` units on disk and running, and with the `app-*.yml` files. Repair what is deterministic (re-render a missing file, start a stopped live unit, remove orphaned `dg-*` candidates), report the rest. Never touch names without the `dg-`/`app-` prefix.
+11. **Startup reconciliation** (D32): compare the DB (live release per app) with the `dg-*.container` files and their units, and with the `app-*.yml` files. Repairs: a known app's `dg-<app>-<rel8>` that isn't its live release is removed (D3 order); a live unit that isn't running is started (`--no-block`); an `app-<name>.yml` that differs from what the DB renders (missing, leftover verify router, stale backend) is rewritten atomically; a known app without a live release has its candidates and file removed. Reported only: units and files of apps not in the DB, a live release whose unit file is missing. `dg-hooks`, `dg-db-*` and volumes are never touched by it, nor anything without the `dg-`/`app-` prefix.
 
 ## 4. Files dermaga owns
 
@@ -122,18 +139,22 @@ As in BRIEF §3.3, plus:
 
 ```
 $XDG_RUNTIME_DIR/dermaga/dermaga.sock      CLI API (0600)
-$XDG_RUNTIME_DIR/dermaga/hooks.sock        hook listener (0600), bind-mounted into dg-hooks
+$XDG_RUNTIME_DIR/dermaga/hooks/            0700; hooks.sock (0600) = hook listener; the dir is bind-mounted into dg-hooks (D28)
 ~/.local/share/dermaga/relay/dermaga       copy of the binary = rootfs of dg-hooks (refreshed by self-update)
 ~/.config/containers/systemd/dg-hooks.container
+~/.config/containers/systemd/dg-<app>-<rel8>.container, dg-<app>_<vol>.volume, dg-db-<name>.network
+~/.config/traefik/traefik.yml              static config (traefik.StaticConfig; installed in M8)
 ~/.config/traefik/dynamic/00-global.yml    replaces vps-setup's 00-vps.yml (same middlewares, D6 format)
-~/.config/traefik/dynamic/app-<name>.yml   one per app (JSON content)
+~/.config/traefik/dynamic/app-<name>.yml   one per app (JSON content, 0600: basic-auth hashes)
 ~/.config/traefik/dynamic/99-custom.yml    yours; never written by dermaga
 ~/.config/systemd/user/dg-backup-*.{service,timer}
 ```
 
 Traefik's Quadlet unit (written by the installer) is vps-setup's unit **minus** the Podman socket
-mount and `Requires=podman.socket`; the static config loses the `docker` provider and gains
+mount and `Requires=podman.socket`, **plus** `[Quadlet] DefaultDependencies=false` (D29). The static
+config loses the `docker` provider and the entrypoint-level `secure@file` (D27), and gains
 `entryPoints.verify` (`:8081`) and, in M9, a JSON access log in a bind-mounted state dir.
+Routes in `99-custom.yml` must name `secure@file` themselves to get the default chain.
 `podman.socket` is disabled.
 
 ## 5. Data model (SQLite, WAL, `foreign_keys=ON`, migrations in `internal/store/migrations/NNN_*.sql`)
@@ -142,10 +163,10 @@ mount and `Requires=podman.socket`; the static config loses the `docker` provide
 |---|---|
 | `settings` | single row: admin password hash (argon2id), TOTP secret (enc), hook host, default limits, header/rate-limit defaults (JSON), S3 + restic settings (secrets enc), notify target (enc) |
 | `sessions` | id_hash (SHA-256 of the cookie), created_at, last_seen_at; expiry is computed (12 h idle, 7 d absolute); deleted on logout |
-| `apps` | id (random, used in the webhook URL), name UNIQUE, source (`git`/`image`), repo, branch, context, containerfile, image_ref, port, health (path, cmd, K, timeout), limits, strategy, auto_deploy, trigger (`push`/`workflow_run` + workflow name), watch paths (JSON), middleware (JSON of typed struct), deploy key fingerprint, webhook secret (enc) |
-| `domains` | app_id, host UNIQUE, is_primary, redirect_to_primary |
+| `apps` | id (random, used in the webhook URL), name UNIQUE, spec (JSON of `spec.App`: port, health, limits, caps, read-only, volumes, middleware; D33), created_at. M3 adds: source (`git`/`image`), repo, branch, context, containerfile, image_ref, strategy, auto_deploy, trigger (`push`/`workflow_run` + workflow name), watch paths, deploy key fingerprint, webhook secret (enc) |
+| `domains` | host PRIMARY KEY (one app per host), app_id, is_primary (one per app, partial unique index), redirect (301 to the primary) |
 | `env_vars` | app_id, key, value (enc); UNIQUE(app_id, key) |
-| `releases` | id, app_id, rel8, trigger, ref, sha, message, image_id, status, error, log_path, timestamps |
+| `releases` | id, app_id, rel8 (UNIQUE per app), image, status (at most one `live` per app, partial unique index), created_at (M2); trigger, ref, sha, message, error, log_path, timestamps (M3/M4) |
 | `databases` | id, name UNIQUE, engine, version, volume, credentials (enc), backup policy (schedule, retention) |
 | `db_links` | database_id, app_id, env var names (JSON) |
 | `backups` | target (`db:<name>`/`system`), snapshot_id, bytes, status, duration, error |
