@@ -71,7 +71,7 @@ Shell on server ──► dermaga CLI ──► Unix socket $XDG_RUNTIME_DIR/der
 
 - `dermaga` runs as a **systemd user service** of the single user. Never as root; it refuses to start as root.
 - **Panel listener**: binds `127.0.0.1:7070` only (port configurable). It is reached exclusively through SSH local forwarding with my existing key. `vps-setup.sh` already sets `AllowTcpForwarding local` in sshd: verify this and keep it. The panel still requires login (defense in depth). `dermaga` must print a ready-to-paste `~/.ssh/config` snippet (a `Host` entry with `LocalForward 7070 127.0.0.1:7070`, `SessionType none`, `ExitOnForwardFailure yes`) and document phone access (an SSH app with port forwarding, e.g. Termius).
-- **Hook listener**: a separate listener in the same process that serves only `POST /hooks/github/{appId}` and `GET /healthz`. Traefik routes exactly the `/hooks/` path prefix on a hook hostname I configure (e.g. `hooks.r3p.dev`) to it. How the Traefik container reaches a listener on the host under rootless Podman with pasta is **a spike in M0** (candidates: `host.containers.internal`, pasta host-loopback mapping, or a tiny relay). Pick the option that does not widen exposure and document why.
+- **Hook listener** (decided after M0, see ARCHITECTURE D1): a separate listener in the same process on the Unix socket `$XDG_RUNTIME_DIR/dermaga/hooks.sock` (0600) that serves only `POST /hooks/github/{appId}` and `GET /healthz`. A relay container `dg-hooks` on network `web` runs `dermaga hook-relay` (the same static binary as a bare rootfs, read-only, all capabilities dropped, small memory/pids limits) and forwards TCP :8080 to the bind-mounted socket byte for byte. Traefik routes exactly `Host(<hook host>) && PathPrefix(/hooks/)` (e.g. `hooks.r3p.dev`) to `http://dg-hooks:8080`. No new host TCP port. All validation stays in the daemon; the relay is a dumb pipe.
 - **CLI ↔ daemon**: Unix socket, mode `0600`, owned by the user. No password needed.
 - No container, including Traefik, gets access to the Podman API socket. `podman.socket` stays disabled unless something proven needs it.
 
@@ -124,7 +124,7 @@ Secrets: AES-256-GCM (`crypto/aes` + `crypto/cipher`) with a random 256-bit key 
 
    Require K consecutive successes within a start timeout (defaults: 3 successes, 120 s).
 
-7. **Switch traffic**: atomically rewrite `dynamic/app-<name>.yml` so the Traefik service points to the candidate container. Wait for Traefik to reload (file watch + `providersThrottleDuration` + margin), then **verify through Traefik** by requesting the app's health path on its primary domain via `127.0.0.1` with `--resolve`.
+7. **Switch traffic** (decided after M0, see ARCHITECTURE D7/D8): atomically rewrite `dynamic/app-<name>.yml` so the Traefik service points to the candidate container. The file also contains a per-deploy token router `app-<name>-verify` (`Host(<primary>) && Header(X-Dermaga-Verify, <random token>)`) on an internal plain-HTTP entrypoint `verify` (`:8081`, inside the Traefik container, never published). **Only the token router is attached to `verify`**; the public `app-<name>` router stays on `websecure` only. The token router uses the same service and the same router-level middlewares as the public router. Verify by polling the health path through `verify` with the token (from the rootless netns, via `dermaga probe`) until it succeeds, deadline 10 s. If it fails, treat it as "Traefik did not load the config": restore the previous file, verify that, remove the candidate, and point the error at `journalctl --user -u traefik` and `99-custom.yml`. A `--resolve <domain>:443:127.0.0.1` request afterwards is a warning-only check, and only once a certificate exists.
 8. **Drain and stop the old release** after a grace period (default 10 s). Remove its unit file. Keep the last N releases' images (default 5) for instant rollback; prune older images.
 9. **Failure at any step**: the candidate is stopped and removed, the live release is untouched, the deployment is marked `failed` with the reason, and a notification is sent. **No visitor may see an error caused by a failed deploy.**
 10. **Strategy `recreate`** (stop old, then start new) exists for apps that cannot run twice at once. It is the **default for apps with named volumes** (two writers on one volume is unsafe, e.g. SQLite). Blue-green is the default for stateless apps.
@@ -248,7 +248,7 @@ Makefile              ui build → embed → go build (both architectures), test
 - `gofmt`, `go vet`, `staticcheck`, `govulncheck`. TypeScript strict + Prettier for the UI.
 - **Golden-file tests** (`go test ./... -update` to refresh) for every generator: Quadlet units, Traefik dynamic files, systemd timers. Webhook signature/branch/dedupe tests. Deployment state-machine tests with host commands behind an interface that tests can fake.
 - **Integration test harness** for a real Debian 13 VM (document how I run it on my Fedora laptop with libvirt/GNOME Boxes, or how CI can run it): install from scratch, deploy a sample app, blue-green redeploy under load, failed deploy under load, rollback, DB create + backup + test restore, reboot survival.
-- Small, focused commits with conventional messages. Each milestone ends with all tests passing.
+- Each milestone ends with all tests passing and a "Suggested commits" list (§11). I make the commits.
 
 ---
 
@@ -301,5 +301,24 @@ Then write `docs/ARCHITECTURE.md` and `docs/PLAN.md` (milestones with acceptance
 ## 10. How to work with me
 
 - Ask before any decision that is hard to reverse or that contradicts §2. Otherwise decide, write the decision and its reason in `docs/ARCHITECTURE.md`, and continue.
-- After each milestone, report briefly: what was built, how it was tested (with evidence), what deviated from this brief, open questions, and the next milestone.
+- After each milestone, report briefly: what was built, how it was tested (with evidence), what deviated from this brief, open questions, the suggested commits (§11), and the next milestone.
 - Never claim something works without having run it. If something can't be tested in your environment, say so explicitly and give me the exact commands to run it on my machine or VM.
+
+### Test environment
+
+- All VM work runs on `dermaga-vm` (`ssh dermaga-vm`: user `server`, port 4222, passwordless sudo). **`server` in my SSH config is my production VPS. Never connect to it or run anything on it.**
+- libvirt snapshots exist: `fresh` (bare Debian 13 cloud image, only cloud-init's user `debian`) and `vps-setup` (after `vps-setup.sh init`). You cannot reach `qemu:///system`; when a scenario needs a revert, stop and give me the exact command (`virsh --connect qemu:///system snapshot-revert dermaga-vm <name>`), then continue after I confirm.
+- The VM is behind NAT: no inbound webhooks and no real ACME certificates. Use the Let's Encrypt staging resolver or self-signed certificates in the VM. For real GitHub deliveries without inbound exposure, use GitHub's webhook forwarding (`gh webhook forward`, from the `cli/gh-webhook` extension; verify it still works) into the local hook endpoint, plus replayed signed deliveries in automated tests. The real public push-to-live and certificate check happens during the actual migration in M10.
+- For backups before M6 has a bucket, use a local restic repository. I will provide a test R2 or B2 bucket when M6 starts.
+
+## 11. Git workflow: I commit, you suggest
+
+- **Never create commits, push, tag, rebase, reset, stash, or create/switch branches. Don't stage files with `git add` either.** Read-only git (`status`, `diff`, `log`, `show`) is fine. I review and commit everything myself.
+- At the end of every milestone (and at any natural checkpoint inside a long milestone), add a **"Suggested commits"** section to your report: an ordered list of small, focused commits. For each one give:
+  - the Conventional Commits message: subject ≤ 72 characters, imperative mood, a scope where it helps (`feat(deploy): …`, `test(traefik): …`, `docs: …`), and a short body explaining **why**;
+  - the exact paths it includes;
+  - a copy-pasteable command for the **fish** shell (no heredocs, no `$'…'`), in this form:
+    `git add path/a path/b; and git commit -m "type(scope): subject" -m "Body paragraph."`
+- Every path that changed must appear in exactly one suggested commit. Run `git status --short` at the end and confirm that nothing is left out and nothing is listed twice.
+- Commit messages contain **no AI attribution**: no `Co-Authored-By`, no "Generated with", no mention of Claude or any assistant.
+- Never put secrets, tokens, `master.key`, `.env` files or VM-specific credentials in a suggested commit. Keep `.gitignore` up to date and mention every change to it.
