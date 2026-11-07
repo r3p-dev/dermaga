@@ -1,0 +1,93 @@
+{
+  "http": {
+    "routers": {
+      "app-shop": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "Host(`shop.example.com`) && PathPrefix(`/shop`)",
+        "service": "app-shop",
+        "middlewares": [
+          "app-shop-headers",
+          "app-shop-allowlist",
+          "app-shop-ratelimit",
+          "app-shop-auth",
+          "app-shop-body",
+          "app-shop-compress",
+          "app-shop-strip"
+        ],
+        "tls": {
+          "certResolver": "le"
+        }
+      }
+    },
+    "services": {
+      "app-shop": {
+        "loadBalancer": {
+          "servers": [
+            {
+              "url": "http://dg-shop-1a2b3c4d:8080"
+            }
+          ]
+        }
+      }
+    },
+    "middlewares": {
+      "app-shop-allowlist": {
+        "ipAllowList": {
+          "sourceRange": [
+            "203.0.113.7",
+            "2001:db8::/32",
+            "10.0.0.0/8"
+          ]
+        }
+      },
+      "app-shop-auth": {
+        "basicAuth": {
+          "users": [
+            "admin:$2a$10$XHrAnsxjPHLuFmCNWUIDdeat./VrrO97Hsg2DjDInBZAYmb2bWA5y",
+            "ops:$2a$10$XHrAnsxjPHLuFmCNWUIDdeat./VrrO97Hsg2DjDInBZAYmb2bWA5y"
+          ]
+        }
+      },
+      "app-shop-body": {
+        "buffering": {
+          "maxRequestBodyBytes": 10485760
+        }
+      },
+      "app-shop-compress": {
+        "compress": {
+          "minResponseBodyBytes": 1024
+        }
+      },
+      "app-shop-headers": {
+        "headers": {
+          "customResponseHeaders": {
+            "Content-Security-Policy": "default-src 'self'",
+            "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+            "Referrer-Policy": "strict-origin-when-cross-origin",
+            "Server": "",
+            "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+            "X-Content-Type-Options": "nosniff",
+            "X-Frame-Options": "SAMEORIGIN",
+            "X-Powered-By": ""
+          }
+        }
+      },
+      "app-shop-ratelimit": {
+        "rateLimit": {
+          "average": 20,
+          "burst": 40,
+          "period": "1s"
+        }
+      },
+      "app-shop-strip": {
+        "stripPrefix": {
+          "prefixes": [
+            "/shop"
+          ]
+        }
+      }
+    }
+  }
+}

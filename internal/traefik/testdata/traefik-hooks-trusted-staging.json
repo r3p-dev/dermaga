@@ -1,0 +1,86 @@
+{
+  "global": {
+    "checkNewVersion": false,
+    "sendAnonymousUsage": false
+  },
+  "log": {
+    "level": "WARN",
+    "format": "json"
+  },
+  "entryPoints": {
+    "verify": {
+      "address": ":8081",
+      "http": {
+        "aliasHeadersStrategy": "delete",
+        "encodedCharacters": {
+          "allowEncodedBackSlash": false,
+          "allowEncodedNullCharacter": false
+        }
+      }
+    },
+    "web": {
+      "address": ":80",
+      "http": {
+        "redirections": {
+          "entryPoint": {
+            "to": "websecure",
+            "scheme": "https",
+            "permanent": true
+          }
+        },
+        "aliasHeadersStrategy": "delete",
+        "encodedCharacters": {
+          "allowEncodedBackSlash": false,
+          "allowEncodedNullCharacter": false
+        }
+      },
+      "forwardedHeaders": {
+        "trustedIPs": [
+          "173.245.48.0/20",
+          "2400:cb00::/32"
+        ]
+      }
+    },
+    "websecure": {
+      "address": ":443",
+      "http": {
+        "tls": {
+          "certResolver": "le"
+        },
+        "aliasHeadersStrategy": "delete",
+        "encodedCharacters": {
+          "allowEncodedBackSlash": false,
+          "allowEncodedNullCharacter": false
+        }
+      },
+      "http3": {},
+      "forwardedHeaders": {
+        "trustedIPs": [
+          "173.245.48.0/20",
+          "2400:cb00::/32"
+        ]
+      }
+    }
+  },
+  "providers": {
+    "file": {
+      "directory": "/etc/traefik/dynamic",
+      "watch": true
+    }
+  },
+  "certificatesResolvers": {
+    "le": {
+      "acme": {
+        "email": "admin@example.com",
+        "storage": "/acme/acme.json",
+        "caServer": "https://acme-staging-v02.api.letsencrypt.org/directory",
+        "httpChallenge": {
+          "entryPoint": "web"
+        }
+      }
+    }
+  },
+  "api": {
+    "dashboard": false
+  }
+}

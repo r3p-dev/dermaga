@@ -1,0 +1,34 @@
+{
+  "http": {
+    "routers": {
+      "app-shop": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "Host(`shop.example.com`)",
+        "service": "app-shop",
+        "tls": {
+          "certResolver": "le"
+        }
+      },
+      "app-shop-verify": {
+        "entryPoints": [
+          "verify"
+        ],
+        "rule": "Host(`shop.example.com`) && Header(`X-Dermaga-Verify`, `0123456789abcdef0123456789abcdef`)",
+        "service": "app-shop"
+      }
+    },
+    "services": {
+      "app-shop": {
+        "loadBalancer": {
+          "servers": [
+            {
+              "url": "http://dg-shop-1a2b3c4d:8080"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

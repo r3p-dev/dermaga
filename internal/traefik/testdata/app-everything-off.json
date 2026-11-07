@@ -1,0 +1,27 @@
+{
+  "http": {
+    "routers": {
+      "app-shop": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "Host(`shop.example.com`)",
+        "service": "app-shop",
+        "tls": {
+          "certResolver": "le"
+        }
+      }
+    },
+    "services": {
+      "app-shop": {
+        "loadBalancer": {
+          "servers": [
+            {
+              "url": "http://dg-shop-1a2b3c4d:8080"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

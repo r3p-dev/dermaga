@@ -1,0 +1,67 @@
+{
+  "http": {
+    "routers": {
+      "app-shop": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "(Host(`example.com`) || Host(`example.org`)) && PathPrefix(`/shop`)",
+        "service": "app-shop",
+        "middlewares": [
+          "app-shop-headers",
+          "app-shop-ratelimit",
+          "app-shop-compress",
+          "app-shop-strip"
+        ],
+        "tls": {
+          "certResolver": "le"
+        }
+      }
+    },
+    "services": {
+      "app-shop": {
+        "loadBalancer": {
+          "servers": [
+            {
+              "url": "http://dg-shop-1a2b3c4d:8080"
+            }
+          ]
+        }
+      }
+    },
+    "middlewares": {
+      "app-shop-compress": {
+        "compress": {
+          "minResponseBodyBytes": 1024
+        }
+      },
+      "app-shop-headers": {
+        "headers": {
+          "customResponseHeaders": {
+            "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+            "Referrer-Policy": "strict-origin-when-cross-origin",
+            "Server": "",
+            "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+            "X-Content-Type-Options": "nosniff",
+            "X-Frame-Options": "SAMEORIGIN",
+            "X-Powered-By": ""
+          }
+        }
+      },
+      "app-shop-ratelimit": {
+        "rateLimit": {
+          "average": 100,
+          "burst": 200,
+          "period": "1s"
+        }
+      },
+      "app-shop-strip": {
+        "stripPrefix": {
+          "prefixes": [
+            "/shop"
+          ]
+        }
+      }
+    }
+  }
+}

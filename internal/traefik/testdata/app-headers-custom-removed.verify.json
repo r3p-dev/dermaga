@@ -1,0 +1,70 @@
+{
+  "http": {
+    "routers": {
+      "app-shop": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "Host(`shop.example.com`)",
+        "service": "app-shop",
+        "middlewares": [
+          "app-shop-headers",
+          "app-shop-ratelimit",
+          "app-shop-compress"
+        ],
+        "tls": {
+          "certResolver": "le"
+        }
+      },
+      "app-shop-verify": {
+        "entryPoints": [
+          "verify"
+        ],
+        "rule": "Host(`shop.example.com`) && Header(`X-Dermaga-Verify`, `0123456789abcdef0123456789abcdef`)",
+        "service": "app-shop",
+        "middlewares": [
+          "app-shop-headers",
+          "app-shop-ratelimit",
+          "app-shop-compress"
+        ]
+      }
+    },
+    "services": {
+      "app-shop": {
+        "loadBalancer": {
+          "servers": [
+            {
+              "url": "http://dg-shop-1a2b3c4d:8080"
+            }
+          ]
+        }
+      }
+    },
+    "middlewares": {
+      "app-shop-compress": {
+        "compress": {
+          "minResponseBodyBytes": 1024
+        }
+      },
+      "app-shop-headers": {
+        "headers": {
+          "customResponseHeaders": {
+            "Content-Security-Policy": "default-src 'self'",
+            "Referrer-Policy": "strict-origin-when-cross-origin",
+            "Server": "dermaga-test",
+            "X-Content-Type-Options": "nosniff",
+            "X-Frame-Options": "DENY",
+            "X-Powered-By": ""
+          }
+        }
+      },
+      "app-shop-ratelimit": {
+        "rateLimit": {
+          "average": 100,
+          "burst": 200,
+          "period": "1s"
+        }
+      }
+    }
+  }
+}

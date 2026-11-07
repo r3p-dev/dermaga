@@ -1,0 +1,78 @@
+{
+  "http": {
+    "routers": {
+      "app-shop": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "Host(`shop.example.com`)",
+        "service": "app-shop",
+        "middlewares": [
+          "app-shop-headers",
+          "app-shop-ratelimit",
+          "app-shop-body",
+          "app-shop-compress"
+        ],
+        "tls": {
+          "certResolver": "le"
+        }
+      },
+      "app-shop-verify": {
+        "entryPoints": [
+          "verify"
+        ],
+        "rule": "Host(`shop.example.com`) && Header(`X-Dermaga-Verify`, `0123456789abcdef0123456789abcdef`)",
+        "service": "app-shop",
+        "middlewares": [
+          "app-shop-headers",
+          "app-shop-ratelimit",
+          "app-shop-body",
+          "app-shop-compress"
+        ]
+      }
+    },
+    "services": {
+      "app-shop": {
+        "loadBalancer": {
+          "servers": [
+            {
+              "url": "http://dg-shop-1a2b3c4d:8080"
+            }
+          ]
+        }
+      }
+    },
+    "middlewares": {
+      "app-shop-body": {
+        "buffering": {
+          "maxRequestBodyBytes": 1048576
+        }
+      },
+      "app-shop-compress": {
+        "compress": {
+          "minResponseBodyBytes": 1024
+        }
+      },
+      "app-shop-headers": {
+        "headers": {
+          "customResponseHeaders": {
+            "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+            "Referrer-Policy": "strict-origin-when-cross-origin",
+            "Server": "",
+            "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+            "X-Content-Type-Options": "nosniff",
+            "X-Frame-Options": "SAMEORIGIN",
+            "X-Powered-By": ""
+          }
+        }
+      },
+      "app-shop-ratelimit": {
+        "rateLimit": {
+          "average": 100,
+          "burst": 200,
+          "period": "1s"
+        }
+      }
+    }
+  }
+}

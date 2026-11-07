@@ -1,0 +1,72 @@
+{
+  "global": {
+    "checkNewVersion": false,
+    "sendAnonymousUsage": false
+  },
+  "log": {
+    "level": "WARN",
+    "format": "json"
+  },
+  "entryPoints": {
+    "verify": {
+      "address": ":8081",
+      "http": {
+        "aliasHeadersStrategy": "delete",
+        "encodedCharacters": {
+          "allowEncodedBackSlash": false,
+          "allowEncodedNullCharacter": false
+        }
+      }
+    },
+    "web": {
+      "address": ":80",
+      "http": {
+        "redirections": {
+          "entryPoint": {
+            "to": "websecure",
+            "scheme": "https",
+            "permanent": true
+          }
+        },
+        "aliasHeadersStrategy": "delete",
+        "encodedCharacters": {
+          "allowEncodedBackSlash": false,
+          "allowEncodedNullCharacter": false
+        }
+      }
+    },
+    "websecure": {
+      "address": ":443",
+      "http": {
+        "tls": {
+          "certResolver": "le"
+        },
+        "aliasHeadersStrategy": "delete",
+        "encodedCharacters": {
+          "allowEncodedBackSlash": false,
+          "allowEncodedNullCharacter": false
+        }
+      },
+      "http3": {}
+    }
+  },
+  "providers": {
+    "file": {
+      "directory": "/etc/traefik/dynamic",
+      "watch": true
+    }
+  },
+  "certificatesResolvers": {
+    "le": {
+      "acme": {
+        "storage": "/acme/acme.json",
+        "httpChallenge": {
+          "entryPoint": "web"
+        }
+      }
+    }
+  },
+  "api": {
+    "dashboard": false
+  }
+}
