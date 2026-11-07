@@ -330,7 +330,96 @@ exit=0
 `dermaga admin set-password` (the test password is random and unrecorded) and, optionally,
 `dermaga admin totp enable` with your phone.
 
+## 9. Reboot survival (checked before M2)
+
+Run on 2026-11-07, after M1 was reported.
+
+**First attempt: the VM powered off instead of rebooting.** `virsh domstate --reason` showed
+`shut off (shutdown)`. The cause is in libvirt, not dermaga: both snapshots (`fresh`,
+`vps-setup`) store a live domain config with `<on_reboot>destroy</on_reboot>`, left over from
+virt-install's cloud-init first boot. A VM reverted to either snapshot therefore powers off on
+every guest reboot. The persistent config has `restart`:
+
+```
+$ virsh --connect qemu:///system snapshot-dumpxml dermaga-vm vps-setup | grep on_reboot
+    <on_reboot>destroy</on_reboot>        # live config saved in the snapshot
+    <on_reboot>restart</on_reboot>        # persistent config
+$ virsh --connect qemu:///system start dermaga-vm      # boots with the persistent config
+Domain 'dermaga-vm' started
+```
+
+That cold boot brought `dermaga.service` up by itself, but `dermaga doctor`, run 6 s after
+boot, failed:
+
+```
+FAIL  clock           not NTP-synchronised (TOTP and certificates need a correct clock): timedatectl status
+exit=1
+## 40 s later, systemd-timesyncd:
+03:24:12 Contacted time server 103.134.77.146:123 (2.debian.pool.ntp.org).
+03:24:12 Initial clock synchronization to Sat 2026-11-07 03:24:12.887613 UTC.
+```
+
+**Fix:** during the first 5 minutes after boot, an unsynchronised clock is a `WARN` ("not
+NTP-synchronised yet (booted Ns ago)"). After that it is still a `FAIL`, so a clock that never
+syncs is still reported (`cli.TestClockCheckToleratesEarlyBoot`).
+
+**Second attempt, with the fixed binary and a real `sudo reboot`.** After the reboot I waited
+for port 4222 with `nc -z` (that doesn't log in), then waited 35 s more before the first SSH
+login. The journal then shows whether linger started the user manager:
+
+```
+$ ssh dermaga-vm '…; sudo reboot'
+boot_id=ac28b23a-1740-432e-b4f8-3cf79cb23b85
+## first login after the reboot:
+boot_id=092b1f37-1187-4659-8ac0-c13d1af19d19
+booted=2026-11-07 03:25:29
+== ordering (monotonic seconds since boot)
+[    5.168321] dermaga-vm systemd[1]: Starting user@1001.service - User Manager for UID 1001...
+[    5.372337] dermaga-vm systemd[698]: Starting dermaga.service - dermaga daemon (single-user PaaS)...
+[    5.385553] dermaga-vm systemd[698]: Started dermaga.service - dermaga daemon (single-user PaaS).
+[    5.399444] dermaga-vm dermaga[740]: 2026/11/07 03:25:35 INFO started version=v0.0.0-20261107030203-3cff5df416d8+dirty panel=127.0.0.1:7070 socket=/run/user/1001/dermaga/dermaga.sock
+[   54.870695] dermaga-vm sshd-session[950]: Accepted publickey for server from 192.168.122.1 port 59548 ssh2: ED25519 SHA256:V+KZKBpZYT+xiu/DXAsTjf2LTerWPN+DYUlih/Z1U9A
+== loginctl
+State=active
+Linger=yes
+1 1001 server - 698 manager - no -
+2 1001 server - 950 user    - no -
+== unit
+NRestarts=0
+ActiveState=active
+SubState=running
+UnitFileState=enabled
+== sockets
+drwx------ server:server /run/user/1001/dermaga
+srw------- server:server /run/user/1001/dermaga/dermaga.sock
+active
+active
+LISTEN 0      4096       127.0.0.1:7070 0.0.0.0:* users:(("dermaga",pid=740,fd=10))
+$ dermaga doctor          # at the first login, 55 s after boot
+OK  lingering       enabled for server
+OK  subuid          65536 ids
+OK  subgid          65536 ids
+OK  daemon          v0.0.0-20261107030203-3cff5df416d8+dirty, pid 740, RSS 16.3 MB, socket /run/user/1001/dermaga/dermaga.sock (0600)
+OK  admin password  set
+OK  totp            enabled
+OK  sockets         traefik-http.socket, traefik-https.socket active
+OK  clock           NTP-synchronised
+OK  disk            23% used, 15.0 GiB free (/home/server/.local/share/dermaga)
+exit=0
+```
+
+The user manager (manager session 1, started by linger) and dermaga were up 5.4 s after boot,
+49 s before the first login (session 2). No manual step was needed.
+
+Traefik (vps-setup's unit) came back too, but only 95.6 s after boot: Quadlet's wait for the
+system `network-online.target` timed out first. Found and fixed for dermaga's own units in M2
+([`M2-EVIDENCE.md`](M2-EVIDENCE.md) §2b, ARCHITECTURE D29). The installer fixes Traefik's unit in M8.
+
+**For future snapshot reverts:** the VM keeps the persistent `restart` behaviour until the next
+revert. After a revert, run `virsh --connect qemu:///system shutdown dermaga-vm`, then
+`virsh --connect qemu:///system start dermaga-vm` before any reboot test, or retake the
+snapshots from a VM started with the persistent config.
+
 ## Not verified in M1
 
-- Reboot survival of `dermaga.service` (enabled, linger on; exercised in the M3+ harness).
 - arm64 runtime (cross-compiled only, as in M0).
