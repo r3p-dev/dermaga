@@ -1,0 +1,10 @@
+# Secrets: never commit (BRIEF §11)
+master.key
+.env
+*.env
+
+# Dependencies
+node_modules/
+
+# M0 spike: SvelteKit build copied in before `go build`; remove with spikes/m0/ at the end of M1
+/spikes/m0/minibin/ui/
