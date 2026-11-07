@@ -3,7 +3,8 @@
 All spikes ran on 2026-11-07 on the test VM `dermaga-vm` (libvirt, 2 vCPU, 4 GB RAM),
 provisioned with `vps-setup.sh` 1.2.5. Everything ran as user `server` (uid 1001, rootless Podman)
 unless a line says `sudo`. The output below is copied from the terminal, trimmed only where
-marked `…`. Spike source code is in [`spikes/m0/`](../spikes/m0/).
+marked `…`. Spike source code is in [`spikes/m0/`](https://github.com/r3p-dev/dermaga/tree/eb9ad64e0b9a81e08ab5e9bbf9def381d477099f/spikes/m0) at commit
+`eb9ad64` (removed from the tree at the end of M1, after porting relay and probe into `internal/`).
 
 ## Environment
 
@@ -81,7 +82,7 @@ and Debian's pasta rejects an address on `-T`. The config was reverted and Traef
 ### 1c. Unix socket and relay container (chosen)
 
 The stand-in daemon listens on `$XDG_RUNTIME_DIR/dermaga/hooks.sock` (0600). A container on `web`
-runs only the static relay binary (`spikes/m0/relay`, which becomes `dermaga hook-relay`) from a
+runs only the static relay binary ([`spikes/m0/relay`](https://github.com/r3p-dev/dermaga/blob/eb9ad64e0b9a81e08ab5e9bbf9def381d477099f/spikes/m0/relay/main.go), which becomes `dermaga hook-relay`) from a
 bare rootfs directory, with no image, and forwards TCP :8080 to the bind-mounted socket.
 
 ```
@@ -135,7 +136,7 @@ curl: (22) The requested URL returned error: 404
 curl: option --dns-servers: the installed libcurl version does not support this
 ```
 
-The Go probe (`spikes/m0/probe`) runs inside the netns, resolves container names through
+The Go probe ([`spikes/m0/probe`](https://github.com/r3p-dev/dermaga/blob/eb9ad64e0b9a81e08ab5e9bbf9def381d477099f/spikes/m0/probe/main.go)) runs inside the netns, resolves container names through
 aardvark-dns at the network gateway, and requires K consecutive successes before a deadline:
 
 ```
@@ -293,7 +294,7 @@ no container left behind
 
 ## 5. Go binary: modernc.org/sqlite and an embedded SvelteKit build
 
-`spikes/m0/minibin`: Go 1.27.3, `modernc.org/sqlite` v1.61.1 (WAL), `net/http` with 1.22+
+[`spikes/m0/minibin`](https://github.com/r3p-dev/dermaga/tree/eb9ad64e0b9a81e08ab5e9bbf9def381d477099f/spikes/m0/minibin): Go 1.27.3, `modernc.org/sqlite` v1.61.1 (WAL), `net/http` with 1.22+
 patterns, and an embedded SvelteKit 3.1.1 / Svelte 5.57 / Tailwind 4.3 / adapter-static 4.0.1 SPA
 built with Bun 1.4.2 (144 KB, 17 files). `CGO_ENABLED=0 go build -trimpath -ldflags='-s -w'`.
 
