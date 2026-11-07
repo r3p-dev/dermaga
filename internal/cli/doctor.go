@@ -59,7 +59,7 @@ func doctorChecks() []check {
 		checkSubIDs("subgid", "/etc/subgid", u),
 	}
 	cs = append(cs, checkDaemon()...)
-	cs = append(cs, checkUnits("traefik-http.socket", "traefik-https.socket"), checkClock(), checkDisk())
+	cs = append(cs, checkUnits("traefik-http.socket", "traefik-https.socket"), checkNetworkOnline(), checkClock(), checkDisk())
 	return cs
 }
 
@@ -144,6 +144,20 @@ func checkUnits(units ...string) check {
 		return check{"sockets", "fail", "not active: " + strings.Join(bad, ", ")}
 	}
 	return check{"sockets", "ok", strings.Join(units, ", ") + " active"}
+}
+
+// checkNetworkOnline: if nothing pulls in the system network-online.target,
+// Quadlet units with default dependencies (Traefik) wait 90 s at every boot
+// (ARCHITECTURE D29). Images without an active cloud-init are affected.
+func checkNetworkOnline() check {
+	out, err := run("systemctl", "show", "-p", "ActiveEnterTimestampMonotonic", "--value", "network-online.target")
+	switch {
+	case err != nil:
+		return check{"network-online", "warn", "systemctl: " + err.Error()}
+	case out == "0":
+		return check{"network-online", "warn", "network-online.target was not reached this boot, so Traefik starts 90 s late: sudo systemctl add-wants multi-user.target network-online.target"}
+	}
+	return check{"network-online", "ok", "network-online.target reached"}
 }
 
 func checkClock() check {
