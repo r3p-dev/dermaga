@@ -21,7 +21,7 @@ func app(mw spec.Middleware, domains ...spec.Domain) spec.App {
 	if len(domains) == 0 {
 		domains = []spec.Domain{{Host: "shop.example.com", Primary: true}}
 	}
-	return spec.App{Name: "shop", Domains: domains, Port: 8080, Middleware: mw}
+	return spec.App{Name: "shop", Domains: domains, Port: 8080, Middleware: mw, Source: spec.Source{Type: "image", Image: "docker.io/library/nginx:1"}}
 }
 
 var (

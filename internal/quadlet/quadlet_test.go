@@ -13,6 +13,7 @@ import (
 
 func release(a spec.App) Release {
 	a.Name, a.Port = "shop", 8080
+	a.Source = spec.Source{Type: "image", Image: "docker.io/library/nginx:1"}
 	a.Domains = []spec.Domain{{Host: "shop.example.com", Primary: true}}
 	return Release{App: a, Rel8: "1a2b3c4d", Image: "localhost/dermaga/shop:0123456789ab", EnvFile: "/home/server/.config/dermaga/env/shop.env"}
 }

@@ -16,8 +16,11 @@ import (
 // App is what the generators need to know about one app. Name and Domains are
 // stored in their own columns/table; the rest is the apps.spec JSON.
 type App struct {
-	Name       string     `json:"-"`
-	Domains    []Domain   `json:"-"`
+	Name    string   `json:"-"`
+	Domains []Domain `json:"-"`
+	Source  Source   `json:"source"`
+	// Strategy: "" picks recreate for apps with volumes, blue-green otherwise (BRIEF §3.5.10).
+	Strategy   string     `json:"strategy,omitempty"`
 	Port       int        `json:"port"`
 	Health     Health     `json:"health,omitzero"`
 	Limits     Limits     `json:"limits,omitzero"` // zero fields: DefaultLimits
@@ -25,6 +28,37 @@ type App struct {
 	ReadOnly   bool       `json:"readOnly,omitempty"`
 	Volumes    []Volume   `json:"volumes,omitempty"`
 	Middleware Middleware `json:"middleware,omitzero"`
+}
+
+// Source says where releases come from (BRIEF §2): a GitHub repo built on the
+// server, or a public image.
+type Source struct {
+	Type          string   `json:"type"`                    // "git" or "image"
+	Repo          string   `json:"repo,omitempty"`          // git@github.com:owner/repo.git
+	Branch        string   `json:"branch,omitempty"`        // deployed branch
+	Context       string   `json:"context,omitempty"`       // build context in the repo; "" = root
+	Containerfile string   `json:"containerfile,omitempty"` // relative to Context; "" = Containerfile, else Dockerfile
+	Image         string   `json:"image,omitempty"`         // image apps: fully qualified, pinned reference
+	AutoDeploy    bool     `json:"autoDeploy,omitempty"`    // deploy on webhook deliveries
+	Trigger       string   `json:"trigger,omitempty"`       // "push" (default) or "workflow_run" (CI gate, BRIEF §5)
+	Workflow      string   `json:"workflow,omitempty"`      // workflow name or path for the CI gate
+	WatchPaths    []string `json:"watchPaths,omitempty"`    // deploy only if a push touched a match ("**" spans directories)
+}
+
+// RepoFullName is "owner/repo" of a git source.
+func (s Source) RepoFullName() string {
+	return strings.TrimSuffix(strings.TrimPrefix(s.Repo, "git@github.com:"), ".git")
+}
+
+// EffectiveStrategy resolves "" (BRIEF §3.5.10: recreate is the default with volumes).
+func (a App) EffectiveStrategy() string {
+	switch {
+	case a.Strategy != "":
+		return a.Strategy
+	case len(a.Volumes) > 0:
+		return "recreate"
+	}
+	return "blue-green"
 }
 
 type Domain struct {
@@ -157,6 +191,10 @@ var (
 	authUserRE  = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 	bcryptRE    = regexp.MustCompile(`^\$2[aby]\$(0[4-9]|[12][0-9]|3[01])\$[./A-Za-z0-9]{53}$`)
 	errNoDomain = errors.New("an app needs exactly one primary domain")
+	repoRE      = regexp.MustCompile(`^git@github\.com:[A-Za-z0-9](-?[A-Za-z0-9]){0,38}/[A-Za-z0-9._-]{1,100}\.git$`)
+	branchRE    = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]{0,99}$`)
+	relPathRE   = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*$`)
+	imageRE     = regexp.MustCompile(`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?/[a-z0-9]+([._/-][a-z0-9]+)*(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?(@sha256:[a-f0-9]{64})?$`)
 )
 
 // ValidName reports whether s is a valid app, volume or database name
@@ -173,6 +211,23 @@ func ValidIP(s string) bool {
 		_, err = netip.ParseAddr(s)
 	}
 	return err == nil
+}
+
+// ValidImage reports whether ref is a fully qualified image reference
+// (vps-setup.sh's valid_image_ref): registry/path[:tag][@sha256:digest].
+func ValidImage(ref string) bool {
+	reg, _, _ := strings.Cut(ref, "/")
+	return imageRE.MatchString(ref) && (strings.ContainsAny(reg, ".:") || reg == "localhost")
+}
+
+// NormalizeRepo turns https://github.com/owner/repo[.git] or owner/repo into
+// the SSH form the deploy key needs. Other input is returned unchanged.
+func NormalizeRepo(s string) string {
+	t := strings.TrimSuffix(strings.TrimPrefix(strings.TrimPrefix(s, "https://"), "github.com/"), ".git")
+	if !strings.HasPrefix(s, "git@") && strings.Count(t, "/") == 1 {
+		return "git@github.com:" + t + ".git"
+	}
+	return s
 }
 
 func ValidDomain(s string) bool { return len(s) <= 253 && domainRE.MatchString(s) }
@@ -201,6 +256,12 @@ func (a App) Validate() error {
 	}
 	if err := validateDomains(a.Domains); err != nil {
 		return err
+	}
+	if err := a.Source.validate(); err != nil {
+		return err
+	}
+	if a.Strategy != "" && a.Strategy != "recreate" && a.Strategy != "blue-green" {
+		return fmt.Errorf("strategy %q: recreate or blue-green", a.Strategy)
 	}
 	if a.Port < 1 || a.Port > 65535 {
 		return fmt.Errorf("port %d: must be 1-65535", a.Port)
@@ -260,6 +321,53 @@ func (a App) Primary() string {
 		}
 	}
 	return ""
+}
+
+func (s Source) validate() error {
+	switch s.Type {
+	case "git":
+		if !repoRE.MatchString(s.Repo) {
+			return fmt.Errorf("repo %q: use git@github.com:owner/repo.git or https://github.com/owner/repo", s.Repo)
+		}
+		if !branchRE.MatchString(s.Branch) || strings.Contains(s.Branch, "..") || strings.HasSuffix(s.Branch, "/") || strings.HasSuffix(s.Branch, ".lock") {
+			return fmt.Errorf("branch %q: invalid", s.Branch)
+		}
+		for _, p := range []string{s.Context, s.Containerfile} {
+			if p != "" && (!relPathRE.MatchString(p) || strings.Contains(p, "..")) {
+				return fmt.Errorf("path %q: must be relative to the repo and must not contain \"..\"", p)
+			}
+		}
+		if s.Image != "" {
+			return errors.New("git apps have no image reference")
+		}
+	case "image":
+		if !ValidImage(s.Image) {
+			return fmt.Errorf("image %q: use a fully qualified, pinned reference, e.g. docker.io/louislam/uptime-kuma:2.5.9", s.Image)
+		}
+		if s.Repo != "" || s.Branch != "" || s.Context != "" || s.Containerfile != "" || s.Trigger != "" || s.Workflow != "" || len(s.WatchPaths) > 0 {
+			return errors.New("image apps have no repo, branch, build or webhook settings")
+		}
+	default:
+		return fmt.Errorf("source type %q: git or image", s.Type)
+	}
+	switch s.Trigger {
+	case "", "push":
+		if s.Workflow != "" {
+			return errors.New("workflow: only with trigger workflow_run")
+		}
+	case "workflow_run":
+		if err := Text("workflow", s.Workflow, 200); err != nil || s.Workflow == "" {
+			return errors.New("workflow: name or path of the workflow that gates deploys is required")
+		}
+	default:
+		return fmt.Errorf("trigger %q: push or workflow_run", s.Trigger)
+	}
+	for _, w := range s.WatchPaths {
+		if err := Text("watch path", w, 256); err != nil || w == "" {
+			return fmt.Errorf("watch path %q: invalid", w)
+		}
+	}
+	return nil
 }
 
 func (h Health) validate() error {

@@ -36,21 +36,13 @@ const (
 )
 
 var (
-	rel8RE  = regexp.MustCompile(`^[0-9a-f]{8}$`)
-	imageRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]{1,5})?/[a-z0-9]+([._/-][a-z0-9]+)*(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?(@sha256:[a-f0-9]{64})?$`)
+	rel8RE = regexp.MustCompile(`^[0-9a-f]{8}$`)
 	// absolute paths without spaces, % or $: they go into unit values verbatim
 	absPathRE = regexp.MustCompile(`^(/[A-Za-z0-9._-]+)+$`)
 )
 
 // ContainerName is the container and unit base name of a release.
 func ContainerName(app, rel8 string) string { return name.Unit + app + "-" + rel8 }
-
-// ValidImage reports whether ref is a fully qualified image reference
-// (vps-setup.sh's valid_image_ref): registry/path[:tag][@sha256:digest].
-func ValidImage(ref string) bool {
-	reg, _, _ := strings.Cut(ref, "/")
-	return imageRE.MatchString(ref) && (strings.ContainsAny(reg, ".:") || reg == "localhost")
-}
 
 // Container renders dg-<app>-<rel8>.container (BRIEF §3.5 step 5).
 func Container(r Release) (filename string, data []byte, err error) {
@@ -61,7 +53,7 @@ func Container(r Release) (filename string, data []byte, err error) {
 	if !rel8RE.MatchString(r.Rel8) {
 		return "", nil, fmt.Errorf("release id %q: want 8 lowercase hex characters", r.Rel8)
 	}
-	if !ValidImage(r.Image) {
+	if !spec.ValidImage(r.Image) {
 		return "", nil, fmt.Errorf("image %q: not a fully qualified image reference", r.Image)
 	}
 	if !absPathRE.MatchString(r.EnvFile) {

@@ -8,7 +8,8 @@ import (
 )
 
 func valid() App {
-	return App{Name: "shop", Port: 8080, Domains: []Domain{{Host: "shop.example.com", Primary: true}}}
+	return App{Name: "shop", Port: 8080, Domains: []Domain{{Host: "shop.example.com", Primary: true}},
+		Source: Source{Type: "git", Repo: "git@github.com:r3p-dev/portfolio.git", Branch: "main"}}
 }
 
 func TestValidate(t *testing.T) {
@@ -40,6 +41,18 @@ func TestValidate(t *testing.T) {
 		"negative body":       func(a *App) { a.Middleware.MaxBodyBytes = -1 },
 		"prefix slash":        func(a *App) { a.Middleware.PathPrefix = "/app/" },
 		"strip w/o prefix":    func(a *App) { a.Middleware.StripPrefix = true },
+		"no source":           func(a *App) { a.Source = Source{} },
+		"gitlab repo":         func(a *App) { a.Source.Repo = "git@gitlab.com:a/b.git" },
+		"repo injection":      func(a *App) { a.Source.Repo = "git@github.com:a/b.git -oProxyCommand=x" },
+		"branch ..":           func(a *App) { a.Source.Branch = "a..b" },
+		"branch option":       func(a *App) { a.Source.Branch = "-x" },
+		"context ..":          func(a *App) { a.Source.Context = "../etc" },
+		"context absolute":    func(a *App) { a.Source.Context = "/etc" },
+		"git with image":      func(a *App) { a.Source.Image = "docker.io/library/nginx:1" },
+		"image unqualified":   func(a *App) { a.Source = Source{Type: "image", Image: "nginx"} },
+		"image with repo":     func(a *App) { a.Source = Source{Type: "image", Image: "docker.io/library/nginx:1", Repo: "x"} },
+		"workflow w/o name":   func(a *App) { a.Source.Trigger = "workflow_run" },
+		"bad strategy":        func(a *App) { a.Strategy = "rolling" },
 	}
 	for n, f := range bad {
 		a := valid()
@@ -74,5 +87,26 @@ func TestEffectiveHeaders(t *testing.T) {
 	off := Headers{Off: true, Set: map[string]string{"X-A": "b"}}.EffectiveHeaders()
 	if len(off) != 1 || !strings.EqualFold("b", off["X-A"]) {
 		t.Errorf("off: %v", off)
+	}
+}
+
+func TestNormalizeRepoAndStrategy(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://github.com/r3p-dev/portfolio":     "git@github.com:r3p-dev/portfolio.git",
+		"https://github.com/r3p-dev/portfolio.git": "git@github.com:r3p-dev/portfolio.git",
+		"r3p-dev/portfolio":                        "git@github.com:r3p-dev/portfolio.git",
+		"git@github.com:r3p-dev/portfolio.git":     "git@github.com:r3p-dev/portfolio.git",
+	} {
+		if got := NormalizeRepo(in); got != want {
+			t.Errorf("%s: %s", in, got)
+		}
+	}
+	a := valid()
+	if a.EffectiveStrategy() != "blue-green" || a.Source.RepoFullName() != "r3p-dev/portfolio" {
+		t.Error(a.EffectiveStrategy(), a.Source.RepoFullName())
+	}
+	a.Volumes = []Volume{{Name: "data", Path: "/data"}}
+	if a.EffectiveStrategy() != "recreate" {
+		t.Error("volumes must default to recreate")
 	}
 }
