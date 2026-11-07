@@ -10,7 +10,7 @@ pinned in `go.mod` and listed in ARCHITECTURE §6. The standard library comes fi
 | Module | Version | Why | Alternative considered |
 |---|---|---|---|
 | `modernc.org/sqlite` | v1.61.1 | SQLite without cgo, so the binary stays static (`CGO_ENABLED=0`, BRIEF §2). | `mattn/go-sqlite3` needs cgo. |
-| `golang.org/x/crypto` | v0.58.0 | `argon2` for the admin password (BRIEF §4.3). `bcrypt` for Traefik basic-auth hashes from M3 on (M2 only checks the hash format). Maintained by the Go team. | No argon2 in the standard library. |
+| `golang.org/x/crypto` | v0.58.0 | `argon2` for the admin password (BRIEF §4.3). `bcrypt` for Traefik basic-auth hashes (`dermaga middleware <app> basic-auth add`, cost 10, ARCHITECTURE D38). Maintained by the Go team. | No argon2 in the standard library. |
 | `github.com/pelletier/go-toml/v2` | v2.4.3 | Reads `config.toml` with typed decoding and rejects unknown keys (BRIEF §3.2: typed serialization). | `BurntSushi/toml` works too. go-toml v2 has strict mode (`DisallowUnknownFields`) and no further dependencies. |
 
 These come in indirectly through `modernc.org/sqlite`, its transpiled-C runtime:
@@ -42,4 +42,4 @@ binary. `tygo` (Go → TypeScript types) joins this list in M7.
   doesn't appear to call these vulnerabilities"). The fix exists only as a pseudo-version
   (`v0.58.1-0.20261009181718-2f1f834330b2`). Move to the next tagged x/crypto release.
   Accepted for now (2026-11-07). Re-checked at the start of M2: `go list -m -versions` still ends
-  at v0.58.0, so there is no fixed tag yet. Check again at every milestone.
+  at v0.58.0, so there is no fixed tag yet; same result at the start of M3. Check again at every milestone.
