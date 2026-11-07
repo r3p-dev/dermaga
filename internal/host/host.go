@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -58,13 +59,34 @@ func WriteFile(path string, data []byte, mode fs.FileMode) error {
 // Run executes argv with a timeout and returns trimmed stdout. The error
 // includes stderr.
 func Run(ctx context.Context, timeout time.Duration, argv ...string) (string, error) {
+	return RunEnv(ctx, timeout, nil, nil, argv...)
+}
+
+// RunEnv is Run with an environment (nil: inherit) and, if log != nil, stdout
+// and stderr copied to log as they arrive.
+func RunEnv(ctx context.Context, timeout time.Duration, env []string, log io.Writer, argv ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var out, errb bytes.Buffer
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
-	cmd.Stdout, cmd.Stderr = &out, &errb
+	cmd.Env = env
+	cmd.Stdout, cmd.Stderr = io.Writer(&out), io.Writer(&errb)
+	if log != nil {
+		cmd.Stdout, cmd.Stderr = io.MultiWriter(&out, log), io.MultiWriter(&errb, log)
+	}
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("%s: %w: %s", strings.Join(argv, " "), err, strings.TrimSpace(errb.String()))
+		if ctx.Err() == context.DeadlineExceeded {
+			err = fmt.Errorf("timed out after %s", timeout)
+		}
+		msg := strings.TrimSpace(errb.String())
+		if len(msg) > 2000 {
+			msg = "…" + msg[len(msg)-2000:]
+		}
+		cmdline := strings.Join(argv, " ")
+		if len(cmdline) > 200 {
+			cmdline = cmdline[:200] + "…"
+		}
+		return "", fmt.Errorf("%s: %w: %s", cmdline, err, msg)
 	}
 	return strings.TrimSpace(out.String()), nil
 }
@@ -98,9 +120,27 @@ func glob(dir, pattern string) ([]string, error) {
 	return m, nil
 }
 
-// ActiveState is systemd's ActiveState of a user unit (active, activating, inactive, failed, …).
+// ActiveState is systemd's ActiveState of a user unit (active, activating,
+// inactive, failed, …), or "queued" for an inactive unit with a pending job,
+// as at boot before systemd gets to it.
 func (h Host) ActiveState(ctx context.Context, unit string) (string, error) {
-	return Run(ctx, cmdTimeout, "systemctl", "--user", "show", "-p", "ActiveState", "--value", unit)
+	out, err := Run(ctx, cmdTimeout, "systemctl", "--user", "show", "-p", "ActiveState", "-p", "Job", unit)
+	if err != nil {
+		return "", err
+	}
+	var state, job string
+	for _, l := range strings.Split(out, "\n") {
+		if v, ok := strings.CutPrefix(l, "ActiveState="); ok {
+			state = v
+		}
+		if v, ok := strings.CutPrefix(l, "Job="); ok {
+			job = v
+		}
+	}
+	if state == "inactive" && job != "" {
+		return "queued", nil
+	}
+	return state, nil
 }
 
 // Start queues a start and returns at once (D3: the daemon owns every deadline).
