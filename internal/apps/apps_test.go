@@ -82,6 +82,7 @@ func TestReleasesPromoteAndDeliveries(t *testing.T) {
 	r1, _ := s.NewRelease(ctx, id, "manual", "")
 	r2, _ := s.NewRelease(ctx, id, "webhook", "abc1234")
 	r1.Image = "localhost/dermaga/portfolio:1"
+	r2.Image = "localhost/dermaga/portfolio:2"
 	if err := s.PromoteLive(ctx, id, r1); err != nil {
 		t.Fatal(err)
 	}
@@ -108,6 +109,26 @@ func TestReleasesPromoteAndDeliveries(t *testing.T) {
 	}
 	if dup, err := s.RecordDelivery(ctx, "d1", id, "queued"); !dup || err != nil {
 		t.Fatal("duplicate delivery not detected", err)
+	}
+
+	// Rollback target selection and rollback promotion status
+	tgt, err := s.RollbackTarget(ctx, id, "")
+	if err != nil || tgt.Rel8 != r1.Rel8 {
+		t.Fatalf("target %v err %v", tgt, err)
+	}
+	rRollback, _ := s.NewRelease(ctx, id, "rollback", tgt.Rel8)
+	rRollback.Image = tgt.Image
+	if err := s.PromoteLive(ctx, id, rRollback); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Release(ctx, id, r2.Rel8); got.Status != "rolled_back" {
+		t.Fatalf("expected rolled_back for r2, got %s", got.Status)
+	}
+	if _, err := s.RollbackTarget(ctx, id, rRollback.Rel8); err == nil {
+		t.Fatal("expected error targeting current live release")
+	}
+	if tgt2, err := s.RollbackTarget(ctx, id, r2.Rel8); err != nil || tgt2.Rel8 != r2.Rel8 {
+		t.Fatalf("target r2: %v, err %v", tgt2, err)
 	}
 }
 

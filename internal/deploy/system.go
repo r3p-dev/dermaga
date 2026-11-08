@@ -264,3 +264,34 @@ func (s System) Verify(ctx context.Context, appHost, path, token string, anyStat
 	_, err = host.RunEnv(ctx, VerifyTimeout+10*time.Second, nil, log, args...)
 	return err
 }
+
+func (s System) ImageHealthcheck(ctx context.Context, image string) (bool, error) {
+	return s.imageHealthcheck(ctx, image)
+}
+
+// PruneImages keeps the images in keep and removes older localhost/dermaga/<app> images (BRIEF §3.5 step 8).
+func (s System) PruneImages(ctx context.Context, app string, keep []string) error {
+	repo := ImageRepo(app)
+	out, err := host.Run(ctx, cmdTimeout, "podman", "images", "--format", "{{.Repository}}:{{.Tag}}", "--filter", "reference="+repo)
+	if err != nil {
+		return err
+	}
+	keepMap := make(map[string]bool, len(keep))
+	for _, k := range keep {
+		keepMap[k] = true
+	}
+	var toRemove []string
+	for _, img := range strings.Split(strings.TrimSpace(out), "\n") {
+		img = strings.TrimSpace(img)
+		if img == "" || keepMap[img] {
+			continue
+		}
+		toRemove = append(toRemove, img)
+	}
+	if len(toRemove) > 0 {
+		args := append([]string{"podman", "rmi", "--"}, toRemove...)
+		_, err := host.Run(ctx, 2*time.Minute, args...)
+		return err
+	}
+	return nil
+}

@@ -67,16 +67,24 @@ type Host interface {
 	// token header until it succeeds or the deadline passes (D7). anyStatus:
 	// the app has no health path, so any app answer counts.
 	Verify(ctx context.Context, host, path, token string, anyStatus bool, log io.Writer) error
+	// ReadAppFile reads a Traefik dynamic file (nil, nil if missing).
+	ReadAppFile(name string) ([]byte, error)
+	// ImageHealthcheck inspects whether an existing image defines a HEALTHCHECK.
+	ImageHealthcheck(ctx context.Context, image string) (bool, error)
+	// PruneImages keeps the given images and removes older localhost/dermaga/<app> images.
+	PruneImages(ctx context.Context, app string, keep []string) error
 }
 
 // VerifyTimeout is D7's deadline for Traefik to load a new route.
 const VerifyTimeout = 10 * time.Second
 
 type Engine struct {
-	Apps  apps.Store
-	Host  Host
-	Paths config.Paths
-	Site  traefik.Site
+	Apps       apps.Store
+	Host       Host
+	Paths      config.Paths
+	Site       traefik.Site
+	DrainGrace time.Duration // default: 10 * time.Second (BRIEF §3.5 step 8)
+	KeepImages int           // default: 5 (BRIEF §3.5 step 8)
 
 	mu      sync.Mutex
 	order   []string        // app names in queue order
@@ -133,6 +141,19 @@ func (e *Engine) Enqueue(ctx context.Context, appName, trigger, ref string) (app
 	default:
 	}
 	return r, nil
+}
+
+// Rollback queues a rollback to a target release (or the previous release with an image).
+func (e *Engine) Rollback(ctx context.Context, appName, targetRel8 string) (apps.Release, error) {
+	a, err := e.Apps.Get(ctx, appName)
+	if err != nil {
+		return apps.Release{}, err
+	}
+	target, err := e.Apps.RollbackTarget(ctx, a.ID, targetRel8)
+	if err != nil {
+		return apps.Release{}, err
+	}
+	return e.Enqueue(ctx, appName, "rollback", target.Rel8)
 }
 
 // Drop forgets a queued release of app (the app is being removed).
@@ -224,18 +245,37 @@ func (e *Engine) deploy(ctx context.Context, j *job) {
 	e.audit(actor(r), "deploy.live", a.Spec.Name, r.Rel8)
 }
 
-// run is the recreate pipeline. Every error return leaves the previous live
-// release serving with its route (or, on a first deploy, nothing at all).
+// run executes the deployment pipeline: blue-green for stateless apps,
+// recreate for apps with volumes (BRIEF §3.5). Every error return leaves the previous
+// live release serving with its route (or, on a first deploy, nothing at all).
 func (e *Engine) run(ctx context.Context, a apps.App, env map[string]string, r *apps.Release, log io.Writer, logf func(string, ...any)) error {
 	name := a.Spec.Name
+	strat := a.Spec.EffectiveStrategy()
 	r.Status = "building"
 	if err := e.Apps.Update(ctx, *r); err != nil {
 		return err
 	}
-	logf("release %s of %s (%s, trigger %s)", r.Rel8, name, a.Spec.Source.Type, r.Trigger)
-	p, err := e.Host.Prepare(ctx, a, r.Ref, r.Rel8, log)
-	if err != nil {
-		return fmt.Errorf("preparing the image: %w", err)
+	logf("release %s of %s (%s, trigger %s, strategy %s)", r.Rel8, name, a.Spec.Source.Type, r.Trigger, strat)
+
+	var p Prepared
+	var err error
+	if r.Trigger == "rollback" {
+		target, terr := e.Apps.Release(ctx, a.ID, r.Ref)
+		if terr != nil {
+			return fmt.Errorf("target release %s: %w", r.Ref, terr)
+		}
+		logf("rollback to release %s (image %s)", target.Rel8, target.Image)
+		p = Prepared{Image: target.Image, SHA: target.SHA, Subject: "rollback to " + target.Rel8}
+		hc, herr := e.Host.ImageHealthcheck(ctx, p.Image)
+		if herr != nil {
+			logf("inspecting image healthcheck: %v", herr)
+		}
+		p.Healthcheck = hc
+	} else {
+		p, err = e.Host.Prepare(ctx, a, r.Ref, r.Rel8, log)
+		if err != nil {
+			return fmt.Errorf("preparing the image: %w", err)
+		}
 	}
 	r.Image, r.SHA, r.Message, r.Status = p.Image, p.SHA, p.Subject, "starting"
 	if err := e.Apps.Update(ctx, *r); err != nil {
@@ -316,7 +356,7 @@ func (e *Engine) run(ctx context.Context, a apps.App, env map[string]string, r *
 	if err := e.Host.InstallUnits(ctx, files); err != nil {
 		return fail(err)
 	}
-	if old != "" {
+	if strat == "recreate" && old != "" {
 		logf("recreate: stopping %s", old)
 		stopped = true // even a failed stop may have stopped it: start it again on failure
 		if err := e.Host.Stop(ctx, old+".service"); err != nil {
@@ -336,6 +376,8 @@ func (e *Engine) run(ctx context.Context, a apps.App, env map[string]string, r *
 	e.Apps.Update(ctx, *r)
 	logf("switching the route to %s, verifying through Traefik (D7)", cname)
 	routed = true
+	// Snapshot the current route (D8, BRIEF §3.5 step 7)
+	_, _ = e.Host.ReadAppFile(traefik.AppFileName(name))
 	if err := e.Host.WriteAppFile(traefik.AppFileName(name), verifyRoute); err != nil {
 		return fail(fmt.Errorf("writing the route: %w", err))
 	}
@@ -353,13 +395,57 @@ func (e *Engine) run(ctx context.Context, a apps.App, env map[string]string, r *
 	}
 	r.Status = "live"
 	if old != "" {
+		if strat == "blue-green" {
+			grace := e.DrainGrace
+			if grace <= 0 {
+				grace = 10 * time.Second
+			}
+			logf("draining previous release %s for %s", old, grace)
+			select {
+			case <-time.After(grace):
+			case <-ctx.Done():
+			}
+			logf("stopping previous release %s", old)
+			if err := e.Host.Stop(ctx, old+".service"); err != nil {
+				logf("stopping %s: %v", old, err)
+			}
+		}
 		logf("removing previous release %s", old)
 		if err := e.Host.RemoveContainer(ctx, old, stopTimeout); err != nil {
 			logf("removing %s: %v (startup reconciliation retries)", old, err)
 		}
 		e.Host.DaemonReload(ctx)
 	}
+	e.pruneOldImages(ctx, a, logf)
 	return nil
+}
+
+func (e *Engine) pruneOldImages(ctx context.Context, a apps.App, logf func(string, ...any)) {
+	keepCount := e.KeepImages
+	if keepCount <= 0 {
+		keepCount = 5
+	}
+	rels, err := e.Apps.Releases(ctx, a.ID, 50)
+	if err != nil {
+		logf("pruning images: listing releases: %v", err)
+		return
+	}
+	var keep []string
+	seen := map[string]bool{}
+	for _, rel := range rels {
+		if rel.Image != "" && !seen[rel.Image] {
+			seen[rel.Image] = true
+			keep = append(keep, rel.Image)
+			if len(keep) >= keepCount {
+				break
+			}
+		}
+	}
+	if len(keep) > 0 {
+		if err := e.Host.PruneImages(ctx, a.Spec.Name, keep); err != nil {
+			logf("pruning images: %v", err)
+		}
+	}
 }
 
 func randToken() string {

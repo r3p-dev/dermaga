@@ -311,14 +311,19 @@ func (s Store) Update(ctx context.Context, r Release) error {
 }
 
 // PromoteLive makes release id the app's live release; the previous live
-// one becomes superseded. One transaction, so there is always one live release.
+// one becomes superseded (or rolled_back if this was a rollback). One transaction,
+// so there is always one live release.
 func (s Store) PromoteLive(ctx context.Context, appID string, r Release) error {
 	tx, err := s.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
-	if _, err := tx.ExecContext(ctx, `UPDATE releases SET status = 'superseded' WHERE app_id = ? AND status = 'live'`, appID); err != nil {
+	prevStatus := "superseded"
+	if r.Trigger == "rollback" {
+		prevStatus = "rolled_back"
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE releases SET status = ? WHERE app_id = ? AND status = 'live'`, prevStatus, appID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE releases SET status = 'live', image = ?, sha = ?, message = ?, finished_at = ? WHERE id = ?`,
@@ -326,6 +331,34 @@ func (s Store) PromoteLive(ctx context.Context, appID string, r Release) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// RollbackTarget finds a previous release with an image to roll back to.
+// If targetRel8 is empty, it finds the most recent non-live release with an image.
+func (s Store) RollbackTarget(ctx context.Context, appID, targetRel8 string) (Release, error) {
+	if targetRel8 != "" {
+		r, err := s.Release(ctx, appID, targetRel8)
+		if err != nil {
+			return Release{}, err
+		}
+		if r.Image == "" {
+			return Release{}, fmt.Errorf("release %s has no built image", targetRel8)
+		}
+		if r.Status == "live" {
+			return Release{}, fmt.Errorf("release %s is already live", targetRel8)
+		}
+		return r, nil
+	}
+	rs, err := s.Releases(ctx, appID, 20)
+	if err != nil {
+		return Release{}, err
+	}
+	for _, r := range rs {
+		if r.Status != "live" && r.Image != "" {
+			return r, nil
+		}
+	}
+	return Release{}, errors.New("no previous release with an image to roll back to")
 }
 
 // Releases returns an app's newest releases first.
