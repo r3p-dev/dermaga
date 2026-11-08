@@ -69,6 +69,17 @@ func (f *fake) DaemonReload(context.Context) error { return nil }
 func (f *fake) Healthy(_ context.Context, c Check, _ io.Writer) error {
 	return f.do("healthy " + c.Container)
 }
+func (f *fake) RemoveAppFile(n string) error {
+	delete(f.routes, n)
+	return f.do("rm route " + n)
+}
+func (f *fake) Verify(_ context.Context, host, path, token string, any bool, _ io.Writer) error {
+	// like Traefik: only a loaded file with this token's router answers
+	if !strings.Contains(string(f.routes["app-shop.yml"]), token) {
+		return f.do("verify-missing-token")
+	}
+	return f.do(fmt.Sprintf("verify %s %s any=%v", host, path, any))
+}
 func (f *fake) WriteAppFile(n string, b []byte) error {
 	if err := f.do("route " + n); err != nil {
 		return err
@@ -129,7 +140,8 @@ func TestFirstDeployAndRecreate(t *testing.T) {
 	if r1.Status != "live" || live(t, e) != r1.Rel8 || r1.SHA == "" || !f.running[c1] {
 		t.Fatalf("first deploy: %+v running %v", r1, f.running)
 	}
-	want := []string{"prepare", "env", "install " + c1 + ".container", "start " + c1 + ".service", "healthy " + c1, "route app-shop.yml"}
+	want := []string{"prepare", "env", "install " + c1 + ".container", "start " + c1 + ".service", "healthy " + c1,
+		"route app-shop.yml", "verify shop.example.com /robots.txt any=false", "route app-shop.yml"}
 	if !slices.Equal(f.calls, want) {
 		t.Errorf("calls\n %q\nwant\n %q", f.calls, want)
 	}
@@ -144,7 +156,7 @@ func TestFirstDeployAndRecreate(t *testing.T) {
 	r2 := deploy(t, e)
 	c2 := "dg-shop-" + r2.Rel8
 	want = []string{"prepare", "env", "install " + c2 + ".container", "stop " + c1 + ".service", "start " + c2 + ".service",
-		"healthy " + c2, "route app-shop.yml", "remove " + c1}
+		"healthy " + c2, "route app-shop.yml", "verify shop.example.com /robots.txt any=false", "route app-shop.yml", "remove " + c1}
 	if r2.Status != "live" || live(t, e) != r2.Rel8 || !slices.Equal(f.calls, want) {
 		t.Errorf("recreate: %s\n %q\nwant\n %q", r2.Status, f.calls, want)
 	}
@@ -155,7 +167,7 @@ func TestFirstDeployAndRecreate(t *testing.T) {
 }
 
 func TestFailuresKeepPreviousRelease(t *testing.T) {
-	for _, step := range []string{"prepare", "install", "stop", "start dg-shop", "healthy", "route"} {
+	for _, step := range []string{"prepare", "install", "stop", "start dg-shop", "healthy", "route", "verify"} {
 		t.Run(step, func(t *testing.T) {
 			e, f := setup(t, app())
 			r1 := deploy(t, e)
@@ -172,7 +184,7 @@ func TestFailuresKeepPreviousRelease(t *testing.T) {
 				t.Fatalf("release %s (%s), live %s", r2.Status, r2.Error, live(t, e))
 			}
 			if string(f.routes["app-shop.yml"]) != route {
-				t.Error("route changed although the deploy failed")
+				t.Errorf("route not back to the previous release's steady file:\n%s", f.routes["app-shop.yml"])
 			}
 			if !f.running[c1] || f.running[c2] {
 				t.Errorf("running %v: want only %s", f.running, c1)
@@ -231,5 +243,37 @@ func TestLogMasksEnvValues(t *testing.T) {
 	Follow(context.Background(), r.LogPath, func() bool { return true }, func(l string) error { lines = append(lines, l); return nil })
 	if len(lines) < 5 || !strings.Contains(lines[len(lines)-1], "is live") {
 		t.Errorf("follow: %q", lines)
+	}
+}
+
+// D7/D8: a route Traefik doesn't serve is never reported live. On a first
+// deploy the route is removed again; otherwise the previous route comes back.
+func TestVerifyFailure(t *testing.T) {
+	e, f := setup(t, app())
+	f.failAt = "verify"
+	r := deploy(t, e)
+	if r.Status != "failed" || !strings.Contains(r.Error, "did not load the config") || len(f.routes) != 0 || len(f.running) != 0 {
+		t.Fatalf("first deploy: %s %q routes %v running %v", r.Status, r.Error, f.routes, f.running)
+	}
+	f.failAt = ""
+	r1 := deploy(t, e)
+	f.failAt, f.calls = "verify", nil
+	r2 := deploy(t, e)
+	route := string(f.routes["app-shop.yml"])
+	if r2.Status != "failed" || live(t, e) != r1.Rel8 || !strings.Contains(route, "dg-shop-"+r1.Rel8) || strings.Contains(route, "-verify") {
+		t.Fatalf("redeploy: %s live %s route:\n%s", r2.Status, live(t, e), route)
+	}
+	log, _ := os.ReadFile(r2.LogPath)
+	if !strings.Contains(string(log), "restoring the route to dg-shop-"+r1.Rel8) || !strings.Contains(string(log), "journalctl --user -u traefik") {
+		t.Errorf("log:\n%s", log)
+	}
+}
+
+func TestVerifyWithoutHealthPath(t *testing.T) {
+	a := app()
+	a.Health.Path = ""
+	e, f := setup(t, a)
+	if r := deploy(t, e); r.Status != "live" || !slices.Contains(f.calls, "verify shop.example.com / any=true") {
+		t.Fatalf("%s %q", r.Status, f.calls)
 	}
 }

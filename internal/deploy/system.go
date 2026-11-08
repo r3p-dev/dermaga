@@ -18,6 +18,7 @@ import (
 	"github.com/r3p-dev/dermaga/internal/host"
 	"github.com/r3p-dev/dermaga/internal/name"
 	"github.com/r3p-dev/dermaga/internal/quadlet"
+	"github.com/r3p-dev/dermaga/internal/traefik"
 )
 
 // System is the real Host: git, podman and systemctl --user.
@@ -67,8 +68,10 @@ func (s System) Prepare(ctx context.Context, a apps.App, ref, rel8 string, log i
 	}
 	fmt.Fprintf(log, "==> commit %s %s\n", sha[:12], subject)
 	p := Prepared{Image: ImageRepo(a.Spec.Name) + ":" + sha[:12], SHA: sha, Subject: subject}
-	if _, err := host.Run(ctx, cmdTimeout, "podman", "image", "exists", p.Image); err == nil {
-		fmt.Fprintf(log, "==> image %s already built, not rebuilding\n", p.Image)
+	// The commit alone doesn't define the image: a changed build setting must rebuild it.
+	build := "context=" + src.Context + ";containerfile=" + src.Containerfile
+	if got, err := host.Run(ctx, cmdTimeout, "podman", "image", "inspect", "--format", `{{index .Labels "`+buildLabel+`"}}`, "--", p.Image); err == nil && got == build {
+		fmt.Fprintf(log, "==> image %s already built with these settings, not rebuilding\n", p.Image)
 		p.Healthcheck, err = s.imageHealthcheck(ctx, p.Image)
 		return p, err
 	}
@@ -104,6 +107,7 @@ func (s System) Prepare(ctx context.Context, a apps.App, ref, rel8 string, log i
 		"--pull=missing", "--file", filepath.Join(ctxDir, cf), "--tag", p.Image,
 		"--label", "org.opencontainers.image.source=https://github.com/"+src.RepoFullName(),
 		"--label", "org.opencontainers.image.revision="+sha,
+		"--label", buildLabel+"="+build,
 		"--", ctxDir); err != nil {
 		return Prepared{}, fmt.Errorf("build: %w", err)
 	}
@@ -111,7 +115,10 @@ func (s System) Prepare(ctx context.Context, a apps.App, ref, rel8 string, log i
 	return p, err
 }
 
-const cmdTimeout = 30 * time.Second
+const (
+	cmdTimeout = 30 * time.Second
+	buildLabel = name.Name + ".build" // build settings an image was built with
+)
 
 func (s System) imageHealthcheck(ctx context.Context, image string) (bool, error) {
 	out, err := host.Run(ctx, cmdTimeout, "podman", "image", "inspect", "--format", "{{if .HealthCheck}}yes{{end}}", "--", image)
@@ -237,5 +244,23 @@ func (s System) probe(ctx context.Context, c Check, log io.Writer) error {
 	_, err = host.RunEnv(ctx, time.Until(dl)+5*time.Second, nil, log, "podman", "unshare", "--rootless-netns", s.Self, "probe",
 		"-url", fmt.Sprintf("http://%s:%d%s", c.Container, c.Port, c.Path), "-dns", gw+":53",
 		"-successes", strconv.Itoa(c.Successes), "-interval", "1s", "-timeout", time.Until(dl).Round(time.Second).String())
+	return err
+}
+
+// Verify runs `dermaga probe` against Traefik's verify entrypoint, by the
+// Traefik container's name on the web network (D7).
+func (s System) Verify(ctx context.Context, appHost, path, token string, anyStatus bool, log io.Writer) error {
+	gw, err := host.Run(ctx, cmdTimeout, "podman", "network", "inspect", "web", "--format", "{{range .Subnets}}{{.Gateway}}{{end}}")
+	if err != nil {
+		return err
+	}
+	args := []string{"podman", "unshare", "--rootless-netns", s.Self, "probe",
+		"-url", fmt.Sprintf("http://traefik:%d%s", traefik.VerifyPort, path), "-dns", gw + ":53",
+		"-host", appHost, "-header", traefik.VerifyHeader + ": " + token,
+		"-successes", "1", "-interval", "250ms", "-timeout", VerifyTimeout.String()}
+	if anyStatus {
+		args = append(args, "-any-status")
+	}
+	_, err = host.RunEnv(ctx, VerifyTimeout+10*time.Second, nil, log, args...)
 	return err
 }

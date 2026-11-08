@@ -9,6 +9,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -60,7 +62,15 @@ type Host interface {
 	DaemonReload(ctx context.Context) error
 	Healthy(ctx context.Context, c Check, log io.Writer) error
 	WriteAppFile(name string, data []byte) error
+	RemoveAppFile(name string) error
+	// Verify polls path through Traefik's verify entrypoint with host and the
+	// token header until it succeeds or the deadline passes (D7). anyStatus:
+	// the app has no health path, so any app answer counts.
+	Verify(ctx context.Context, host, path, token string, anyStatus bool, log io.Writer) error
 }
+
+// VerifyTimeout is D7's deadline for Traefik to load a new route.
+const VerifyTimeout = 10 * time.Second
 
 type Engine struct {
 	Apps  apps.Store
@@ -252,6 +262,11 @@ func (e *Engine) run(ctx context.Context, a apps.App, env map[string]string, r *
 	if err != nil {
 		return err
 	}
+	token := randToken()
+	verifyRoute, err := traefik.App(a.Spec, cname, token, e.Site)
+	if err != nil {
+		return err
+	}
 	prevEnv, err := e.Host.WriteEnv(name, apps.EnvFile(env))
 	if err != nil {
 		return fmt.Errorf("writing the env file: %w", err)
@@ -263,9 +278,15 @@ func (e *Engine) run(ctx context.Context, a apps.App, env map[string]string, r *
 	if a.Live != nil {
 		old = quadlet.ContainerName(name, a.Live.Rel8)
 	}
-	stopped := false
+	stopped, routed := false, false
 	fail := func(err error) error {
 		bg := context.WithoutCancel(ctx)
+		if routed && old == "" {
+			logf("first deploy: removing the route again")
+			if rerr := e.Host.RemoveAppFile(traefik.AppFileName(name)); rerr != nil {
+				logf("removing the route: %v", rerr)
+			}
+		}
 		logf("removing candidate %s", cname)
 		if rerr := e.Host.RemoveContainer(bg, cname, stopTimeout); rerr != nil {
 			logf("removing candidate: %v", rerr)
@@ -285,6 +306,9 @@ func (e *Engine) run(ctx context.Context, a apps.App, env map[string]string, r *
 			} else {
 				logf("previous release %s is healthy again", old)
 			}
+		}
+		if routed && old != "" {
+			e.restoreRoute(bg, a.Spec, old, log, logf) // D8
 		}
 		return err
 	}
@@ -310,9 +334,19 @@ func (e *Engine) run(ctx context.Context, a apps.App, env map[string]string, r *
 	}
 	r.Status = "healthy"
 	e.Apps.Update(ctx, *r)
-	logf("switching the route to %s", cname)
-	if err := e.Host.WriteAppFile(traefik.AppFileName(name), route); err != nil {
+	logf("switching the route to %s, verifying through Traefik (D7)", cname)
+	routed = true
+	if err := e.Host.WriteAppFile(traefik.AppFileName(name), verifyRoute); err != nil {
 		return fail(fmt.Errorf("writing the route: %w", err))
+	}
+	vpath, anyStatus := verifyPath(a.Spec)
+	if err := e.Host.Verify(ctx, a.Spec.Primary(), vpath, token, anyStatus, log); err != nil {
+		return fail(fmt.Errorf("the new route was not served through Traefik within %s, so Traefik probably did not load the config: "+
+			"look for an invalid file in Traefik's dynamic directory (often %s) with journalctl --user -u traefik (%w)", VerifyTimeout, traefik.CustomFile, err))
+	}
+	if err := e.Host.WriteAppFile(traefik.AppFileName(name), route); err != nil {
+		// the verified route serves the candidate; only the token router is left over until the next start
+		logf("removing the verify router: %v (startup reconciliation removes it)", err)
 	}
 	if err := e.Apps.PromoteLive(ctx, a.ID, *r); err != nil {
 		return err // route already points at the candidate; startup reconciliation repairs from the DB
@@ -326,6 +360,49 @@ func (e *Engine) run(ctx context.Context, a apps.App, env map[string]string, r *
 		e.Host.DaemonReload(ctx)
 	}
 	return nil
+}
+
+func randToken() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+// verifyPath is what D7 requests through Traefik: the health path, or "/"
+// where any app answer counts.
+func verifyPath(a spec.App) (string, bool) {
+	if a.Health.Path != "" {
+		return a.Health.Path, false
+	}
+	return "/", true
+}
+
+// restoreRoute points the app's route back at the previous release and
+// verifies it with its own token before dropping the token router (D8).
+func (e *Engine) restoreRoute(ctx context.Context, a spec.App, old string, log io.Writer, logf func(string, ...any)) {
+	f := traefik.AppFileName(a.Name)
+	token := randToken()
+	withToken, err1 := traefik.App(a, old, token, e.Site)
+	steady, err2 := traefik.App(a, old, "", e.Site)
+	if err := errors.Join(err1, err2); err != nil {
+		logf("restoring the route: %v", err)
+		return
+	}
+	logf("restoring the route to %s", old)
+	if err := e.Host.WriteAppFile(f, withToken); err != nil {
+		logf("restoring the route: %v", err)
+		return
+	}
+	vpath, anyStatus := verifyPath(a)
+	if err := e.Host.Verify(ctx, a.Primary(), vpath, token, anyStatus, log); err != nil {
+		logf("the restored route did not verify either: Traefik is not loading dynamic config. Its last loaded "+
+			"config keeps serving; look for an invalid file in its dynamic directory (often %s) with journalctl --user -u traefik (%v)", traefik.CustomFile, err)
+	} else {
+		logf("restored route verified")
+	}
+	if err := e.Host.WriteAppFile(f, steady); err != nil {
+		logf("removing the verify router: %v", err)
+	}
 }
 
 func check(a spec.App, cname string, imageHC bool) Check {
