@@ -145,7 +145,7 @@ func appsShow(args []string) error {
 	case s.Health.Cmd != "":
 		health = "command " + s.Health.Cmd
 	}
-	fmt.Printf("  port      %d, health %s, strategy %s (recreate until M4)\n", s.Port, health, v.Strategy)
+	fmt.Printf("  port      %d, health %s, strategy %s\n", s.Port, health, v.Strategy)
 	lim := s.Limits.Effective()
 	fmt.Printf("  limits    memory %s, cpus %s, pids %d\n", lim.Memory, lim.CPUs, lim.Pids)
 	if gh := v.GitHub; gh != nil {
@@ -383,6 +383,36 @@ func cmdDeploy(args []string) error {
 		return err
 	}
 	fmt.Printf("Queued release %s of %s.\n", r.Rel8, app)
+	if *noFollow {
+		return nil
+	}
+	status, err := stream("/api/apps/"+url.PathEscape(app)+"/releases/"+r.Rel8+"/log?follow=1", func(l string) { fmt.Println(l) })
+	if err != nil {
+		return err
+	}
+	if status != "live" {
+		fmt.Fprintf(os.Stderr, "release %s: %s\n", r.Rel8, status)
+		return errQuiet
+	}
+	return nil
+}
+
+func cmdRollback(args []string) error {
+	app, rest, err := sub("rollback", args)
+	if err != nil {
+		return err
+	}
+	fs := flag.NewFlagSet("rollback", flag.ContinueOnError)
+	to := fs.String("to", "", "release id to roll back to (default: the previous release)")
+	noFollow := fs.Bool("no-follow", false, "return once queued instead of streaming the log")
+	if err := parse(fs, rest); err != nil {
+		return err
+	}
+	var r apps.Release
+	if err := call("POST", "/api/apps/"+url.PathEscape(app)+"/rollback", map[string]string{"to": *to}, &r); err != nil {
+		return err
+	}
+	fmt.Printf("Queued rollback %s of %s (target %s).\n", r.Rel8, app, r.Ref)
 	if *noFollow {
 		return nil
 	}

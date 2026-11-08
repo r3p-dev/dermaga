@@ -60,3 +60,9 @@ func TestClockCheckToleratesEarlyBoot(t *testing.T) {
 		}
 	}
 }
+
+func TestRollbackCommandHelp(t *testing.T) {
+	if code := Main([]string{"rollback", "shop", "-h"}); code != 0 {
+		t.Fatalf("rollback shop -h exited with %d", code)
+	}
+}

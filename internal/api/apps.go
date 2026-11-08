@@ -61,6 +61,7 @@ func (s *Server) appRoutes(mux *http.ServeMux, wrap func(http.HandlerFunc) http.
 	mux.Handle("PUT /api/apps/{app}", h(s.putApp))
 	mux.Handle("DELETE /api/apps/{app}", h(s.deleteApp))
 	mux.Handle("POST /api/apps/{app}/deploy", h(s.deployApp))
+	mux.Handle("POST /api/apps/{app}/rollback", h(s.rollbackApp))
 	mux.Handle("GET /api/apps/{app}/releases/{rel8}/log", h(s.releaseLog))
 	mux.Handle("GET /api/apps/{app}/logs", h(s.runtimeLogs))
 	mux.Handle("GET /api/apps/{app}/env", h(s.getEnv))
@@ -272,6 +273,29 @@ func (s *Server) deployApp(w http.ResponseWriter, r *http.Request, actor string)
 		return
 	}
 	s.audit(actor, "deploy.queued", r.PathValue("app")+" "+rel.Rel8)
+	writeJSON(w, http.StatusAccepted, rel)
+}
+
+func (s *Server) rollbackApp(w http.ResponseWriter, r *http.Request, actor string) {
+	var req struct {
+		To string `json:"to"`
+	}
+	readJSON(w, r, &req)
+	a, ok := s.app(w, r)
+	if !ok {
+		return
+	}
+	target, err := s.Apps.RollbackTarget(r.Context(), a.ID, req.To)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	rel, err := s.Engine.Enqueue(r.Context(), a.Spec.Name, "rollback", target.Rel8)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	s.audit(actor, "rollback.queued", a.Spec.Name+" "+rel.Rel8+" -> "+target.Rel8)
 	writeJSON(w, http.StatusAccepted, rel)
 }
 

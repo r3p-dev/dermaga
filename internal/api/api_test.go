@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	_ "github.com/r3p-dev/dermaga/internal/golden" // accepts go test ./... -update
 	"net/http"
@@ -13,7 +14,9 @@ import (
 
 	"github.com/r3p-dev/dermaga/internal/apps"
 	"github.com/r3p-dev/dermaga/internal/auth"
+	"github.com/r3p-dev/dermaga/internal/deploy"
 	"github.com/r3p-dev/dermaga/internal/secrets"
+	"github.com/r3p-dev/dermaga/internal/spec"
 	"github.com/r3p-dev/dermaga/internal/store"
 )
 
@@ -191,5 +194,49 @@ func TestAppRoutesOnPanelNeedSessionAndOrigin(t *testing.T) {
 		if w := do(h, req{method: "GET", path: p}); w.Code != http.StatusUnauthorized {
 			t.Errorf("%s without session: %d", p, w.Code)
 		}
+	}
+}
+
+func TestRollbackEndpoint(t *testing.T) {
+	s := newServer(t)
+	s.Engine = &deploy.Engine{Apps: s.Apps}
+	ctx := context.Background()
+	a := spec.App{
+		Name:    "shop",
+		Port:    80,
+		Domains: []spec.Domain{{Host: "shop.example.com", Primary: true}},
+		Source:  spec.Source{Type: "image", Image: "docker.io/library/nginx:1.27.0"},
+	}
+	id, _, err := s.Apps.Create(ctx, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	w := do(s.Socket(), req{method: "POST", path: "/api/apps/shop/rollback", body: `{}`})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when no releases, got %d %s", w.Code, w.Body)
+	}
+
+	r1, _ := s.Apps.NewRelease(ctx, id, "manual", "")
+	r1.Image = "img:1"
+	s.Apps.PromoteLive(ctx, id, r1)
+
+	r2, _ := s.Apps.NewRelease(ctx, id, "manual", "")
+	r2.Image = "img:2"
+	s.Apps.PromoteLive(ctx, id, r2)
+
+	w = do(s.Socket(), req{method: "POST", path: "/api/apps/shop/rollback", body: `{}`})
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("rollback: %d %s", w.Code, w.Body)
+	}
+	var queued apps.Release
+	json.Unmarshal(w.Body.Bytes(), &queued)
+	if queued.Trigger != "rollback" || queued.Ref != r1.Rel8 {
+		t.Fatalf("queued rollback release: %+v", queued)
+	}
+
+	w = do(s.Socket(), req{method: "POST", path: "/api/apps/shop/rollback", body: `{"to":"nope"}`})
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 on nonexistent target, got %d", w.Code)
 	}
 }
