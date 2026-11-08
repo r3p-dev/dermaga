@@ -12,6 +12,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -21,7 +22,15 @@ type Options struct {
 	Successes int
 	Interval  time.Duration
 	Timeout   time.Duration
+	Host      string // Host header (D7 verification through Traefik)
+	Header    string // one extra request header, "Name: value" (the verify token)
+	// AnyStatus counts every answer below 500 as a success, except the 404
+	// Traefik sends when no router matches: verification of apps without a health path.
+	AnyStatus bool
 }
+
+// traefikNoRoute is the body of Traefik's 404 when no router matches.
+const traefikNoRoute = "404 page not found\n"
 
 // Attempt is one JSON line on the output.
 type Attempt struct {
@@ -58,11 +67,20 @@ func Run(ctx context.Context, o Options, out io.Writer) error {
 		if err != nil {
 			return err
 		}
+		req.Host = o.Host
+		if k, v, ok := strings.Cut(o.Header, ":"); ok {
+			req.Header.Set(strings.TrimSpace(k), strings.TrimSpace(v))
+		}
 		resp, err := c.Do(req)
 		if err == nil {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 64))
 			resp.Body.Close()
 			a.Status = resp.StatusCode
-			if resp.StatusCode >= 400 {
+			switch {
+			case o.AnyStatus && resp.StatusCode == 404 && string(body) == traefikNoRoute:
+				err = errors.New("no router matched (Traefik's 404)")
+			case o.AnyStatus && resp.StatusCode < 500:
+			case resp.StatusCode >= 400:
 				err = fmt.Errorf("status %d", resp.StatusCode)
 			}
 		}

@@ -178,6 +178,9 @@ func cmdProbe(args []string) error {
 	fs.StringVar(&o.DNS, "dns", "", "DNS server for container names (the network gateway), e.g. 10.89.0.1:53")
 	fs.IntVar(&o.Successes, "successes", 3, "consecutive successes required")
 	fs.DurationVar(&o.Interval, "interval", time.Second, "time between attempts")
+	fs.StringVar(&o.Host, "host", "", "Host header to send (verification through Traefik)")
+	fs.StringVar(&o.Header, "header", "", `one extra request header, "Name: value"`)
+	fs.BoolVar(&o.AnyStatus, "any-status", false, "any answer below 500 counts, except Traefik's no-router 404")
 	fs.DurationVar(&o.Timeout, "timeout", 120*time.Second, "overall deadline")
 	if err := parse(fs, args); err != nil {
 		return err

@@ -77,3 +77,36 @@ func TestConnectionRefusedIsAFailedAttempt(t *testing.T) {
 		t.Fatalf("attempt %+v", a)
 	}
 }
+
+// D7: the probe sends the app's Host and the token; without a health path any
+// app answer counts, but Traefik's own no-router 404 doesn't.
+func TestVerifyHostHeaderAndAnyStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Host != "shop.example.com" || r.Header.Get("X-Dermaga-Verify") != "tok":
+			http.Error(w, "404 page not found", 404) // exactly Traefik's no-router body
+		case r.URL.Path == "/missing":
+			http.Error(w, "app's own 404 page", 404)
+		default:
+			w.WriteHeader(204)
+		}
+	}))
+	defer srv.Close()
+	run := func(path, host string, any bool) error {
+		var out bytes.Buffer
+		return Run(context.Background(), Options{URL: srv.URL + path, Host: host, Header: "X-Dermaga-Verify: tok",
+			Successes: 1, Interval: 10 * time.Millisecond, Timeout: 200 * time.Millisecond, AnyStatus: any}, &out)
+	}
+	if err := run("/", "shop.example.com", false); err != nil {
+		t.Error("host and header not sent:", err)
+	}
+	if err := run("/missing", "shop.example.com", true); err != nil {
+		t.Error("an app's 404 must count with -any-status:", err)
+	}
+	if err := run("/", "other.example.com", true); err == nil {
+		t.Error("Traefik's no-router 404 counted as verified")
+	}
+	if err := run("/missing", "shop.example.com", false); err == nil {
+		t.Error("404 counted without -any-status")
+	}
+}
