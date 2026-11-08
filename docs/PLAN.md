@@ -27,7 +27,7 @@ confirm. `docs/OPERATIONS.md` documents the harness in M8.
 | M1 | Daemon core (done) | 16 |
 | M2 | Generators + reconciliation (done) | 12 |
 | M3 | Git apps, recreate strategy, portfolio live (done) | 20 |
-| M4 | Zero-downtime | 14 |
+| M4 | Zero-downtime (done) | 14 |
 | M5 | Databases | 10 |
 | M6 | Backups and restore | 16 |
 | M7 | UI | 26 |
@@ -128,6 +128,8 @@ Acceptance:
 - `image` app: `docker.io/louislam/uptime-kuma:<pinned>` deployed and routed.
 
 ## M4: Zero-downtime (14 h)
+
+**Done 2026-11-08.** Evidence: [`M4-EVIDENCE.md`](M4-EVIDENCE.md).
 
 Blue-green pipeline (ARCHITECTURE §3), D2 probe, D7 verify, drain, rollback, release retention,
 image pruning, `superseded`. Switch steps, in order:
