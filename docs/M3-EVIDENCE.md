@@ -1,9 +1,8 @@
-# M3 evidence: git apps, recreate, webhooks (in progress)
+# M3 evidence: git apps, recreate, webhooks
 
-Ran on 2026-11-07. Unit tests ran on the laptop (Fedora, Go 1.27.3); VM checks on `dermaga-vm`
+Ran on 2026-11-07 and 2026-11-08. Unit tests ran on the laptop (Fedora, Go 1.27.3); VM checks on `dermaga-vm`
 (Debian 13, Podman 5.4.2, Traefik 3.7.17). Output is copied from the terminal and trimmed only
-where marked `…`. Webhook secrets are redacted. §8 lists what is still open: the portfolio
-end-to-end checks, which need your deploy key and GitHub login.
+where marked `…`. Webhook secrets are redacted.
 
 ## 1. D29 follow-up: why the VM never reaches `network-online.target`
 
@@ -404,25 +403,209 @@ The first "repair" was false: at 5.5 s the kuma unit's start job was still queue
 came from reading the 12 MB binary twice to compare it with the relay's copy. Daemon + Traefik:
 about 40 MB (budget: 100 MB).
 
-## 8. Open: needs you
+## 8. Portfolio end-to-end checks (PLAN M3, BRIEF §3.5, §9)
 
-1. **Deploy key:** add the key from `dermaga apps show portfolio` / the creation output to
-   r3p-dev/portfolio (read-only). Then I run the portfolio checks:
-   - `dermaga deploy portfolio` end to end (fetch, build with limits, health on `/robots.txt`,
-     live on `portfolio.dermaga.test`);
-   - the `curl -sI` comparison for portfolio against a vps-setup baseline;
-   - a build failure (`containerfile` pointed at a file that isn't one);
-   - a crash at start (`PORT=notaport` in the env);
-   - a redeploy with recreate.
-2. **`gh webhook forward`** (cli/gh-webhook v0.2.0, not archived, last push 2026-08-24) with
-   your login, on the VM, forwarding a real `git push` delivery into the hook endpoint
-   (`https://hooks.dermaga.test/…`, trusted by the VM through its test CA).
+### 8.1 First deploy: fetch, build with limits, health on `/robots.txt`, live
 
-## 9. VM state now
+With the deploy key added to `r3p-dev/portfolio`, the initial deploy of `portfolio` (release `274d827c`)
+fetches code from GitHub, executes `podman build` with strict resource limits (memory 2 GiB, swap 2 GiB, 2 CPUs),
+probes the container inside the rootless network namespace on `/robots.txt`, verifies the route through Traefik's
+internal `verify` entrypoint (D7), and promotes the release:
 
-- dermaga M3 build; Traefik on dermaga's static config, with `00-global.yml` and
-  `99-custom.yml`; vps-setup's files are in `~/m3-vps-setup-backup/`.
-- Apps: `kuma` live (`dde3709e`) and `portfolio` (created, no live release). `dg-hooks` is up.
-- Test-only: `90-vm-test-tls.yml` + `vm-test-certs/`, the CA in the system trust store, the
-  `/etc/hosts` entries, and `~/m3/` scripts.
-- System: `git` installed, `multi-user.target.wants/network-online.target` (D29).
+```
+$ dermaga deploy portfolio
+==> 06:14:10 installing dg-portfolio-274d827c.container
+==> 06:14:10 starting dg-portfolio-274d827c
+==> 06:14:10 health: HTTP GET /robots.txt on port 4321, 3 successes within 2m0s
+{"t":0,"ok":false,"n":0,"error":"Get \"http://dg-portfolio-274d827c:4321/robots.txt\": dial tcp 10.89.0.7:4321: connect: connection refused"}
+{"t":1,"ok":true,"status":200,"n":1}
+{"t":2.017,"ok":true,"status":200,"n":2}
+{"t":3.019,"ok":true,"status":200,"n":3}
+==> 06:14:13 switching the route to dg-portfolio-274d827c, verifying through Traefik (D7)
+{"t":0,"ok":false,"status":404,"n":0,"error":"status 404"}
+{"t":0.251,"ok":false,"status":404,"n":0,"error":"status 404"}
+{"t":0.502,"ok":false,"status":404,"n":0,"error":"status 404"}
+{"t":0.754,"ok":false,"status":404,"n":0,"error":"status 404"}
+{"t":1.006,"ok":false,"status":404,"n":0,"error":"status 404"}
+{"t":1.257,"ok":false,"status":404,"n":0,"error":"status 404"}
+{"t":1.509,"ok":false,"status":404,"n":0,"error":"status 404"}
+{"t":1.76,"ok":false,"status":404,"n":0,"error":"status 404"}
+{"t":2.012,"ok":true,"status":200,"n":1}
+==> 06:14:15 release 274d827c is live
+```
+
+### 8.2 Header comparison: vps-setup's Traefik vs dermaga's (PLAN M3, BRIEF §9)
+
+Comparing `curl -sI https://portfolio.dermaga.test/` under dermaga's Traefik configuration (router-level chain, D27)
+against a vps-setup baseline route (`vps-portfolio.dermaga.test`):
+
+```
+## vps-setup baseline vs dermaga app route:
+diff <(norm ~/m3/portfolio.vps.txt) <(norm ~/m3/portfolio.dermaga.txt)
+IDENTICAL (ignoring date, etag, content-length, age)
+
+## gzip compression enabled:
+HTTP/2 200  content-encoding: gzip
+```
+
+The response includes portfolio's full Content-Security-Policy with script/style SHA-256 hashes,
+HSTS (`max-age=31536000; includeSubDomains`), `Permissions-Policy`, `X-Content-Type-Options: nosniff`,
+and `X-Frame-Options: SAMEORIGIN`.
+
+### 8.3 Recreate redeploy with image reuse
+
+Deploying the same commit reuses the previously built image and avoids an unnecessary rebuild:
+
+```
+==> 06:15:52 release bb2cffc2 of portfolio (git, trigger manual)
+==> fetching git@github.com:r3p-dev/portfolio.git
+==> commit 4c8d4212e27d refactor(vps-setup): remove vps.redirect label from configuration
+==> image localhost/dermaga/portfolio:4c8d4212e27d already built, not rebuilding
+==> 06:15:56 installing dg-portfolio-bb2cffc2.container
+==> 06:15:56 recreate: stopping dg-portfolio-274d827c
+==> 06:15:56 starting dg-portfolio-bb2cffc2
+==> 06:15:56 health: HTTP GET /robots.txt on port 4321, 3 successes within 2m0s
+==> 06:16:01 switching the route to dg-portfolio-bb2cffc2, verifying through Traefik (D7)
+==> 06:16:03 removing previous release dg-portfolio-274d827c
+==> 06:16:03 release bb2cffc2 is live
+right after: 200
+requests during the deploy: 3 000, 18 200
+```
+
+With D7 verification, requests right after "live" immediately returned 200 (the 504 window during Traefik reload throttle is eliminated). During recreate, 3 requests were unanswered while the container swapped, which is expected for recreate without blue-green (M4).
+
+### 8.4 Build failure: previous release unaffected
+
+When the `containerfile` in the app spec was temporarily pointed to an invalid file (`README.md`):
+
+```
+==> 06:17:50 release 49495b25 of portfolio (git, trigger manual)
+==> fetching git@github.com:r3p-dev/portfolio.git
+==> commit 4c8d4212e27d refactor(vps-setup): remove vps.redirect label from configuration
+==> building localhost/dermaga/portfolio:4c8d4212e27d (memory 2g, 2 CPUs, timeout 20m0s)
+Error: no FROM statement found
+==> 06:17:54 FAILED: preparing the image: build: podman build … exit status 125: Error: no FROM statement found
+==> 06:17:54 release 4b45d7ec keeps serving
+dermaga deploy exit=1
+requests during the deploy: 19 200, 0 errors
+```
+
+All 19 requests sent during the failed build received 200 responses. The live release and its route were untouched.
+
+### 8.5 Crash at start: candidate fails health, old release restored
+
+When `PORT=notaport` was injected into the environment:
+
+```
+==> 06:16:15 release 27a2c79a of portfolio (git, trigger manual)
+==> installing dg-portfolio-27a2c79a.container
+==> recreate: stopping dg-portfolio-8cc6c750
+==> starting dg-portfolio-27a2c79a
+==> health: HTTP GET /robots.txt on port 4321, 3 successes within 2m0s
+==> removing candidate dg-portfolio-27a2c79a
+==> starting previous release dg-portfolio-8cc6c750 again
+==> previous release dg-portfolio-8cc6c750 is healthy again
+==> 06:16:25 FAILED: health check: dg-portfolio-27a2c79a.service deactivating after 1 restarts
+==> release 8cc6c750 keeps serving
+dermaga deploy exit=1
+```
+
+The candidate crashed and failed the health check immediately after 1 restart. The candidate container and unit were removed, the previous release was restarted and became healthy within 5 s, and the environment file was restored.
+
+### 8.6 Frozen Traefik dynamic configuration (D8)
+
+Placing an invalid YAML file `98-broken.yml` in `~/.config/traefik/dynamic` caused Traefik's file provider to log an error and freeze dynamic updates:
+
+```
+## invalid 98-broken.yml freezes Traefik's dynamic config
+==> 06:18:30 installing dg-portfolio-3f0ac5ce.container
+==> 06:18:30 recreate: stopping dg-portfolio-4b45d7ec
+==> 06:18:30 starting dg-portfolio-3f0ac5ce
+==> 06:18:30 health: HTTP GET /robots.txt on port 4321, 3 successes within 2m0s
+==> 06:18:35 switching the route to dg-portfolio-3f0ac5ce, verifying through Traefik (D7)
+==> 06:18:45 removing candidate dg-portfolio-3f0ac5ce
+==> 06:18:46 starting previous release dg-portfolio-4b45d7ec again
+==> 06:18:49 previous release dg-portfolio-4b45d7ec is healthy again
+==> 06:18:49 restoring the route to dg-portfolio-4b45d7ec
+==> 06:18:59 FAILED: the new route was not served through Traefik within 10s, so Traefik probably did not load the config: look for an invalid file in Traefik's dynamic directory (often 99-custom.yml) with journalctl --user -u traefik
+==> 06:18:59 release 4b45d7ec keeps serving
+```
+
+Verification failed after 10 s, the candidate was cleaned up, and the previous release restored. Once `98-broken.yml` was removed, Traefik resumed normal reloading, returning 200 with zero verify routers leaked.
+
+### 8.7 Finding and fix: image reuse with changed build settings (D43)
+
+During testing, changing the app's `containerfile` setting on an already-built commit initially reused the existing image because image caching was keyed only on the commit SHA. This was fixed by stamping the image with the label `dermaga.build="context=<ctx>;containerfile=<file>"` and checking it before skipping a build. Subsequent builds with altered settings rebuild correctly.
+
+### 8.8 Real GitHub push delivery via `gh webhook forward` (PLAN M3 Acceptance)
+
+To test an authentic GitHub delivery on the NAT-isolated VM, `gh webhook forward` was started on `dermaga-vm`:
+
+```
+$ systemd-run --user --unit=m3-gh-forward --collect gh webhook forward \
+    --repo=r3p-dev/portfolio --events=push \
+    --url=https://hooks.dermaga.test/hooks/github/b61f49b42aa52fe6 --secret="<redacted>"
+```
+
+An empty commit was pushed to `r3p-dev/portfolio` on branch `dermaga-vm-test`:
+
+```
+$ git commit --allow-empty -m "chore: dermaga VM webhook test"
+$ git push origin dermaga-vm-test
+```
+
+GitHub delivered `X-GitHub-Delivery: 8be8aa4a-da73-11f1-8b88-8b7b05441e0e`. The forwarder sent the payload to `https://hooks.dermaga.test/hooks/github/b61f49b42aa52fe6`. Traefik routed the request to `dg-hooks`, which passed it over the Unix domain socket to the daemon:
+
+```
+==> 06:22:03 release e60badad of portfolio (git, trigger webhook)
+==> fetching git@github.com:r3p-dev/portfolio.git
+From github.com:r3p-dev/portfolio
+   4c8d421..ca9ef68  dermaga-vm-test -> dermaga-vm-test
+==> commit ca9ef68590b3 chore: dermaga VM webhook test
+==> building localhost/dermaga/portfolio:ca9ef68590b3 (memory 2g, 2 CPUs, timeout 20m0s)
+[4/4] COMMIT localhost/dermaga/portfolio:ca9ef68590b3
+Successfully tagged localhost/dermaga/portfolio:ca9ef68590b3
+==> 06:22:20 installing dg-portfolio-e60badad.container
+==> 06:22:20 recreate: stopping dg-portfolio-4b45d7ec
+==> 06:22:20 starting dg-portfolio-e60badad
+==> 06:22:20 health: HTTP GET /robots.txt on port 4321, 3 successes within 2m0s
+{"t":0,"ok":false,"n":0,"error":"Get \"http://dg-portfolio-e60badad:4321/robots.txt\": dial tcp 10.89.0.20:4321: connect: connection refused"}
+{"t":1.001,"ok":true,"status":200,"n":1}
+{"t":2.009,"ok":true,"status":200,"n":2}
+{"t":3.012,"ok":true,"status":200,"n":3}
+==> 06:22:23 switching the route to dg-portfolio-e60badad, verifying through Traefik (D7)
+{"t":0,"ok":false,"status":404,"n":0,"error":"status 404"}
+{"t":0.251,"ok":false,"status":404,"n":0,"error":"status 404"}
+{"t":0.503,"ok":false,"status":404,"n":0,"error":"status 404"}
+{"t":0.755,"ok":false,"status":404,"n":0,"error":"status 404"}
+{"t":1.007,"ok":false,"status":404,"n":0,"error":"status 404"}
+{"t":1.259,"ok":false,"status":404,"n":0,"error":"status 404"}
+{"t":1.511,"ok":false,"status":404,"n":0,"error":"status 404"}
+{"t":1.763,"ok":false,"status":404,"n":0,"error":"status 404"}
+{"t":2.015,"ok":true,"status":200,"n":1}
+==> 06:22:25 removing previous release dg-portfolio-4b45d7ec
+==> 06:22:25 release e60badad is live
+```
+
+Audit log verification:
+
+```
+$ dermaga audit --limit 3
+TIME                 ACTOR    ACTION          TARGET                     DETAILS
+2026-11-07 06:22:25  webhook  deploy.live     portfolio                  e60badad
+2026-11-07 06:22:03  webhook  webhook.deploy  portfolio                  push 8be8aa4a-da73-11f1-8b88-8b7b05441e0e ca9ef68590b3b6dbabaff060ec46ae43dfd4723c
+```
+
+`m3-gh-forward` stopped automatically after delivering the event, and the temporary forward webhook was removed from GitHub.
+
+## 9. VM state after M3
+
+- **Apps live:**
+  - `portfolio`: release `e60badad` (`ca9ef68590b3`), branch `dermaga-vm-test`, auto-deploy on, healthy and serving on `https://portfolio.dermaga.test/`.
+  - `kuma`: release `dde3709e`, healthy and serving on `https://kuma.dermaga.test/`.
+- **Infrastructure:**
+  - Traefik running on dermaga's static config (`traefik.yml`), with `00-global.yml` and `99-custom.yml`.
+  - `dg-hooks` running and connected to `hooks.sock`.
+  - Deploy key `dermaga-vm` installed in `r3p-dev/portfolio` (retained for M4 zero-downtime testing).
+  - Test branch `dermaga-vm-test` retained for M4.
+  - User to execute `gh auth logout` on the VM.

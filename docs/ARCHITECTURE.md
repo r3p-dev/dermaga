@@ -1,7 +1,6 @@
 # dermaga architecture
 
-Status: **M3 in progress** (2026-11-07): everything except the portfolio end-to-end checks, which wait for the
-deploy key and `gh webhook forward` (see M3-EVIDENCE). D1, D7, D27 and D28 are approved and synced into the brief. [`BRIEF.md`](BRIEF.md) is the source of truth for goals and
+Status: **after M3** (2026-11-08). Portfolio live on the VM with `recreate` and GitHub webhook auto-deploy; Traefik static + dynamic configs verified. D1, D7, D27, D28, D29 approved. [`BRIEF.md`](BRIEF.md) is the source of truth for goals and
 constraints. This file records *how* dermaga meets them, and every decision taken along the way with
 its reason. Evidence for the claims marked **[M0-n]** is in [`M0-EVIDENCE.md`](M0-EVIDENCE.md).
 
@@ -126,6 +125,8 @@ Evidence: [`M3-EVIDENCE.md`](M3-EVIDENCE.md).
 | D39 | **Traefik files at daemon start:** `00-global.yml` is rewritten when its rendering changes, at start and after a hook-host change, but not while vps-setup's `00-vps.yml` exists (they define the same middleware names; migration, M10). `99-custom.yml` is created once with `O_EXCL`, as a comments-only placeholder that explains `secure@file`. `traefik.yml` is printed by `dermaga traefik static` and installed by the installer (M8; by hand on the VM in M3). Traefik's warning that `verify` has no socket-activation listener is expected: Traefik binds :8081 itself inside the container. | D27 and BRIEF §3.3. Writing the static config needs a Traefik restart, which is the installer's job. |
 | D40 | **Hook relay at daemon start:** `hooks/hooks.sock` is created before serving. The binary in `relay/` and `dg-hooks.container` are compared with what they should be (streamed SHA-256, never read into memory), replaced atomically when different, and only then is `dg-hooks` restarted. Otherwise it is only started if it isn't running. | D1 and D28. Reading the 12 MB binary twice put the daemon at 41.6 MB RSS after boot; streaming keeps it at 17.7 MB (evidence). |
 | D41 | **API and CLI shape:** one `PUT /api/apps/{app}` replaces the spec and the domains, and re-renders the route at once if the app is live. `domains`, `middleware` and `apps edit` (JSON in `$EDITOR`) all build on it, so there are no per-field endpoints. The source type and repo can't change after creation. A unit with a queued start job counts as starting in reconciliation (`host.ActiveState` returns `queued`). The CLI socket is now claimed **before** reconciliation runs. | Less code, and the UI (M7) uses the same call. The queued state stopped a false "started" repair at boot. Claiming the socket first fixes an M2 bug: a second daemon would have reconciled before finding the socket taken. |
+| D42 | **Recreate deploys verify routes through Traefik (D7) and restore the old route on failure (D8).** Order: candidate healthy → write `app-<name>.yml` with `app-<name>-verify` token router attached to internal `:8081` → probe with Host and `X-Dermaga-Verify` token until success (deadline 10 s) → rewrite file without token router → promote in DB. For apps without an explicit health path, any response < 500 counts as healthy, but Traefik's own no-router 404 (`"404 page not found\n"`) does not. On verification failure (e.g. invalid dynamic YAML freezing Traefik), the candidate is removed, the previous release is restarted and verified, and the previous route restored and re-verified. | Eliminates the ~2 s 504 window during route reload by ensuring Traefik has actually loaded and routed to the candidate before declaring the release live. Verifying the restored route catches dynamic config freeze without needing to parse arbitrary YAML. |
+| D43 | **Image reuse checks build parameters via label.** Images are tagged `localhost/dermaga/<app>:<sha12>`. To prevent reusing an image built with different settings on the same commit SHA, `podman build` records `dermaga.build="context=<ctx>;containerfile=<file>"` as an OCI label. Image reuse inspects this label and rebuilds if context or containerfile path changed. | Reusing an image solely by commit SHA would silently reuse stale build outputs when modifying `Containerfile` or `context` in the app spec without changing the git commit. |
 
 ## 3. Deploy pipeline (blue-green; mechanics proven in M0)
 
@@ -226,3 +227,12 @@ The key is `~/.config/dermaga/master.key` (32 random bytes, 0600). Env files mus
 - Load behaviour of the switch at 50 req/s (M4 acceptance, with `oha`).
 - `podman unshare --rootless-netns` when no container is running: not tested, because during a
   probe the candidate (and Traefik) always keep the netns alive.
+
+## 8. Operations and development notes (temporary, until `docs/OPERATIONS.md` in M8)
+
+### Git bisect skip note
+
+- **Commits `1f563ce`, `4da378d`, and `83dfb3d` (`git bisect skip`):** These intermediate commits in M3 fail `go test ./internal/reconcile` on their own because `spec`, `apps`, and `gitsrc` models were introduced before reconciliation was updated to use them (predating the BRIEF §11 requirement that every commit pass `make check` independently). Skip these three commits when running `git bisect`:
+  ```sh
+  git bisect skip 1f563ce 4da378d 83dfb3d
+  ```

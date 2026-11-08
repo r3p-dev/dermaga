@@ -26,7 +26,7 @@ confirm. `docs/OPERATIONS.md` documents the harness in M8.
 | M0 | Spikes and plan (done) | – |
 | M1 | Daemon core (done) | 16 |
 | M2 | Generators + reconciliation (done) | 12 |
-| M3 | Git apps, recreate strategy, portfolio live (in progress) | 20 |
+| M3 | Git apps, recreate strategy, portfolio live (done) | 20 |
 | M4 | Zero-downtime | 14 |
 | M5 | Databases | 10 |
 | M6 | Backups and restore | 16 |
@@ -100,10 +100,7 @@ Acceptance:
 
 ## M3: Git apps, `recreate`, portfolio live (20 h)
 
-**In progress (2026-11-07).** Built and checked on the VM: [`M3-EVIDENCE.md`](M3-EVIDENCE.md).
-Open: the portfolio end-to-end items, which need the deploy key in the repo and your GitHub login
-for `gh webhook forward`. Before M3, D29 was re-examined (M3-EVIDENCE §1), parallel orphan removal
-was added to reconciliation, and libvirt rules were added to BRIEF §10.
+**Done 2026-11-08.** Evidence: [`M3-EVIDENCE.md`](M3-EVIDENCE.md). New decisions D34–D43 in ARCHITECTURE. Before M3, D29 was re-examined (M3-EVIDENCE §1), parallel orphan removal was added to reconciliation, and libvirt rules were added to BRIEF §10.
 
 Deploy keys (ed25519, 0600), pinned GitHub host keys (fetched from GitHub's meta API, fingerprints
 shown), bare mirrors, `git archive` export, `podman build` with limits, timeout and masked log

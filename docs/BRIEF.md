@@ -323,5 +323,6 @@ Then write `docs/ARCHITECTURE.md` and `docs/PLAN.md` (milestones with acceptance
   - a copy-pasteable command for the **fish** shell (no heredocs, no `$'…'`), in this form:
     `git add path/a path/b; and git commit -m "type(scope): subject" -m "Body paragraph."`
 - Every path that changed must appear in exactly one suggested commit. Run `git status --short` at the end and confirm that nothing is left out and nothing is listed twice.
+- Every suggested commit must pass `make check` on its own (no intermediate commit with failing tests or a broken build), so `git bisect` stays usable. Reorder or merge commits until that holds, and check it before reporting.
 - Commit messages contain **no AI attribution**: no `Co-Authored-By`, no "Generated with", no mention of Claude or any assistant.
 - Never put secrets, tokens, `master.key`, `.env` files or VM-specific credentials in a suggested commit. Keep `.gitignore` up to date and mention every change to it.
