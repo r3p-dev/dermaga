@@ -368,6 +368,7 @@ EOF
     "$DERMAGA_STATE_DIR"
     "$DERMAGA_STATE_DIR/builds"
     "$DERMAGA_STATE_DIR/tmp"
+    "$DERMAGA_STATE_DIR/traefik"
   )
   for d in "${dirs[@]}"; do
     install -d -m 0700 -o "$USER_NAME" -g "$USER_NAME" "$d"
@@ -660,6 +661,7 @@ PodmanArgs=--memory=256m
 Volume=%h/.config/traefik/traefik.yml:/etc/traefik/traefik.yml:ro
 Volume=%h/.config/traefik/dynamic:/etc/traefik/dynamic:ro
 Volume=traefik-acme.volume:/acme
+Volume=%h/.local/state/dermaga/traefik:/var/log/traefik
 
 [Service]
 Sockets=traefik-http.socket traefik-https.socket

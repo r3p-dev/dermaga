@@ -77,6 +77,8 @@ func (p Paths) ResticDir() string { return filepath.Join(p.DataDir, "restic") }
 func (p Paths) BuildLog(app, rel8 string) string {
 	return filepath.Join(p.StateDir, "builds", app, rel8+".log")
 }
+func (p Paths) TraefikLogDir() string { return filepath.Join(p.StateDir, "traefik") }
+func (p Paths) AccessLog() string     { return filepath.Join(p.TraefikLogDir(), "access.log") }
 
 // Config holds the non-secret settings that must be known before the database is open.
 type Config struct {

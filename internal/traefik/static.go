@@ -8,10 +8,17 @@ import (
 type Static struct {
 	Global                StaticGlobal                    `json:"global"`
 	Log                   Log                             `json:"log"`
+	AccessLog             *AccessLog                      `json:"accessLog,omitempty"`
 	EntryPoints           map[string]EntryPoint           `json:"entryPoints"`
 	Providers             Providers                       `json:"providers"`
 	CertificatesResolvers map[string]CertificatesResolver `json:"certificatesResolvers"`
 	API                   API                             `json:"api"`
+}
+
+type AccessLog struct {
+	FilePath      string `json:"filePath"`
+	Format        string `json:"format"`
+	BufferingSize int    `json:"bufferingSize,omitempty"`
 }
 
 type StaticGlobal struct {
@@ -109,8 +116,9 @@ func StaticConfig(site Site) ([]byte, error) {
 		acme.CAServer = "https://acme-staging-v02.api.letsencrypt.org/directory"
 	}
 	return marshal(Static{
-		Global: StaticGlobal{},
-		Log:    Log{Level: "WARN", Format: "json"},
+		Global:    StaticGlobal{},
+		Log:       Log{Level: "WARN", Format: "json"},
+		AccessLog: &AccessLog{FilePath: "/var/log/traefik/access.log", Format: "json", BufferingSize: 100},
 		EntryPoints: map[string]EntryPoint{
 			"web":       {Address: ":80", HTTP: web, ForwardedHeaders: fwd},
 			"websecure": {Address: ":443", HTTP: websecure, HTTP3: &struct{}{}, ForwardedHeaders: fwd},
