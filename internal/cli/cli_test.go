@@ -8,18 +8,20 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/r3p-dev/dermaga/internal/doctor"
 )
 
 func TestSubIDCount(t *testing.T) {
 	u := &user.User{Username: "server", Uid: "1001"}
 	data := "debian:100000:65536\nserver:165536:65536\n"
-	if n := subIDCount(data, u); n != 65536 {
+	if n := doctor.SubIDCount(data, u); n != 65536 {
 		t.Fatal(n)
 	}
-	if n := subIDCount("1001:200000:1000\n", u); n != 1000 {
+	if n := doctor.SubIDCount("1001:200000:1000\n", u); n != 1000 {
 		t.Fatal("numeric uid entry:", n)
 	}
-	if n := subIDCount("serverx:1:65536\nbroken\n", u); n != 0 {
+	if n := doctor.SubIDCount("serverx:1:65536\nbroken\n", u); n != 0 {
 		t.Fatal("prefix matched:", n)
 	}
 }
@@ -55,7 +57,7 @@ func TestClockCheckToleratesEarlyBoot(t *testing.T) {
 		{false, 6 * time.Second, "warn"},
 		{false, 10 * time.Minute, "fail"},
 	} {
-		if got := clockCheck(c.synced, c.up).Status; got != c.want {
+		if got := doctor.ClockCheck(c.synced, c.up).Status; got != c.want {
 			t.Errorf("synced=%v up=%v: %s, want %s", c.synced, c.up, got, c.want)
 		}
 	}
