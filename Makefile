@@ -5,6 +5,9 @@ GOFMT := $(shell $(GO) env GOROOT)/bin/gofmt
 BUN ?= bun
 export CGO_ENABLED := 0
 
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+LDFLAGS := -s -w -X github.com/r3p-dev/dermaga/internal/name.VersionOverride=$(VERSION)
+
 .PHONY: check build tygo tygo-check ui ui-check
 
 check: tygo-check
@@ -28,5 +31,5 @@ ui-check:
 	cd ui && $(BUN) run check
 
 build:
-	GOARCH=amd64 $(GO) build -trimpath -ldflags='-s -w' -o bin/dermaga-linux-amd64 ./cmd/dermaga
-	GOARCH=arm64 $(GO) build -trimpath -ldflags='-s -w' -o bin/dermaga-linux-arm64 ./cmd/dermaga
+	GOARCH=amd64 $(GO) build -trimpath -ldflags='$(LDFLAGS)' -o bin/dermaga-linux-amd64 ./cmd/dermaga
+	GOARCH=arm64 $(GO) build -trimpath -ldflags='$(LDFLAGS)' -o bin/dermaga-linux-arm64 ./cmd/dermaga
