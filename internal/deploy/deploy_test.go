@@ -14,6 +14,7 @@ import (
 
 	"github.com/r3p-dev/dermaga/internal/apps"
 	"github.com/r3p-dev/dermaga/internal/config"
+	"github.com/r3p-dev/dermaga/internal/databases"
 	_ "github.com/r3p-dev/dermaga/internal/golden" // accepts go test ./... -update
 	"github.com/r3p-dev/dermaga/internal/reconcile"
 	"github.com/r3p-dev/dermaga/internal/secrets"
@@ -27,6 +28,7 @@ type fake struct {
 	calls   []string
 	failAt  string // call prefix that fails
 	routes  map[string][]byte
+	units   map[string][]byte
 	env     []byte
 	running map[string]bool
 }
@@ -44,6 +46,12 @@ func (f *fake) Prepare(_ context.Context, a apps.App, ref, rel8 string, log io.W
 	return Prepared{Image: "localhost/dermaga/" + a.Spec.Name + ":0123456789ab", SHA: strings.Repeat("a", 40), Subject: "msg"}, f.do("prepare")
 }
 func (f *fake) InstallUnits(_ context.Context, files map[string][]byte) error {
+	if f.units == nil {
+		f.units = map[string][]byte{}
+	}
+	for k, v := range files {
+		f.units[k] = v
+	}
 	var n []string
 	for k := range files {
 		n = append(n, k)
@@ -115,9 +123,9 @@ func setup(t *testing.T, a spec.App) (*Engine, *fake) {
 		t.Fatal(err)
 	}
 	st.SetEnv(context.Background(), id, map[string]string{"TOKEN": "s3cr3t-value"}, nil)
-	f := &fake{routes: map[string][]byte{}, running: map[string]bool{}}
+	f := &fake{routes: map[string][]byte{}, units: map[string][]byte{}, running: map[string]bool{}}
 	return &Engine{
-		Apps: st, Host: f, Paths: config.Paths{StateDir: dir, ConfigDir: "/home/server/.config/dermaga"},
+		Apps: st, Databases: databases.Store{DB: db, Box: box}, Host: f, Paths: config.Paths{StateDir: dir, ConfigDir: "/home/server/.config/dermaga"},
 		DrainGrace: 5 * time.Millisecond,
 	}, f
 }
@@ -555,5 +563,70 @@ func TestMidDeployKillReconciliation(t *testing.T) {
 	routeContent := string(fakeHost.routes["app-shop.yml"])
 	if strings.Contains(routeContent, "verify") || !strings.Contains(routeContent, c1) {
 		t.Errorf("route not properly reconciled:\n%s", routeContent)
+	}
+}
+
+func TestDeployWithLinkedDatabases(t *testing.T) {
+	a := app()
+	e, f := setup(t, a)
+	ctx := context.Background()
+
+	// Create databases
+	_, pgCreds, err := e.Databases.Create(ctx, "shopdb", databases.EnginePostgres, "18")
+	if err != nil {
+		t.Fatalf("create pg: %v", err)
+	}
+	_, _, err = e.Databases.Create(ctx, "cache", databases.EngineValkey, "9")
+	if err != nil {
+		t.Fatalf("create valkey: %v", err)
+	}
+
+	appObj, err := e.Apps.Get(ctx, "shop")
+	if err != nil {
+		t.Fatalf("get app: %v", err)
+	}
+
+	// Link databases to the app
+	if _, err := e.Databases.Link(ctx, "shopdb", appObj.ID, nil); err != nil {
+		t.Fatalf("link pg: %v", err)
+	}
+	if _, err := e.Databases.Link(ctx, "cache", appObj.ID, map[string]string{"REDIS_URL": "CUSTOM_REDIS_URL"}); err != nil {
+		t.Fatalf("link valkey: %v", err)
+	}
+
+	r := deploy(t, e)
+	if r.Status != "live" {
+		t.Fatalf("deploy status: %s, error: %s", r.Status, r.Error)
+	}
+
+	// Verify candidate container unit has networks for both databases
+	unitFile := f.units["dg-shop-"+r.Rel8+".container"]
+	if unitFile == nil {
+		t.Fatalf("unit file dg-shop-%s.container missing", r.Rel8)
+	}
+	unitContent := string(unitFile)
+	if !strings.Contains(unitContent, "Network=dg-db-shopdb.network\n") {
+		t.Errorf("unit missing Network=dg-db-shopdb.network:\n%s", unitContent)
+	}
+	if !strings.Contains(unitContent, "Network=dg-db-cache.network\n") {
+		t.Errorf("unit missing Network=dg-db-cache.network:\n%s", unitContent)
+	}
+
+	// Verify written env file has injected env vars and custom remap
+	envContent := string(f.env)
+	if !strings.Contains(envContent, "DATABASE_URL=postgres://postgres:"+pgCreds.Password+"@dg-db-shopdb:5432/shopdb?sslmode=disable\n") {
+		t.Errorf("env missing DATABASE_URL:\n%s", envContent)
+	}
+	if !strings.Contains(envContent, "PGHOST=dg-db-shopdb\n") {
+		t.Errorf("env missing PGHOST:\n%s", envContent)
+	}
+	if !strings.Contains(envContent, "CUSTOM_REDIS_URL=redis://:") {
+		t.Errorf("env missing CUSTOM_REDIS_URL:\n%s", envContent)
+	}
+	if strings.Contains(envContent, "\nREDIS_URL=") || strings.HasPrefix(envContent, "REDIS_URL=") {
+		t.Errorf("env should have remapped REDIS_URL to CUSTOM_REDIS_URL:\n%s", envContent)
+	}
+	if !strings.Contains(envContent, "TOKEN=s3cr3t-value\n") {
+		t.Errorf("env missing original TOKEN:\n%s", envContent)
 	}
 }

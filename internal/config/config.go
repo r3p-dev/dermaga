@@ -66,6 +66,8 @@ func (p Paths) HooksDir() string            { return filepath.Join(p.RuntimeDir,
 func (p Paths) HookSocket() string          { return filepath.Join(p.HooksDir(), "hooks.sock") }
 func (p Paths) RelayDir() string            { return filepath.Join(p.DataDir, "relay") }
 func (p Paths) EnvFile(app string) string   { return filepath.Join(p.ConfigDir, "env", app+".env") }
+func (p Paths) DBEnvFile(db string) string  { return filepath.Join(p.ConfigDir, "env", "db-"+db+".env") }
+func (p Paths) DBEnvFile(db string) string    { return filepath.Join(p.ConfigDir, "env", "db-"+db+".env") }
 func (p Paths) Mirror(app string) string    { return filepath.Join(p.DataDir, "repos", app+".git") }
 func (p Paths) DeployKey(app string) string { return filepath.Join(p.DataDir, "deploy-keys", app) }
 func (p Paths) KnownHosts() string          { return filepath.Join(p.DataDir, "known_hosts") }

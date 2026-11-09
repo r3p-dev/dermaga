@@ -41,6 +41,7 @@ func commands() map[string]command {
 		"panel":      {cmdPanel, "print the SSH tunnel snippet and the panel URL [--host H]"},
 		"doctor":     {cmdDoctor, "check the host and the daemon [--json]"},
 		"apps":       {cmdApps, "list | show | create | edit | remove | webhook"},
+		"db":         {cmdDB, "list | show | create | link | unlink | shell | proxy | remove"},
 		"deploy":     {cmdDeploy, "deploy <app> [--ref SHA] [--no-follow]"},
 		"rollback":   {cmdRollback, "rollback <app> [--to RELEASE] [--no-follow]"},
 		"logs":       {cmdLogs, "logs <app> [-f] [-n N] [--build latest|RELEASE]"},
@@ -53,13 +54,14 @@ func commands() map[string]command {
 		"version":    {func([]string) error { fmt.Println(name.Name, name.Version()); return nil }, "print the version"},
 		"hook-relay": {cmdHookRelay, "TCP → hooks.sock relay (runs inside the dg-hooks container)"},
 		"probe":      {cmdProbe, "HTTP health probe (runs inside the rootless netns)"},
+		"db-bridge":  {cmdDBBridge, "bridge unix socket to container TCP (runs inside rootless netns)"},
 	}
 }
 
 func usage(w io.Writer) {
 	fmt.Fprintf(w, "usage: %s <command> [flags]\n\ncommands:\n", name.Name)
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	for _, n := range []string{"status", "apps", "deploy", "rollback", "logs", "env", "domains", "middleware", "settings", "github",
+	for _, n := range []string{"status", "apps", "db", "deploy", "rollback", "logs", "env", "domains", "middleware", "settings", "github",
 		"audit", "admin", "panel", "doctor", "traefik", "daemon", "version", "hook-relay", "probe"} {
 		fmt.Fprintf(tw, "  %s\t%s\n", n, commands()[n].usage)
 	}

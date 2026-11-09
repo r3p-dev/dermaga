@@ -24,6 +24,7 @@ import (
 	"github.com/r3p-dev/dermaga/internal/apps"
 	"github.com/r3p-dev/dermaga/internal/audit"
 	"github.com/r3p-dev/dermaga/internal/config"
+	"github.com/r3p-dev/dermaga/internal/databases"
 	"github.com/r3p-dev/dermaga/internal/quadlet"
 	"github.com/r3p-dev/dermaga/internal/spec"
 	"github.com/r3p-dev/dermaga/internal/traefik"
@@ -80,6 +81,7 @@ const VerifyTimeout = 10 * time.Second
 
 type Engine struct {
 	Apps       apps.Store
+	Databases  databases.Store
 	Host       Host
 	Paths      config.Paths
 	Site       traefik.Site
@@ -219,6 +221,42 @@ func (e *Engine) deploy(ctx context.Context, j *job) {
 		e.Apps.Update(ctx, r)
 		return
 	}
+	var linkedDBs []string
+	if e.Databases.DB != nil {
+		dbNames, err := e.Databases.GetDatabaseNamesForApp(ctx, a.ID)
+		if err != nil {
+			r.Status, r.Error = "failed", fmt.Sprintf("loading linked databases: %v", err)
+			e.Apps.Update(ctx, r)
+			return
+		}
+		linkedDBs = dbNames
+		links, err := e.Databases.GetLinksForApp(ctx, a.ID)
+		if err != nil {
+			r.Status, r.Error = "failed", fmt.Sprintf("loading database links: %v", err)
+			e.Apps.Update(ctx, r)
+			return
+		}
+		injected := map[string]string{}
+		for _, link := range links {
+			db, creds, err := e.Databases.GetByID(ctx, link.DatabaseID)
+			if err != nil {
+				r.Status, r.Error = "failed", fmt.Sprintf("loading credentials for database %s: %v", link.DatabaseID, err)
+				e.Apps.Update(ctx, r)
+				return
+			}
+			for k, v := range databases.InjectedEnv(db, creds, link) {
+				injected[k] = v
+			}
+		}
+		merged := make(map[string]string, len(injected)+len(env))
+		for k, v := range injected {
+			merged[k] = v
+		}
+		for k, v := range env {
+			merged[k] = v
+		}
+		env = merged
+	}
 	r.LogPath = e.Paths.BuildLog(a.Spec.Name, r.Rel8)
 	logw, closeLog := openLog(r.LogPath, env)
 	defer closeLog()
@@ -226,7 +264,7 @@ func (e *Engine) deploy(ctx context.Context, j *job) {
 		fmt.Fprintf(logw, "==> %s %s\n", time.Now().Format("15:04:05"), fmt.Sprintf(format, args...))
 	}
 
-	err = e.run(ctx, a, env, &r, logw, logf)
+	err = e.run(ctx, a, env, linkedDBs, &r, logw, logf)
 	if err != nil {
 		r.Status, r.Error = "failed", err.Error()
 		logf("FAILED: %v", err)
@@ -248,7 +286,7 @@ func (e *Engine) deploy(ctx context.Context, j *job) {
 // run executes the deployment pipeline: blue-green for stateless apps,
 // recreate for apps with volumes (BRIEF §3.5). Every error return leaves the previous
 // live release serving with its route (or, on a first deploy, nothing at all).
-func (e *Engine) run(ctx context.Context, a apps.App, env map[string]string, r *apps.Release, log io.Writer, logf func(string, ...any)) error {
+func (e *Engine) run(ctx context.Context, a apps.App, env map[string]string, linkedDBs []string, r *apps.Release, log io.Writer, logf func(string, ...any)) error {
 	name := a.Spec.Name
 	strat := a.Spec.EffectiveStrategy()
 	r.Status = "building"
@@ -286,6 +324,7 @@ func (e *Engine) run(ctx context.Context, a apps.App, env map[string]string, r *
 	files := map[string][]byte{}
 	fn, unit, err := quadlet.Container(quadlet.Release{
 		App: a.Spec, Rel8: r.Rel8, Image: p.Image, EnvFile: e.Paths.EnvFile(name), ImageHealthcheck: p.Healthcheck,
+		Databases: linkedDBs,
 	})
 	if err != nil {
 		return err

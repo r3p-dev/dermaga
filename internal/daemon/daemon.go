@@ -27,6 +27,7 @@ import (
 	"github.com/r3p-dev/dermaga/internal/audit"
 	"github.com/r3p-dev/dermaga/internal/auth"
 	"github.com/r3p-dev/dermaga/internal/config"
+	"github.com/r3p-dev/dermaga/internal/databases"
 	"github.com/r3p-dev/dermaga/internal/deploy"
 	"github.com/r3p-dev/dermaga/internal/host"
 	"github.com/r3p-dev/dermaga/internal/name"
@@ -101,16 +102,17 @@ func Run() error {
 	}
 
 	appStore := apps.Store{DB: db, Box: box}
+	dbStore := databases.Store{DB: db, Box: box}
 	site := traefik.Site{} // shortcut: built-in Site defaults until the installer (M8) stores host settings
 	self, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	engine := &deploy.Engine{Apps: appStore, Host: deploy.NewSystem(p, self), Paths: p, Site: site}
+	engine := &deploy.Engine{Apps: appStore, Databases: dbStore, Host: deploy.NewSystem(p, self), Paths: p, Site: site}
 	startup(appStore, p, site, self)
 
 	srv := &api.Server{DB: db, Auth: auth.New(db, box), Port: cfg.Panel.Port, Started: time.Now(),
-		Apps: appStore, Engine: engine, Paths: p,
+		Apps: appStore, Databases: dbStore, Engine: engine, Paths: p,
 		OnSettings: func(ctx context.Context) error { return writeGlobal(ctx, appStore, p, site) }}
 	hooks := &webhook.Handler{
 		Lookup: appStore.ByID,

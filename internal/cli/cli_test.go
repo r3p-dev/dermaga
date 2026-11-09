@@ -66,3 +66,19 @@ func TestRollbackCommandHelp(t *testing.T) {
 		t.Fatalf("rollback shop -h exited with %d", code)
 	}
 }
+
+func TestDBCommandHelp(t *testing.T) {
+	for _, args := range [][]string{
+		{"db", "-h"},
+		{"db", "list", "-h"},
+		{"db", "create", "test", "-h"},
+		{"db", "show", "test", "-h"},
+		{"db", "link", "test", "app", "-h"},
+		{"db", "remove", "test", "-h"},
+		{"db", "proxy", "test", "-h"},
+	} {
+		if code := Main(args); code != 0 {
+			t.Errorf("command %v exited with %d, want 0", args, code)
+		}
+	}
+}

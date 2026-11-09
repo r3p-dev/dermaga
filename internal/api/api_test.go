@@ -14,6 +14,8 @@ import (
 
 	"github.com/r3p-dev/dermaga/internal/apps"
 	"github.com/r3p-dev/dermaga/internal/auth"
+	"github.com/r3p-dev/dermaga/internal/config"
+	"github.com/r3p-dev/dermaga/internal/databases"
 	"github.com/r3p-dev/dermaga/internal/deploy"
 	"github.com/r3p-dev/dermaga/internal/secrets"
 	"github.com/r3p-dev/dermaga/internal/spec"
@@ -24,13 +26,30 @@ const pw = "a-long-enough-password"
 
 func newServer(t *testing.T) *Server {
 	t.Helper()
-	db, err := store.Open(filepath.Join(t.TempDir(), "t.db"))
+	td := t.TempDir()
+	db, err := store.Open(filepath.Join(td, "t.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
 	box, _ := secrets.New(bytes.Repeat([]byte{3}, 32))
-	s := &Server{DB: db, Auth: auth.New(db, box), Port: 7070, Started: time.Now(), Apps: apps.Store{DB: db, Box: box}}
+	p := config.Paths{
+		ConfigDir:  filepath.Join(td, "config"),
+		DataDir:    filepath.Join(td, "data"),
+		RuntimeDir: filepath.Join(td, "run"),
+		StateDir:   filepath.Join(td, "state"),
+		QuadletDir: filepath.Join(td, "quadlet"),
+		TraefikDir: filepath.Join(td, "traefik"),
+	}
+	s := &Server{
+		DB:        db,
+		Auth:      auth.New(db, box),
+		Port:      7070,
+		Started:   time.Now(),
+		Apps:      apps.Store{DB: db, Box: box},
+		Databases: databases.Store{DB: db, Box: box},
+		Paths:     p,
+	}
 	if err := s.Auth.SetPassword(pw); err != nil {
 		t.Fatal(err)
 	}
@@ -238,5 +257,132 @@ func TestRollbackEndpoint(t *testing.T) {
 	w = do(s.Socket(), req{method: "POST", path: "/api/apps/shop/rollback", body: `{"to":"nope"}`})
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 on nonexistent target, got %d", w.Code)
+	}
+}
+
+func TestDatabasesAPI(t *testing.T) {
+	s := newServer(t)
+	sock := s.Socket()
+	ctx := context.Background()
+
+	// 1. Initial list should be empty
+	w := do(sock, req{method: "GET", path: "/api/databases"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("list databases: %d %s", w.Code, w.Body)
+	}
+	if strings.TrimSpace(w.Body.String()) != "[]" {
+		t.Fatalf("expected empty list, got: %s", w.Body)
+	}
+
+	// 2. Create a postgres database
+	w = do(sock, req{
+		method: "POST",
+		path:   "/api/databases",
+		body:   `{"name":"testpg","engine":"postgres"}`,
+	})
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create database: %d %s", w.Code, w.Body)
+	}
+	var created DatabaseView
+	if err := json.Unmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("unmarshal created db: %v", err)
+	}
+	if created.Name != "testpg" || created.Engine != "postgres" {
+		t.Fatalf("unexpected db created: %+v", created)
+	}
+	if created.Credentials == nil || created.Credentials.Password == "" {
+		t.Fatalf("expected credentials in create response: %+v", created)
+	}
+
+	// 3. Duplicate creation should return 409 Conflict
+	w = do(sock, req{
+		method: "POST",
+		path:   "/api/databases",
+		body:   `{"name":"testpg","engine":"postgres"}`,
+	})
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for duplicate, got %d %s", w.Code, w.Body)
+	}
+
+	// 4. Get database without reveal should omit credentials
+	w = do(sock, req{method: "GET", path: "/api/databases/testpg"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("get database: %d %s", w.Code, w.Body)
+	}
+	var got DatabaseView
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatalf("unmarshal db: %v", err)
+	}
+	if got.Credentials != nil {
+		t.Fatalf("credentials should be nil without reveal: %+v", got.Credentials)
+	}
+
+	// 5. Get database with reveal=true should include credentials
+	w = do(sock, req{method: "GET", path: "/api/databases/testpg?reveal=true"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("get database with reveal: %d %s", w.Code, w.Body)
+	}
+	var revealed DatabaseView
+	if err := json.Unmarshal(w.Body.Bytes(), &revealed); err != nil {
+		t.Fatalf("unmarshal revealed db: %v", err)
+	}
+	if revealed.Credentials == nil || revealed.Credentials.Password != created.Credentials.Password {
+		t.Fatalf("mismatched revealed credentials: %+v vs %+v", revealed.Credentials, created.Credentials)
+	}
+
+	// 6. Create app and test link
+	appID, _, err := s.Apps.Create(ctx, spec.App{
+		Name:    "webapp",
+		Port:    8080,
+		Domains: []spec.Domain{{Host: "web.example.com", Primary: true}},
+		Source:  spec.Source{Type: "image", Image: "docker.io/library/nginx:1.27"},
+	})
+	if err != nil {
+		t.Fatalf("create app: %v", err)
+	}
+	_ = appID
+
+	w = do(sock, req{
+		method: "POST",
+		path:   "/api/databases/testpg/link",
+		body:   `{"app":"webapp"}`,
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("link database: %d %s", w.Code, w.Body)
+	}
+
+	// Check linked apps in get
+	w = do(sock, req{method: "GET", path: "/api/databases/testpg"})
+	json.Unmarshal(w.Body.Bytes(), &got)
+	if len(got.LinkedApps) != 1 || got.LinkedApps[0] != "webapp" {
+		t.Fatalf("expected linkedApps=[webapp], got: %v", got.LinkedApps)
+	}
+
+	// 7. Unlink app
+	w = do(sock, req{
+		method: "POST",
+		path:   "/api/databases/testpg/unlink",
+		body:   `{"app":"webapp"}`,
+	})
+	if w.Code != http.StatusOK {
+		t.Fatalf("unlink database: %d %s", w.Code, w.Body)
+	}
+
+	w = do(sock, req{method: "GET", path: "/api/databases/testpg"})
+	json.Unmarshal(w.Body.Bytes(), &got)
+	if len(got.LinkedApps) != 0 {
+		t.Fatalf("expected linkedApps=[], got: %v", got.LinkedApps)
+	}
+
+	// 8. Delete database
+	w = do(sock, req{method: "DELETE", path: "/api/databases/testpg?purge=true"})
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("delete database: %d %s", w.Code, w.Body)
+	}
+
+	// 9. Subsequent GET should 404
+	w = do(sock, req{method: "GET", path: "/api/databases/testpg"})
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 after delete, got: %d", w.Code)
 	}
 }

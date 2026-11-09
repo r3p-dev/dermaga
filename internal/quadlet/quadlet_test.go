@@ -84,6 +84,62 @@ func TestOtherUnitsGolden(t *testing.T) {
 	golden.Check(t, "systemd/"+tm.UnitName()+".timer", tmr)
 }
 
+func TestDatabaseUnitsGolden(t *testing.T) {
+	check := func(dir, fn string, b []byte, err error) {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+		golden.Check(t, filepath.Join("units", dir, fn), b)
+	}
+
+	// Postgres unit set
+	fn, b, err := DBVolume("shopdb")
+	check("db-postgres", fn, b, err)
+	fn, b, err = Network("shopdb")
+	check("db-postgres", fn, b, err)
+	fn, b, err = DBContainer(DBRelease{
+		Name:       "shopdb",
+		Engine:     "postgres",
+		Image:      "docker.io/library/postgres:18",
+		EnvFile:    "/home/server/.config/dermaga/env/db-shopdb.env",
+		VolumePath: "/var/lib/postgresql",
+		Caps:       []string{"CHOWN", "DAC_OVERRIDE", "FOWNER", "SETGID", "SETUID", "KILL"},
+	})
+	check("db-postgres", fn, b, err)
+
+	// MariaDB unit set
+	fn, b, err = DBVolume("mariadb")
+	check("db-mariadb", fn, b, err)
+	fn, b, err = Network("mariadb")
+	check("db-mariadb", fn, b, err)
+	fn, b, err = DBContainer(DBRelease{
+		Name:       "mariadb",
+		Engine:     "mariadb",
+		Image:      "docker.io/library/mariadb:11.8",
+		EnvFile:    "/home/server/.config/dermaga/env/db-mariadb.env",
+		VolumePath: "/var/lib/mysql",
+		Caps:       []string{"CHOWN", "DAC_OVERRIDE", "SETGID", "SETUID", "KILL"},
+	})
+	check("db-mariadb", fn, b, err)
+
+	// Valkey unit set
+	fn, b, err = DBVolume("cache")
+	check("db-valkey", fn, b, err)
+	fn, b, err = Network("cache")
+	check("db-valkey", fn, b, err)
+	fn, b, err = DBContainer(DBRelease{
+		Name:       "cache",
+		Engine:     "valkey",
+		Image:      "docker.io/valkey/valkey:9",
+		EnvFile:    "/home/server/.config/dermaga/env/db-cache.env",
+		VolumePath: "/data",
+		Caps:       []string{"SETGID", "SETUID", "KILL"},
+		Exec:       `/bin/sh -c 'exec valkey-server --requirepass "$VALKEY_PASSWORD"'`,
+	})
+	check("db-valkey", fn, b, err)
+}
+
 func TestHealthCmdEscaping(t *testing.T) {
 	_, b, err := Container(containerCases()["health-escaping"])
 	if err != nil {
@@ -121,6 +177,24 @@ func TestInjectionRejected(t *testing.T) {
 		}
 		if _, _, err := Hooks("/relay"+s, "/run/hooks"); err == nil {
 			t.Errorf("hooks rootfs %q: accepted", s)
+		}
+		if _, _, err := DBVolume("shopdb" + s); err == nil {
+			t.Errorf("db volume %q: accepted", s)
+		}
+		for field, f := range map[string]func(*DBRelease){
+			"db name":     func(d *DBRelease) { d.Name += s },
+			"db image":    func(d *DBRelease) { d.Image += s },
+			"db env":      func(d *DBRelease) { d.EnvFile += s },
+			"db vol path": func(d *DBRelease) { d.VolumePath += s },
+		} {
+			dbr := DBRelease{
+				Name: "shopdb", Engine: "postgres", Image: "docker.io/library/postgres:18",
+				EnvFile: "/home/server/.config/dermaga/env/db-shopdb.env", VolumePath: "/var/lib/postgresql",
+			}
+			f(&dbr)
+			if _, _, err := DBContainer(dbr); err == nil {
+				t.Errorf("%s %q: accepted", field, s)
+			}
 		}
 		tm := Timer{Name: "backup-system", Description: "backup system", Binary: "/usr/local/bin/dermaga", Args: []string{"backup", "run", "system"}, OnCalendar: "daily"}
 		for field, f := range map[string]func(*Timer){

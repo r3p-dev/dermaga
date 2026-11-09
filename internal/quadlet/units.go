@@ -33,6 +33,9 @@ const (
 	stopTimeout  = 10 // s: SIGTERM grace before podman kills (StopTimeout=, D3)
 	stopMargin   = 20 // s: TimeoutStopSec= = StopTimeout + this, so systemd never kills podman mid-stop
 	startTimeout = 120
+
+	dbStopTimeout = 25 // s: SIGTERM grace for databases (clean WAL/data flushing)
+	dbStopMargin  = 20 // s: TimeoutStopSec= = dbStopTimeout + dbStopMargin (45s)
 )
 
 var (
@@ -150,6 +153,92 @@ func Network(db string) (filename string, data []byte, err error) {
 		{"Label", name.Name + ".database=" + db},
 	}}}.render()
 	return fn, data, err
+}
+
+// DBVolumeUnit is the Quadlet file name of a database's named volume.
+func DBVolumeUnit(db string) string { return name.Unit + "db_" + db + ".volume" }
+
+// DBVolume renders dg-db_<name>.volume.
+func DBVolume(db string) (filename string, data []byte, err error) {
+	if !spec.ValidName(db) {
+		return "", nil, fmt.Errorf("database %q: invalid name", db)
+	}
+	fn := DBVolumeUnit(db)
+	data, err = unit{noNetworkWait, {"Volume", [][2]string{
+		{"VolumeName", strings.TrimSuffix(fn, ".volume")},
+		{"Label", name.Name + ".database=" + db},
+	}}}.render()
+	return fn, data, err
+}
+
+// DBRelease is one deployable database container: dg-db-<name>.
+type DBRelease struct {
+	Name       string      // valid database name
+	Engine     string      // postgres, mariadb, valkey
+	Image      string      // pinned image reference
+	EnvFile    string      // absolute path of ~/.config/dermaga/env/db-<name>.env
+	VolumePath string      // container path for data volume
+	Caps       []string    // engine-specific capabilities
+	Exec       string      // optional command line override
+	Limits     spec.Limits // resource limits
+}
+
+// DBContainerName is the container and unit base name of a database.
+func DBContainerName(db string) string { return name.Unit + "db-" + db }
+
+// DBContainer renders dg-db-<name>.container (BRIEF §3.7).
+func DBContainer(r DBRelease) (filename string, data []byte, err error) {
+	if !spec.ValidName(r.Name) {
+		return "", nil, fmt.Errorf("database %q: invalid name", r.Name)
+	}
+	if !spec.ValidImage(r.Image) {
+		return "", nil, fmt.Errorf("image %q: not a fully qualified image reference", r.Image)
+	}
+	if !absPathRE.MatchString(r.EnvFile) {
+		return "", nil, fmt.Errorf("env file %q: not a plain absolute path", r.EnvFile)
+	}
+	if !absPathRE.MatchString(r.VolumePath) {
+		return "", nil, fmt.Errorf("volume path %q: not a plain absolute path", r.VolumePath)
+	}
+	cname := DBContainerName(r.Name)
+	lim := r.Limits.Effective()
+
+	c := [][2]string{
+		{"ContainerName", cname},
+		{"Image", r.Image},
+		{"Pull", "never"},
+		{"Network", DBNetwork(r.Name)},
+		{"EnvironmentFile", r.EnvFile},
+		{"Label", name.Name + ".database=" + r.Name},
+		{"Label", name.Name + ".engine=" + r.Engine},
+		{"NoNewPrivileges", "true"},
+		{"DropCapability", "ALL"},
+	}
+	if len(r.Caps) > 0 {
+		c = append(c, [2]string{"AddCapability", strings.Join(r.Caps, " ")})
+	}
+	if r.Exec != "" {
+		c = append(c, [2]string{"Exec", r.Exec})
+	}
+	c = append(c,
+		[2]string{"PidsLimit", strconv.Itoa(lim.Pids)},
+		[2]string{"PodmanArgs", "--memory=" + lim.Memory + " --cpus=" + lim.CPUs},
+		[2]string{"StopTimeout", strconv.Itoa(dbStopTimeout)},
+		[2]string{"Volume", DBVolumeUnit(r.Name) + ":" + r.VolumePath},
+	)
+
+	data, err = unit{
+		noNetworkWait,
+		{"Unit", [][2]string{{"Description", fmt.Sprintf("%s database %s (%s)", name.Name, r.Name, r.Engine)}}},
+		{"Container", c},
+		{"Service", [][2]string{
+			{"Restart", "always"},
+			{"TimeoutStartSec", strconv.Itoa(startTimeout)},
+			{"TimeoutStopSec", strconv.Itoa(dbStopTimeout + dbStopMargin)},
+		}},
+		{"Install", [][2]string{{"WantedBy", "default.target"}}},
+	}.render()
+	return cname + ".container", data, err
 }
 
 // Hooks renders dg-hooks.container (ARCHITECTURE D1): the relay runs the

@@ -23,6 +23,7 @@ import (
 	"github.com/r3p-dev/dermaga/internal/audit"
 	"github.com/r3p-dev/dermaga/internal/auth"
 	"github.com/r3p-dev/dermaga/internal/config"
+	"github.com/r3p-dev/dermaga/internal/databases"
 	"github.com/r3p-dev/dermaga/internal/deploy"
 	"github.com/r3p-dev/dermaga/internal/name"
 )
@@ -39,6 +40,7 @@ type Server struct {
 	Started time.Time
 
 	Apps       apps.Store
+	Databases  databases.Store
 	Engine     *deploy.Engine
 	Paths      config.Paths
 	OnSettings func(context.Context) error // re-renders 00-global.yml after a settings change
@@ -68,6 +70,7 @@ func (s *Server) Panel() http.Handler {
 	mux.Handle("GET /api/status", s.session(s.status))
 	mux.Handle("GET /api/audit", s.session(s.auditList))
 	s.appRoutes(mux, s.session, "panel")
+	s.databaseRoutes(mux, s.session, "panel")
 	return s.guard(mux)
 }
 
@@ -80,6 +83,7 @@ func (s *Server) Socket() http.Handler {
 	mux.HandleFunc("PUT /api/admin/totp", s.enableTOTP)
 	mux.HandleFunc("DELETE /api/admin/totp", s.disableTOTP)
 	s.appRoutes(mux, func(h http.HandlerFunc) http.Handler { return h }, "cli")
+	s.databaseRoutes(mux, func(h http.HandlerFunc) http.Handler { return h }, "cli")
 	return mux
 }
 
