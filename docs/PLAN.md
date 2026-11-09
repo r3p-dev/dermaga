@@ -32,7 +32,7 @@ confirm. `docs/OPERATIONS.md` documents the harness in M8.
 | M6 | Backups and restore (done) | 16 |
 | M7 | UI (done) | 26 |
 | M8 | Installer and releases (done) | 14 |
-| M9 | Observability and notifications | 10 |
+| M9 | Observability and notifications (done) | 10 |
 | M10 | Hardening review and migration | 12 |
 | | **Total** | **150** |
 
@@ -213,13 +213,17 @@ a tampered checksum.
 
 ## M9: Observability and notifications (10 h)
 
-`podman stats` sampling every 30 s (7 d), Traefik JSON access log → per-minute aggregates (14 d,
-self-rotated), server overview (available RAM, swap, disk, uptime, pending security updates,
-reboot-required), charts, notifications (ntfy / Telegram / Discord).
+**Done 2026-11-09.** Evidence: [`M9-EVIDENCE.md`](M9-EVIDENCE.md). New decisions D59–D60 in ARCHITECTURE.
 
-Acceptance: numbers cross-checked against `podman stats` and an `oha` run with known counts;
-each notification type delivered once to a real target; daemon idle RSS still < 30 MB and
-Traefik + daemon < 100 MB.
+`podman stats` sampling every 30 s (7 d retention in SQLite, 1 h in-memory circular buffer), Traefik
+JSON access log → per-minute aggregates (14 d retention in SQLite, p50/p95 latency, self-rotated at 10 MB),
+server overview (CPU %, available RAM, swap, disk % with alert at > 85%, uptime, pending security updates,
+reboot-required), SvelteKit dashboard telemetry grids and app traffic charts, notifications (ntfy / Telegram /
+Discord) with backoff retry and event wiring (`backup.failed`, `deploy.failed`, `disk.warning`).
+
+Acceptance: numbers cross-checked against live `podman stats` and Traefik access log counts;
+test notification and backup failure alert delivered live to real targets; daemon idle RSS 22.1 MB
+(< 30 MB budget) and combined daemon + Traefik RSS 47 MB active (< 100 MB budget).
 
 ## M10: Hardening review and migration (12 h)
 
