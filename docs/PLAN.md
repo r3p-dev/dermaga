@@ -153,6 +153,8 @@ deployment state machine fully covered by tests with a fake host.
 
 ## M5: Databases (10 h)
 
+**Done 2026-11-09.** Evidence: [`M5-EVIDENCE.md`](M5-EVIDENCE.md).
+
 Postgres, MariaDB, Valkey (pinned majors, re-checked first). `.container` + `.volume` +
 `dg-db-<name>.network`, never on `web`. Credentials ≥ 32 bytes, encrypted. Link/unlink → network
 attach + env injection (editable names) + app redeploy. Minimum capabilities per engine found by
