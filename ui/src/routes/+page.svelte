@@ -2,7 +2,8 @@
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api/client';
 	import { toast } from '$lib/stores/toast';
-	import type { AppView, DatabaseView, Status } from '$lib/types/api';
+	import type { AppView, DatabaseView, Status, TelemetryOverview } from '$lib/types/api';
+	import type * as telemetryTypes from '$lib/types/telemetry';
 	import type { Check } from '$lib/types/doctor';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import Modal from '$lib/components/Modal.svelte';
@@ -11,6 +12,9 @@
 	let apps = $state<AppView[]>([]);
 	let databases = $state<DatabaseView[]>([]);
 	let checks = $state<Check[]>([]);
+	let telemetry = $state<TelemetryOverview | null>(null);
+	let containerMetrics = $state<Record<string, telemetryTypes.ContainerMetric[]>>({});
+	let trafficBuckets = $state<telemetryTypes.RequestBucket[]>([]);
 	let loading = $state(true);
 	let searchFilter = $state('');
 	let doctorModalOpen = $state(false);
@@ -22,16 +26,22 @@
 	async function loadData() {
 		loading = true;
 		try {
-			const [st, appList, dbList, chkList] = await Promise.all([
+			const [st, appList, dbList, chkList, tel, met, traf] = await Promise.all([
 				api.getStatus(),
 				api.listApps(),
 				api.listDatabases(),
-				api.getDoctor()
+				api.getDoctor(),
+				api.getTelemetryOverview().catch(() => null),
+				api.getTelemetryMetrics('', '1h').catch(() => ({})),
+				api.getTelemetryTraffic('', '24h').catch(() => [])
 			]);
 			status = st;
 			apps = appList;
 			databases = dbList;
 			checks = chkList;
+			telemetry = tel;
+			containerMetrics = met;
+			trafficBuckets = traf;
 		} catch (err: any) {
 			toast.error(err.message || 'Failed to load dashboard data');
 		} finally {
@@ -63,6 +73,46 @@
 		} catch (err: any) {
 			toast.error(err.message || `Failed to deploy ${appName}`);
 		}
+	}
+
+	function formatBytes(bytes: number): string {
+		if (!bytes || bytes <= 0) return '0 B';
+		const k = 1024;
+		const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+		const i = Math.floor(Math.log(bytes) / Math.log(k));
+		return (bytes / Math.pow(k, i)).toFixed(1) + ' ' + sizes[i];
+	}
+
+	function formatUptime(seconds: number): string {
+		if (!seconds || seconds <= 0) return '0s';
+		const d = Math.floor(seconds / 86400);
+		const h = Math.floor((seconds % 86400) / 3600);
+		const m = Math.floor((seconds % 3600) / 60);
+		if (d > 0) return `${d}d ${h}h`;
+		if (h > 0) return `${h}h ${m}m`;
+		return `${m}m`;
+	}
+
+	function getAppMetric(appName: string, rel8?: string): telemetryTypes.ContainerMetric | null {
+		const targetName = rel8 ? `dg-${appName}-${rel8}` : `dg-${appName}`;
+		for (const [name, samples] of Object.entries(containerMetrics)) {
+			if (name === targetName || name.startsWith(`dg-${appName}-`)) {
+				if (samples.length > 0) return samples[samples.length - 1];
+			}
+		}
+		return null;
+	}
+
+	function getAppTraffic(appName: string): { total: number; p95: number } {
+		const appBuckets = trafficBuckets.filter((b) => b.app === appName);
+		if (appBuckets.length === 0) return { total: 0, p95: 0 };
+		let total = 0;
+		let maxP95 = 0;
+		for (const b of appBuckets) {
+			total += b.totalRequests;
+			if (b.p95Ms > maxP95) maxP95 = b.p95Ms;
+		}
+		return { total, p95: Math.round(maxP95) };
 	}
 </script>
 
@@ -184,6 +234,102 @@
 		</div>
 	</div>
 
+	<!-- Host Telemetry & Infrastructure Observability (M9) -->
+	{#if telemetry}
+		{@const h = telemetry.host}
+		<div class="space-y-3">
+			<div class="flex items-center justify-between">
+				<h2 class="text-sm font-bold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">
+					Host Infrastructure Telemetry
+				</h2>
+				<span class="text-[11px] text-zinc-400">
+					System Uptime: {formatUptime(h.uptimeSeconds)}
+				</span>
+			</div>
+
+			<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+				<!-- Host CPU -->
+				<div class="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xs space-y-2">
+					<div class="flex items-center justify-between text-xs font-semibold text-zinc-500">
+						<span>HOST CPU</span>
+						<span class="font-mono text-zinc-900 dark:text-zinc-100 font-bold">
+							{h.cpuPercent.toFixed(1)}%
+						</span>
+					</div>
+					<div class="w-full bg-zinc-100 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
+						<div
+							class="h-full rounded-full transition-all {h.cpuPercent > 85 ? 'bg-rose-500' : h.cpuPercent > 70 ? 'bg-amber-500' : 'bg-indigo-600'}"
+							style="width: {Math.min(100, Math.max(2, h.cpuPercent))}%"
+						></div>
+					</div>
+					<p class="text-[11px] text-zinc-400">Across all machine cores</p>
+				</div>
+
+				<!-- Host Memory -->
+				<div class="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xs space-y-2">
+					<div class="flex items-center justify-between text-xs font-semibold text-zinc-500">
+						<span>MEMORY (RAM)</span>
+						<span class="font-mono text-zinc-900 dark:text-zinc-100 font-bold">
+							{h.memUsedPercent.toFixed(0)}%
+						</span>
+					</div>
+					<div class="w-full bg-zinc-100 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
+						<div
+							class="h-full rounded-full transition-all {h.memUsedPercent > 85 ? 'bg-rose-500' : 'bg-emerald-500'}"
+							style="width: {Math.min(100, Math.max(2, h.memUsedPercent))}%"
+						></div>
+					</div>
+					<p class="text-[11px] text-zinc-400">
+						{formatBytes(h.memAvailableBytes)} available of {formatBytes(h.memTotalBytes)}
+					</p>
+				</div>
+
+				<!-- Host Storage -->
+				<div
+					class="p-4 rounded-xl border shadow-2xs space-y-2 {h.diskUsedPercent >= 85
+						? 'border-rose-300 dark:border-rose-900 bg-rose-50/30 dark:bg-rose-950/20'
+						: 'border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900'}"
+				>
+					<div class="flex items-center justify-between text-xs font-semibold text-zinc-500">
+						<span>STORAGE (DISK)</span>
+						<span class="font-mono font-bold {h.diskUsedPercent >= 85 ? 'text-rose-600 dark:text-rose-400' : 'text-zinc-900 dark:text-zinc-100'}">
+							{h.diskUsedPercent.toFixed(0)}%
+						</span>
+					</div>
+					<div class="w-full bg-zinc-100 dark:bg-zinc-800 h-2 rounded-full overflow-hidden">
+						<div
+							class="h-full rounded-full transition-all {h.diskUsedPercent >= 85 ? 'bg-rose-500' : 'bg-indigo-600'}"
+							style="width: {Math.min(100, Math.max(2, h.diskUsedPercent))}%"
+						></div>
+					</div>
+					<p class="text-[11px] text-zinc-400">
+						{formatBytes(h.diskFreeBytes)} free of {formatBytes(h.diskTotalBytes)}
+					</p>
+				</div>
+
+				<!-- OS Updates & Security -->
+				<div class="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-2xs space-y-2">
+					<div class="flex items-center justify-between text-xs font-semibold text-zinc-500">
+						<span>SECURITY & UPDATES</span>
+						{#if h.rebootRequired}
+							<span class="text-[10px] px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400 font-bold uppercase">
+								Reboot Req
+							</span>
+						{:else}
+							<span class="text-xs text-emerald-600 dark:text-emerald-400 font-medium">OK</span>
+						{/if}
+					</div>
+					<div class="text-xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
+						{h.pendingUpdates} pending
+					</div>
+					<p class="text-[11px] text-zinc-400">
+						{h.pendingSecurityUpdates} security updates
+					</p>
+				</div>
+			</div>
+		</div>
+	{/if}
+
 	<!-- Applications Section -->
 	<div class="space-y-4">
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -221,6 +367,8 @@
 			<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
 				{#each filteredApps as app}
 					{@const primaryDomain = app.domains.find((d) => d.primary)?.host || app.domains[0]?.host}
+					{@const metric = getAppMetric(app.name, app.live?.rel8)}
+					{@const traffic = getAppTraffic(app.name)}
 					<div
 						class="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 shadow-2xs hover:border-zinc-300 dark:hover:border-zinc-700 transition-all flex flex-col justify-between"
 					>
@@ -251,6 +399,32 @@
 								</div>
 								<StatusBadge status={app.live ? 'live' : 'inactive'} />
 							</div>
+
+							<!-- Telemetry & Container Usage Badges (M9) -->
+							{#if app.live}
+								<div class="mt-3 grid grid-cols-2 gap-2 p-2.5 rounded-lg bg-zinc-50 dark:bg-zinc-950/60 border border-zinc-100 dark:border-zinc-800/80 text-[11px]">
+									<div>
+										<span class="text-zinc-400 block text-[10px] uppercase font-semibold">CPU / RAM</span>
+										<span class="font-mono font-medium text-zinc-800 dark:text-zinc-200">
+											{#if metric}
+												{metric.cpuPercent.toFixed(1)}% • {formatBytes(metric.memBytes)}
+											{:else}
+												0.0% • -
+											{/if}
+										</span>
+									</div>
+									<div>
+										<span class="text-zinc-400 block text-[10px] uppercase font-semibold">Traffic (24h)</span>
+										<span class="font-mono font-medium text-zinc-800 dark:text-zinc-200">
+											{#if traffic.total > 0}
+												{traffic.total} req • {traffic.p95}ms p95
+											{:else}
+												0 req • idle
+											{/if}
+										</span>
+									</div>
+								</div>
+							{/if}
 
 							<div class="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800/80 space-y-1.5 text-xs text-zinc-500">
 								<div class="flex items-center justify-between">
@@ -336,7 +510,7 @@
 								{db.engine.slice(0, 2)}
 							</div>
 							<div>
-								<h3 class="font-bold text-sm text-zinc-900 dark:text-zinc-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+								<h3 class="font-bold text-sm text-zinc-900 dark:text-zinc-100 group-hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
 									{db.name}
 								</h3>
 								<p class="text-xs text-zinc-500 font-mono">

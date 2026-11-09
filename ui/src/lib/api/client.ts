@@ -6,7 +6,12 @@ import type {
 	LinkDatabaseRequest,
 	RunBackupRequest,
 	Settings as AppSettings,
-	GitHubSettings
+	GitHubSettings,
+	NotificationSettingsView,
+	UpdateNotificationSettingsRequest,
+	TestNotificationRequest,
+	TestNotificationResponse,
+	TelemetryOverview
 } from '../types/api';
 import type * as spec from '../types/spec';
 import type * as apps from '../types/apps';
@@ -14,6 +19,7 @@ import type * as databases from '../types/databases';
 import type * as backup from '../types/backup';
 import type * as audit from '../types/audit';
 import type * as doctor from '../types/doctor';
+import type * as telemetry from '../types/telemetry';
 
 export class APIError extends Error {
 	constructor(
@@ -291,6 +297,51 @@ export const api = {
 		return request<AppSettings>('/api/settings', {
 			method: 'PUT',
 			body: JSON.stringify(settings)
+		});
+	},
+
+	// Telemetry & Observability (M9)
+	async getTelemetryOverview(): Promise<TelemetryOverview> {
+		return request<TelemetryOverview>('/api/telemetry/overview');
+	},
+
+	async getTelemetryMetrics(
+		container = '',
+		since = ''
+	): Promise<Record<string, telemetry.ContainerMetric[]>> {
+		const params = new URLSearchParams();
+		if (container) params.set('container', container);
+		if (since) params.set('since', since);
+		const qs = params.toString();
+		return request<Record<string, telemetry.ContainerMetric[]>>(
+			`/api/telemetry/metrics${qs ? '?' + qs : ''}`
+		);
+	},
+
+	async getTelemetryTraffic(app = '', since = ''): Promise<telemetry.RequestBucket[]> {
+		const params = new URLSearchParams();
+		if (app) params.set('app', app);
+		if (since) params.set('since', since);
+		const qs = params.toString();
+		return request<telemetry.RequestBucket[]>(`/api/telemetry/traffic${qs ? '?' + qs : ''}`);
+	},
+
+	// Notifications (M9)
+	async getNotificationSettings(): Promise<NotificationSettingsView> {
+		return request<NotificationSettingsView>('/api/settings/notifications');
+	},
+
+	async updateNotificationSettings(req: UpdateNotificationSettingsRequest): Promise<void> {
+		return request<void>('/api/settings/notifications', {
+			method: 'POST',
+			body: JSON.stringify(req)
+		});
+	},
+
+	async testNotification(req?: TestNotificationRequest): Promise<TestNotificationResponse> {
+		return request<TestNotificationResponse>('/api/notifications/test', {
+			method: 'POST',
+			body: JSON.stringify(req || {})
 		});
 	}
 };

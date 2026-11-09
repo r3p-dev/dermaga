@@ -32,10 +32,12 @@ import (
 	"github.com/r3p-dev/dermaga/internal/deploy"
 	"github.com/r3p-dev/dermaga/internal/host"
 	"github.com/r3p-dev/dermaga/internal/name"
+	"github.com/r3p-dev/dermaga/internal/notify"
 	"github.com/r3p-dev/dermaga/internal/quadlet"
 	"github.com/r3p-dev/dermaga/internal/reconcile"
 	"github.com/r3p-dev/dermaga/internal/secrets"
 	"github.com/r3p-dev/dermaga/internal/store"
+	"github.com/r3p-dev/dermaga/internal/telemetry"
 	"github.com/r3p-dev/dermaga/internal/traefik"
 	"github.com/r3p-dev/dermaga/internal/webhook"
 	"github.com/r3p-dev/dermaga/ui"
@@ -56,7 +58,7 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	for _, d := range []string{p.ConfigDir, p.DataDir, p.RuntimeDir, p.StateDir} {
+	for _, d := range []string{p.ConfigDir, p.DataDir, p.RuntimeDir, p.StateDir, p.TraefikLogDir()} {
 		if err := os.MkdirAll(d, 0o700); err != nil {
 			return err
 		}
@@ -64,6 +66,7 @@ func Run() error {
 			return err
 		}
 	}
+	_ = os.Chmod(p.TraefikLogDir(), 0o755)
 	cfg, err := config.Load(p.ConfigFile())
 	if err != nil {
 		return err
@@ -110,8 +113,48 @@ func Run() error {
 	if err != nil {
 		return err
 	}
-	engine := &deploy.Engine{Apps: appStore, Databases: dbStore, Host: deploy.NewSystem(p, self), Paths: p, Site: site}
+	notifier := notify.NewDispatcher(box)
+
+	alertDispatcher := func(ctx context.Context, event, title, details string) {
+		if db == nil || box == nil || notifier == nil {
+			return
+		}
+		cfg, err := notify.LoadSettings(ctx, db, box)
+		if err != nil || cfg.Provider == notify.ProviderDisabled || cfg.Provider == "" {
+			return
+		}
+		level := "info"
+		if strings.Contains(event, "failed") {
+			level = "error"
+		} else if strings.Contains(event, "warn") {
+			level = "warn"
+		}
+		go func() {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			if err := notifier.Dispatch(bgCtx, cfg, notify.Message{
+				Event:     event,
+				Title:     title,
+				Body:      details,
+				Level:     level,
+				Timestamp: time.Now(),
+			}); err != nil {
+				slog.Warn("alert dispatch failed", "event", event, "err", err)
+			}
+		}()
+	}
+
+	engine := &deploy.Engine{
+		Apps:      appStore,
+		Databases: dbStore,
+		Host:      deploy.NewSystem(p, self),
+		Paths:     p,
+		Site:      site,
+		OnAlert:   alertDispatcher,
+	}
 	startup(appStore, p, site, self)
+
+	collector := telemetry.NewCollector(db, p.AccessLog(), p.DataDir, alertDispatcher)
 
 	backupMgr := backup.NewManager(db, box, dbStore, p, nil)
 	if err := backupMgr.SyncAllTimers(context.Background()); err != nil {
@@ -120,6 +163,7 @@ func Run() error {
 
 	srv := &api.Server{DB: db, Auth: auth.New(db, box), Port: cfg.Panel.Port, Started: time.Now(),
 		Apps: appStore, Databases: dbStore, Engine: engine, Backup: backupMgr, Paths: p,
+		Telemetry: collector, Notifier: notifier, Box: box,
 		OnSettings: func(ctx context.Context) error { return writeGlobal(ctx, appStore, p, site) },
 		UI:         ui.FS()}
 	hooks := &webhook.Handler{
@@ -141,6 +185,7 @@ func Run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
 	go engine.Run(ctx)
+	collector.Start(ctx)
 	errc := make(chan error, len(servers))
 	for i := range servers {
 		go func() { errc <- servers[i].Serve(listeners[i]) }()

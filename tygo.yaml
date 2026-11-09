@@ -28,6 +28,11 @@ packages:
     type_mappings:
       time.Time: "string"
 
+  - path: "github.com/r3p-dev/dermaga/internal/telemetry"
+    output_path: "ui/src/lib/types/telemetry.ts"
+    type_mappings:
+      time.Time: "string"
+
   - path: "github.com/r3p-dev/dermaga/internal/api"
     output_path: "ui/src/lib/types/api.ts"
     type_mappings:
@@ -40,6 +45,9 @@ packages:
       backup.Settings: "backup.Settings"
       audit.Entry: "audit.Entry"
       doctor.Check: "doctor.Check"
+      telemetry.HostTelemetry: "telemetry.HostTelemetry"
+      telemetry.ContainerMetric: "telemetry.ContainerMetric"
+      telemetry.RequestBucket: "telemetry.RequestBucket"
     frontmatter: |
       import type * as spec from './spec';
       import type * as apps from './apps';
@@ -47,3 +55,4 @@ packages:
       import type * as backup from './backup';
       import type * as audit from './audit';
       import type * as doctor from './doctor';
+      import type * as telemetry from './telemetry';

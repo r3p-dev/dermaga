@@ -31,6 +31,9 @@ import (
 	"github.com/r3p-dev/dermaga/internal/deploy"
 	"github.com/r3p-dev/dermaga/internal/doctor"
 	"github.com/r3p-dev/dermaga/internal/name"
+	"github.com/r3p-dev/dermaga/internal/notify"
+	"github.com/r3p-dev/dermaga/internal/secrets"
+	"github.com/r3p-dev/dermaga/internal/telemetry"
 )
 
 const (
@@ -49,6 +52,9 @@ type Server struct {
 	Engine     *deploy.Engine
 	Backup     *backup.Manager
 	Paths      config.Paths
+	Telemetry  *telemetry.Collector
+	Notifier   *notify.Dispatcher
+	Box        *secrets.Box
 	OnSettings func(context.Context) error // re-renders 00-global.yml after a settings change
 	UI         fs.FS                       // embedded frontend assets (M7)
 }
@@ -77,6 +83,7 @@ func (s *Server) Panel() http.Handler {
 	s.appRoutes(mux, s.session, "panel")
 	s.databaseRoutes(mux, s.session, "panel")
 	s.backupRoutes(mux, s.session, "panel")
+	s.telemetryRoutes(mux, s.session, "panel")
 
 	if s.UI != nil {
 		s.mountUI(mux)
@@ -100,6 +107,7 @@ func (s *Server) Socket() http.Handler {
 	s.appRoutes(mux, func(h http.HandlerFunc) http.Handler { return h }, "cli")
 	s.databaseRoutes(mux, func(h http.HandlerFunc) http.Handler { return h }, "cli")
 	s.backupRoutes(mux, func(h http.HandlerFunc) http.Handler { return h }, "cli")
+	s.telemetryRoutes(mux, func(h http.HandlerFunc) http.Handler { return h }, "cli")
 	return mux
 }
 

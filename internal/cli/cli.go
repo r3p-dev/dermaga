@@ -53,6 +53,8 @@ func commands() map[string]command {
 		"middleware":     {cmdMiddleware, "middleware <app> [show | basic-auth add|remove USER]"},
 		"github":         {cmdGitHub, "known-hosts: pin GitHub's SSH host keys"},
 		"settings":       {cmdSettings, "show or change settings [--hook-host H]"},
+		"config":         {cmdConfig, "show or change configuration (notifications)"},
+		"notify":         {cmdNotify, "send test notification to configured channels"},
 		"traefik":        {cmdTraefik, "static: print traefik.yml [--acme-email E] [--acme-staging]"},
 		"self-update":    {cmdSelfUpdate, "check for or apply updates [--check] [--version V] [--force]"},
 		"version":        {func([]string) error { fmt.Println(name.Name, name.Version()); return nil }, "print the version"},
@@ -65,7 +67,7 @@ func commands() map[string]command {
 func usage(w io.Writer) {
 	fmt.Fprintf(w, "usage: %s <command> [flags]\n\ncommands:\n", name.Name)
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
-	for _, n := range []string{"status", "apps", "db", "backup", "restore-system", "keys", "deploy", "rollback", "logs", "env", "domains", "middleware", "settings", "github",
+	for _, n := range []string{"status", "apps", "db", "backup", "restore-system", "keys", "deploy", "rollback", "logs", "env", "domains", "middleware", "settings", "config", "notify", "github",
 		"audit", "admin", "panel", "doctor", "traefik", "self-update", "daemon", "version", "hook-relay", "probe"} {
 		fmt.Fprintf(tw, "  %s\t%s\n", n, commands()[n].usage)
 	}
@@ -132,6 +134,21 @@ func cmdStatus(args []string) error {
 	fmt.Printf("%s %s (%s), pid %d, up %s, RSS %.1f MB\nadmin password: %s, TOTP: %s\n",
 		st.Name, st.Version, st.GoVersion, st.PID, time.Since(st.StartedAt).Round(time.Second), float64(st.RSSKB)/1024,
 		yesNo(st.AdminPasswordSet, "set", "NOT SET (dermaga admin set-password)"), yesNo(st.TOTPEnabled, "on", "off"))
+
+	var ov api.TelemetryOverview
+	if err := call("GET", "/api/telemetry/overview", nil, &ov); err == nil && ov.Host.MemTotalBytes > 0 {
+		h := ov.Host
+		fmt.Printf("host: CPU %.1f%%, RAM %.1f/%.1f GB (%.0f%%), Swap %.1f/%.1f GB, Disk %.0f%% used (%.1f GB free)\n",
+			h.CPUPercent,
+			float64(h.MemUsedBytes)/(1<<30), float64(h.MemTotalBytes)/(1<<30), h.MemUsedPercent,
+			float64(h.SwapUsedBytes)/(1<<30), float64(h.SwapTotalBytes)/(1<<30),
+			h.DiskUsedPercent, float64(h.DiskFreeBytes)/(1<<30),
+		)
+		if h.PendingUpdates > 0 || h.RebootRequired {
+			fmt.Printf("updates: %d pending (%d security), reboot required: %s\n",
+				h.PendingUpdates, h.PendingSecurityUpdates, yesNo(h.RebootRequired, "yes", "no"))
+		}
+	}
 	return nil
 }
 
