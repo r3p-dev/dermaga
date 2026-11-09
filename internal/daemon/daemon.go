@@ -38,6 +38,7 @@ import (
 	"github.com/r3p-dev/dermaga/internal/store"
 	"github.com/r3p-dev/dermaga/internal/traefik"
 	"github.com/r3p-dev/dermaga/internal/webhook"
+	"github.com/r3p-dev/dermaga/ui"
 )
 
 func refuseRoot(euid int) error {
@@ -119,7 +120,8 @@ func Run() error {
 
 	srv := &api.Server{DB: db, Auth: auth.New(db, box), Port: cfg.Panel.Port, Started: time.Now(),
 		Apps: appStore, Databases: dbStore, Engine: engine, Backup: backupMgr, Paths: p,
-		OnSettings: func(ctx context.Context) error { return writeGlobal(ctx, appStore, p, site) }}
+		OnSettings: func(ctx context.Context) error { return writeGlobal(ctx, appStore, p, site) },
+		UI:         ui.FS()}
 	hooks := &webhook.Handler{
 		Lookup: appStore.ByID,
 		Record: appStore.RecordDelivery,

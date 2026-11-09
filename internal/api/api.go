@@ -11,9 +11,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
+	"path"
 	"runtime"
 	"strconv"
 	"strings"
@@ -26,6 +29,7 @@ import (
 	"github.com/r3p-dev/dermaga/internal/config"
 	"github.com/r3p-dev/dermaga/internal/databases"
 	"github.com/r3p-dev/dermaga/internal/deploy"
+	"github.com/r3p-dev/dermaga/internal/doctor"
 	"github.com/r3p-dev/dermaga/internal/name"
 )
 
@@ -46,6 +50,7 @@ type Server struct {
 	Backup     *backup.Manager
 	Paths      config.Paths
 	OnSettings func(context.Context) error // re-renders 00-global.yml after a settings change
+	UI         fs.FS                       // embedded frontend assets (M7)
 }
 
 // NewHTTPServer applies the timeouts every listener must have (BRIEF §4.4).
@@ -64,16 +69,22 @@ func NewHTTPServer(h http.Handler) *http.Server {
 // Panel is the handler for 127.0.0.1:<port>, reached only through the SSH tunnel.
 func (s *Server) Panel() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "%s %s: the web UI arrives in M7; the JSON API is under /api/.\n", name.Name, name.Version())
-	})
 	mux.HandleFunc("POST /api/login", s.login)
 	mux.HandleFunc("POST /api/logout", s.logout)
 	mux.Handle("GET /api/status", s.session(s.status))
+	mux.Handle("GET /api/doctor", s.session(s.doctor))
 	mux.Handle("GET /api/audit", s.session(s.auditList))
 	s.appRoutes(mux, s.session, "panel")
 	s.databaseRoutes(mux, s.session, "panel")
 	s.backupRoutes(mux, s.session, "panel")
+
+	if s.UI != nil {
+		s.mountUI(mux)
+	} else {
+		mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprintf(w, "%s %s: the web UI arrives in M7; the JSON API is under /api/.\n", name.Name, name.Version())
+		})
+	}
 	return s.guard(mux)
 }
 
@@ -81,6 +92,7 @@ func (s *Server) Panel() http.Handler {
 func (s *Server) Socket() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/status", s.status)
+	mux.HandleFunc("GET /api/doctor", s.doctor)
 	mux.HandleFunc("GET /api/audit", s.auditList)
 	mux.HandleFunc("PUT /api/admin/password", s.setPassword)
 	mux.HandleFunc("PUT /api/admin/totp", s.enableTOTP)
@@ -89,6 +101,43 @@ func (s *Server) Socket() http.Handler {
 	s.databaseRoutes(mux, func(h http.HandlerFunc) http.Handler { return h }, "cli")
 	s.backupRoutes(mux, func(h http.HandlerFunc) http.Handler { return h }, "cli")
 	return mux
+}
+
+func (s *Server) mountUI(mux *http.ServeMux) {
+	fileServer := http.FileServerFS(s.UI)
+	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
+		clean := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
+		if clean != "" && clean != "." && clean != "index.html" {
+			f, err := s.UI.Open(clean)
+			if err == nil {
+				defer f.Close()
+				if stat, err := f.Stat(); err == nil && !stat.IsDir() {
+					if strings.HasPrefix(clean, "_app/immutable/") {
+						w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+					} else {
+						w.Header().Set("Cache-Control", "no-cache")
+					}
+					fileServer.ServeHTTP(w, r)
+					return
+				}
+			}
+		}
+		// Root or SPA client-side routing fallback: serve index.html
+		indexFile, err := s.UI.Open("index.html")
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		defer indexFile.Close()
+		stat, err := indexFile.Stat()
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Cache-Control", "no-cache")
+		http.ServeContent(w, r, "index.html", stat.ModTime(), indexFile.(io.ReadSeeker))
+	})
 }
 
 // guard rejects DNS-rebinding (Host) and cross-site writes (Origin) before routing (BRIEF §4.2).
@@ -193,6 +242,35 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		Name: name.Name, Version: name.Version(), GoVersion: runtime.Version(), PID: os.Getpid(),
 		StartedAt: s.Started, RSSKB: rssKB(), AdminPasswordSet: pw, TOTPEnabled: totp,
 	})
+}
+
+func (s *Server) doctor(w http.ResponseWriter, r *http.Request) {
+	cs := doctor.RunHostChecks()
+	pw, totp, _ := s.Auth.State()
+	daemonCs := []doctor.Check{
+		{Name: "daemon", Status: "ok", Detail: fmt.Sprintf("%s, pid %d, RSS %.1f MB", name.Version(), os.Getpid(), float64(rssKB())/1024)},
+	}
+	if pw {
+		daemonCs = append(daemonCs, doctor.Check{Name: "admin password", Status: "ok", Detail: "set"})
+	} else {
+		daemonCs = append(daemonCs, doctor.Check{Name: "admin password", Status: "warn", Detail: "not set: dermaga admin set-password"})
+	}
+	if totp {
+		daemonCs = append(daemonCs, doctor.Check{Name: "totp", Status: "ok", Detail: "enabled"})
+	} else {
+		daemonCs = append(daemonCs, doctor.Check{Name: "totp", Status: "warn", Detail: "off: dermaga admin totp enable (strongly recommended)"})
+	}
+
+	var all []doctor.Check
+	if len(cs) >= 3 {
+		all = make([]doctor.Check, 0, len(cs)+len(daemonCs))
+		all = append(all, cs[:3]...)
+		all = append(all, daemonCs...)
+		all = append(all, cs[3:]...)
+	} else {
+		all = append(cs, daemonCs...)
+	}
+	writeJSON(w, http.StatusOK, all)
 }
 
 func (s *Server) auditList(w http.ResponseWriter, r *http.Request) {

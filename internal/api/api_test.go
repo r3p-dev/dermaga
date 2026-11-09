@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	_ "github.com/r3p-dev/dermaga/internal/golden" // accepts go test ./... -update
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -386,3 +387,110 @@ func TestDatabasesAPI(t *testing.T) {
 		t.Fatalf("expected 404 after delete, got: %d", w.Code)
 	}
 }
+
+func TestDoctorEndpoint(t *testing.T) {
+	s := newServer(t)
+	sock := s.Socket()
+	w := do(sock, req{method: "GET", path: "/api/doctor"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("doctor endpoint failed: %d %s", w.Code, w.Body)
+	}
+	var checks []struct {
+		Name   string `json:"name"`
+		Status string `json:"status"`
+		Detail string `json:"detail"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &checks); err != nil {
+		t.Fatalf("failed to decode checks: %v", err)
+	}
+	if len(checks) == 0 {
+		t.Fatal("expected at least 1 check result")
+	}
+}
+
+func TestEmbeddedUIServing(t *testing.T) {
+	s := newServer(t)
+	mockUI := &mockFS{
+		files: map[string]string{
+			"index.html":                      "<html><body>Mock Dermaga SPA</body></html>",
+			"_app/immutable/chunks/bundle.js": "console.log('dermaga bundle');",
+			"favicon.svg":                     "<svg></svg>",
+		},
+	}
+	s.UI = mockUI
+	panel := s.Panel()
+
+	// 1. Root path serves index.html
+	w := do(panel, req{method: "GET", path: "/"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("root path failed: %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Mock Dermaga SPA") {
+		t.Fatalf("unexpected root body: %s", w.Body)
+	}
+	if cc := w.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Fatalf("expected Cache-Control: no-cache, got: %s", cc)
+	}
+
+	// 2. Immutable asset serves with immutable cache header
+	w = do(panel, req{method: "GET", path: "/_app/immutable/chunks/bundle.js"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("bundle.js failed: %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "dermaga bundle") {
+		t.Fatalf("unexpected bundle body: %s", w.Body)
+	}
+	if cc := w.Header().Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+		t.Fatalf("expected immutable Cache-Control, got: %s", cc)
+	}
+
+	// 3. Client-side route (e.g. /apps/portfolio or /databases) falls back to index.html
+	w = do(panel, req{method: "GET", path: "/apps/portfolio"})
+	if w.Code != http.StatusOK {
+		t.Fatalf("SPA route fallback failed: %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Mock Dermaga SPA") {
+		t.Fatalf("unexpected fallback body: %s", w.Body)
+	}
+
+	// 4. API routes should not fall back to index.html (e.g. unauthorized API returns 401)
+	w = do(panel, req{method: "GET", path: "/api/status"})
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for /api/status without session, got: %d", w.Code)
+	}
+}
+
+type mockFS struct {
+	files map[string]string
+}
+
+func (m *mockFS) Open(name string) (fs.File, error) {
+	content, ok := m.files[name]
+	if !ok {
+		return nil, fs.ErrNotExist
+	}
+	return &mockFile{
+		Reader: bytes.NewReader([]byte(content)),
+		name:   name,
+		size:   int64(len(content)),
+	}, nil
+}
+
+type mockFile struct {
+	*bytes.Reader
+	name string
+	size int64
+}
+
+func (f *mockFile) Stat() (fs.FileInfo, error) {
+	return f, nil
+}
+func (f *mockFile) Close() error {
+	return nil
+}
+func (f *mockFile) Name() string       { return f.name }
+func (f *mockFile) Size() int64        { return f.size }
+func (f *mockFile) Mode() fs.FileMode  { return 0o444 }
+func (f *mockFile) ModTime() time.Time { return time.Unix(1700000000, 0) }
+func (f *mockFile) IsDir() bool        { return false }
+func (f *mockFile) Sys() any           { return nil }
