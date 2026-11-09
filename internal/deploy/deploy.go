@@ -87,6 +87,7 @@ type Engine struct {
 	Site       traefik.Site
 	DrainGrace time.Duration // default: 10 * time.Second (BRIEF §3.5 step 8)
 	KeepImages int           // default: 5 (BRIEF §3.5 step 8)
+	OnAlert    func(ctx context.Context, event, title, details string)
 
 	mu      sync.Mutex
 	order   []string        // app names in queue order
@@ -277,10 +278,16 @@ func (e *Engine) deploy(ctx context.Context, j *job) {
 			slog.Error("recording failed release", "app", a.Spec.Name, "err", uerr)
 		}
 		e.audit(actor(r), "deploy.failed", a.Spec.Name, r.Rel8+": "+err.Error())
+		if e.OnAlert != nil {
+			e.OnAlert(ctx, "deploy.failed", fmt.Sprintf("Deployment Failed: %s", a.Spec.Name), fmt.Sprintf("Release %s failed: %v", r.Rel8, err))
+		}
 		return
 	}
 	logf("release %s is live", r.Rel8)
 	e.audit(actor(r), "deploy.live", a.Spec.Name, r.Rel8)
+	if e.OnAlert != nil {
+		e.OnAlert(ctx, "deploy.success", fmt.Sprintf("Deployment Succeeded: %s", a.Spec.Name), fmt.Sprintf("Release %s is live", r.Rel8))
+	}
 }
 
 // run executes the deployment pipeline: blue-green for stateless apps,

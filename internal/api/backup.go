@@ -7,6 +7,7 @@ import (
 
 	"github.com/r3p-dev/dermaga/internal/audit"
 	"github.com/r3p-dev/dermaga/internal/backup"
+	"github.com/r3p-dev/dermaga/internal/notify"
 )
 
 type RunBackupRequest struct {
@@ -228,5 +229,15 @@ func (s *Server) failureNotify(w http.ResponseWriter, r *http.Request, _ string)
 		target = "unknown-unit"
 	}
 	_ = audit.Log(s.DB, "timer", "backup.failed", target, "systemd failure event triggered")
+	if s.Notifier != nil && s.DB != nil && s.Box != nil {
+		if cfg, err := notify.LoadSettings(r.Context(), s.DB, s.Box); err == nil {
+			_ = s.Notifier.Dispatch(r.Context(), cfg, notify.Message{
+				Event: "backup.failed",
+				Title: "Dermaga Backup Failed",
+				Body:  "Backup unit " + target + " failed execution",
+				Level: "error",
+			})
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "recorded"})
 }
