@@ -5,6 +5,7 @@ master.key
 
 # Dependencies
 node_modules/
+.svelte-kit/
 
 # Build output (make build)
 /bin/
