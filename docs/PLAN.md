@@ -185,6 +185,8 @@ restored, verified by content.
 
 ## M7: UI (26 h)
 
+**Done 2026-11-09.** Evidence: [`M7-EVIDENCE.md`](M7-EVIDENCE.md).
+
 SvelteKit 3 SPA (adapter-static, runes, Tailwind 4), embedded. All §3.10 pages, SSE logs/builds,
 dark + light themes, keyboard-friendly. TS types generated from Go API structs (`tygo`, checked
 in CI: generated file must be up to date). TypeScript strict + Prettier.
