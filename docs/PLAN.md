@@ -166,6 +166,8 @@ set per engine documented with the test that proves it.
 
 ## M6: Backups and restore (16 h)
 
+**Done 2026-11-09.** Evidence: [`M6-EVIDENCE.md`](M6-EVIDENCE.md).
+
 Development and tests use a local restic repository on the VM until you provide the R2/B2 test
 bucket at the start of M6. The acceptance runs below use the bucket.
 
