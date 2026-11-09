@@ -1,0 +1,49 @@
+packages:
+  - path: "github.com/r3p-dev/dermaga/internal/doctor"
+    output_path: "ui/src/lib/types/doctor.ts"
+
+  - path: "github.com/r3p-dev/dermaga/internal/spec"
+    output_path: "ui/src/lib/types/spec.ts"
+
+  - path: "github.com/r3p-dev/dermaga/internal/apps"
+    output_path: "ui/src/lib/types/apps.ts"
+    type_mappings:
+      time.Time: "string"
+      spec.App: "spec.App"
+    frontmatter: |
+      import type * as spec from './spec';
+
+  - path: "github.com/r3p-dev/dermaga/internal/databases"
+    output_path: "ui/src/lib/types/databases.ts"
+    type_mappings:
+      time.Time: "string"
+
+  - path: "github.com/r3p-dev/dermaga/internal/backup"
+    output_path: "ui/src/lib/types/backup.ts"
+    type_mappings:
+      time.Time: "string"
+
+  - path: "github.com/r3p-dev/dermaga/internal/audit"
+    output_path: "ui/src/lib/types/audit.ts"
+    type_mappings:
+      time.Time: "string"
+
+  - path: "github.com/r3p-dev/dermaga/internal/api"
+    output_path: "ui/src/lib/types/api.ts"
+    type_mappings:
+      time.Time: "string"
+      spec.Domain: "spec.Domain"
+      spec.App: "spec.App"
+      apps.Release: "apps.Release"
+      databases.Credentials: "databases.Credentials"
+      backup.Snapshot: "backup.Snapshot"
+      backup.Settings: "backup.Settings"
+      audit.Entry: "audit.Entry"
+      doctor.Check: "doctor.Check"
+    frontmatter: |
+      import type * as spec from './spec';
+      import type * as apps from './apps';
+      import type * as databases from './databases';
+      import type * as backup from './backup';
+      import type * as audit from './audit';
+      import type * as doctor from './doctor';
