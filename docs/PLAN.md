@@ -28,10 +28,10 @@ confirm. `docs/OPERATIONS.md` documents the harness in M8.
 | M2 | Generators + reconciliation (done) | 12 |
 | M3 | Git apps, recreate strategy, portfolio live (done) | 20 |
 | M4 | Zero-downtime (done) | 14 |
-| M5 | Databases | 10 |
-| M6 | Backups and restore | 16 |
-| M7 | UI | 26 |
-| M8 | Installer and releases | 14 |
+| M5 | Databases (done) | 10 |
+| M6 | Backups and restore (done) | 16 |
+| M7 | UI (done) | 26 |
+| M8 | Installer and releases (done) | 14 |
 | M9 | Observability and notifications | 10 |
 | M10 | Hardening review and migration | 12 |
 | | **Total** | **150** |
@@ -196,6 +196,8 @@ works end to end against portfolio on the VM; binary size and idle RSS re-measur
 `bun run check` and the `tygo` freshness check pass.
 
 ## M8: Installer and releases (14 h)
+
+**Done 2026-11-09.** Evidence: [`M8-EVIDENCE.md`](M8-EVIDENCE.md). New decisions D56–D58 in ARCHITECTURE.
 
 `install/install.sh` (hardening ported from vps-setup.sh's listed functions with all safety
 checks, `config-example`, `init --config`), Traefik file-provider-only (`traefik.yml` and
