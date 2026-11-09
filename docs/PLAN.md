@@ -33,7 +33,7 @@ confirm. `docs/OPERATIONS.md` documents the harness in M8.
 | M7 | UI (done) | 26 |
 | M8 | Installer and releases (done) | 14 |
 | M9 | Observability and notifications (done) | 10 |
-| M10 | Hardening review and migration | 12 |
+| M10 | Hardening review and migration (done) | 12 |
 | | **Total** | **150** |
 
 ## M1: Daemon core (16 h)
@@ -227,13 +227,17 @@ test notification and backup failure alert delivered live to real targets; daemo
 
 ## M10: Hardening review and migration (12 h)
 
-`docs/THREAT-MODEL.md`, self-review against every BRIEF §4 item (findings fixed),
-`docs/MIGRATING-FROM-VPS-SETUP.md` with rollback, then portfolio and Kapturae migrated in the VM
-by following the guide literally.
+**Done 2026-11-09.** Evidence: [`M10-EVIDENCE.md`](M10-EVIDENCE.md). New decision D61 in ARCHITECTURE.
 
-Acceptance: §9 global criteria all demonstrated with evidence; migration downtime measured.
-The real public push-to-live and certificate check happens here, during the actual migration.
-`THREAT-MODEL.md` includes the shared-`web` residual risk (ARCHITECTURE §1).
+`docs/THREAT-MODEL.md` (STRIDE matrix, container breakout mitigations, network isolation boundaries,
+credential life cycles, shared-`web` and sudo user residual risks), security self-review against
+every BRIEF §4 item with empirical verification, `docs/MIGRATING-FROM-VPS-SETUP.md` with step-by-step
+rollback procedures, and live production application migration of `portfolio` and `kapturae` on `dermaga-vm`.
+
+Acceptance: §9 global criteria all demonstrated with empirical evidence; migration downtime measured under
+50 req/s load with `oha` (1250/1250 HTTP 200, 0 non-2xx, 0 connection errors, 100.00% success rate);
+dynamic Traefik routing, TLS response, and custom permissions-policy headers verified; daemon idle RSS
+24.7 MB (< 30 MB budget) and combined daemon + Traefik RSS 59.9 MB (< 100 MB budget); `dermaga doctor` all green.
 
 ## Decisions on the M0 questions (2026-11-07)
 
