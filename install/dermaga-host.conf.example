@@ -1,0 +1,26 @@
+# dermaga-host.conf — Host configuration for dermaga installer
+# Usage: sudo bash install.sh init --config dermaga-host.conf
+
+# --- User & Access -----------------------------------------------------------
+USER_NAME="server"                 # Single Linux user: SSH, sudo, and container owner
+SSH_PUBLIC_KEY=""                 # REQUIRED: Output of `cat ~/.ssh/id_ed25519.pub` from your client
+GITHUB_KEYS_USER=""               # Optional: GitHub username to import public keys from (https://github.com/<user>.keys)
+SUDO_NOPASSWD="no"                # "no" = sudo asks for user password; "yes" = passwordless sudo
+SSH_PORT="22"                     # Custom SSH port (e.g. 4222)
+
+# --- Server & System ---------------------------------------------------------
+SERVER_HOSTNAME=""                # Optional static hostname
+TIMEZONE="UTC"                    # Server timezone (e.g. Asia/Jakarta, Europe/Berlin)
+AUTO_REBOOT="yes"                 # Reboot automatically for kernel security updates
+AUTO_REBOOT_TIME="04:00"          # Time for automatic kernel reboot (HH:MM)
+ZRAM_PERCENT="50"                 # Compressed swap in RAM (% of RAM); 0 disables zram
+
+# --- Traefik & ACME (HTTPS) --------------------------------------------------
+ACME_EMAIL=""                     # REQUIRED: Your email address for Let's Encrypt certificates
+ACME_STAGING="no"                 # "yes" for testing / staging CA to avoid rate limits
+TRAEFIK_IMAGE="docker.io/library/traefik:v3.7"  # Traefik container image (v3.7 pinned)
+TRUSTED_PROXY_IPS=""              # Optional: Comma-separated CIDRs if using Cloudflare / external reverse proxy
+
+# --- Dermaga Version & Release -----------------------------------------------
+DERMAGA_VERSION="latest"          # Release tag (e.g. "v0.8.0") or "latest"
+DERMAGA_REPO="r3p-dev/dermaga"    # GitHub repository for release downloads
