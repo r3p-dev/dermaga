@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/r3p-dev/dermaga/internal/api"
+	"github.com/r3p-dev/dermaga/internal/backup"
 	"github.com/r3p-dev/dermaga/internal/config"
 	"github.com/r3p-dev/dermaga/internal/name"
 	"github.com/r3p-dev/dermaga/internal/quadlet"
@@ -28,7 +29,7 @@ func cmdDB(args []string) error {
 		args = []string{"list"}
 	}
 	if args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
-		fmt.Fprintf(os.Stdout, "usage: %s db [list | create <name> --engine=… | show <name> [--reveal] | link <name> <app> | unlink <name> <app> | shell <name> | proxy <name> [--port P] | restart <name> | remove <name> [--purge]]\n", name.Name)
+		fmt.Fprintf(os.Stdout, "usage: %s db [list | create <name> --engine=… | show <name> [--reveal] | link <name> <app> | unlink <name> <app> | shell <name> | proxy <name> [--port P] | restart <name> | backup <name> | restore <name> [--snapshot S] [--into N] [-y] | restore-test <name> | remove <name> [--purge]]\n", name.Name)
 		return flag.ErrHelp
 	}
 	switch args[0] {
@@ -48,10 +49,16 @@ func cmdDB(args []string) error {
 		return dbProxy(args[1:])
 	case "restart":
 		return dbRestart(args[1:])
+	case "backup":
+		return dbBackup(args[1:])
+	case "restore":
+		return dbRestore(args[1:])
+	case "restore-test":
+		return dbRestoreTest(args[1:])
 	case "remove":
 		return dbRemove(args[1:])
 	}
-	fmt.Fprintf(os.Stderr, "usage: %s db [list | create <name> --engine=… | show <name> [--reveal] | link <name> <app> | unlink <name> <app> | shell <name> | proxy <name> [--port P] | restart <name> | remove <name> [--purge]]\n", name.Name)
+	fmt.Fprintf(os.Stderr, "usage: %s db [list | create <name> --engine=… | show <name> [--reveal] | link <name> <app> | unlink <name> <app> | shell <name> | proxy <name> [--port P] | restart <name> | backup <name> | restore <name> [--snapshot S] [--into N] [-y] | restore-test <name> | remove <name> [--purge]]\n", name.Name)
 	return errQuiet
 }
 
@@ -537,4 +544,75 @@ func cmdDBBridge(args []string) error {
 			<-done
 		}(uconn)
 	}
+}
+
+func dbBackup(args []string) error {
+	dbName, _, err := sub("db backup", args)
+	if err != nil {
+		return err
+	}
+	var snap backup.Snapshot
+	if err := call("POST", "/api/databases/"+dbName+"/backup", nil, &snap); err != nil {
+		return err
+	}
+	fmt.Printf("Database %s backed up successfully (snapshot %s, %s)\n", dbName, snap.ShortID, humanBytes(snap.SizeBytes))
+	return nil
+}
+
+func dbRestore(args []string) error {
+	dbName, rest, err := sub("db restore", args)
+	if err != nil {
+		return err
+	}
+	fs := flag.NewFlagSet("db restore", flag.ContinueOnError)
+	snapshot := fs.String("snapshot", "", "snapshot ID to restore (defaults to latest)")
+	into := fs.String("into", "", "restore into a new database name")
+	yes := fs.Bool("yes", false, "skip interactive confirmation")
+	fs.BoolVar(yes, "y", false, "skip interactive confirmation")
+	if err := fs.Parse(rest); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return err
+		}
+		return errQuiet
+	}
+
+	target := dbName
+	if *into != "" {
+		target = *into
+	}
+
+	if !*yes {
+		fmt.Fprintf(os.Stderr, "WARNING: This will restore snapshot %q into database %q.\nType %q to continue: ", *snapshot, target, target)
+		var confirm string
+		if _, err := fmt.Fscanln(os.Stdin, &confirm); err != nil || confirm != target {
+			fmt.Fprintln(os.Stderr, "restore cancelled")
+			return errQuiet
+		}
+	}
+
+	req := api.RestoreDatabaseRequest{
+		SnapshotID: *snapshot,
+		Into:       *into,
+		Confirm:    true,
+	}
+	var resp map[string]string
+	if err := callTimeout("POST", "/api/databases/"+dbName+"/restore", 5*time.Minute, req, &resp); err != nil {
+		return err
+	}
+	fmt.Printf("Database %s restored successfully\n", target)
+	return nil
+}
+
+func dbRestoreTest(args []string) error {
+	dbName, _, err := sub("db restore-test", args)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Testing restore for database %s in isolated sandbox...\n", dbName)
+	var res backup.TestRestoreResult
+	if err := callTimeout("POST", "/api/databases/"+dbName+"/restore-test", 5*time.Minute, nil, &res); err != nil {
+		return err
+	}
+	fmt.Printf("Test restore PASSED (snapshot %s, took %s, sanity check: %s)\n", res.SnapshotID, res.Duration, res.SanityOut)
+	return nil
 }

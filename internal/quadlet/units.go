@@ -125,6 +125,11 @@ func Container(r Release) (filename string, data []byte, err error) {
 // VolumeUnit is the Quadlet file name of an app's named volume.
 func VolumeUnit(app, vol string) string { return name.Unit + app + "_" + vol + ".volume" }
 
+// AppVolumeName returns the Podman volume name for an app volume.
+func AppVolumeName(app, vol string) string {
+	return strings.TrimSuffix(VolumeUnit(app, vol), ".volume")
+}
+
 // Volume renders dg-<app>_<vol>.volume. dermaga never removes volumes on its own.
 func Volume(app string, v spec.Volume) (filename string, data []byte, err error) {
 	if !spec.ValidName(app) || !spec.ValidName(v.Name) {
@@ -157,6 +162,9 @@ func Network(db string) (filename string, data []byte, err error) {
 
 // DBVolumeUnit is the Quadlet file name of a database's named volume.
 func DBVolumeUnit(db string) string { return name.Unit + "db_" + db + ".volume" }
+
+// DBVolumeName returns the Podman volume name for a database volume.
+func DBVolumeName(db string) string { return strings.TrimSuffix(DBVolumeUnit(db), ".volume") }
 
 // DBVolume renders dg-db_<name>.volume.
 func DBVolume(db string) (filename string, data []byte, err error) {

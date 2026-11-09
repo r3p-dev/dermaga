@@ -59,17 +59,28 @@ func WriteFile(path string, data []byte, mode fs.FileMode) error {
 // Run executes argv with a timeout and returns trimmed stdout. The error
 // includes stderr.
 func Run(ctx context.Context, timeout time.Duration, argv ...string) (string, error) {
-	return RunEnv(ctx, timeout, nil, nil, argv...)
+	return RunStdinEnv(ctx, timeout, nil, nil, nil, argv...)
+}
+
+// RunStdin executes argv with stdin and returns trimmed stdout.
+func RunStdin(ctx context.Context, timeout time.Duration, stdin io.Reader, argv ...string) (string, error) {
+	return RunStdinEnv(ctx, timeout, stdin, nil, nil, argv...)
 }
 
 // RunEnv is Run with an environment (nil: inherit) and, if log != nil, stdout
 // and stderr copied to log as they arrive.
 func RunEnv(ctx context.Context, timeout time.Duration, env []string, log io.Writer, argv ...string) (string, error) {
+	return RunStdinEnv(ctx, timeout, nil, env, log, argv...)
+}
+
+// RunStdinEnv is RunEnv with stdin support.
+func RunStdinEnv(ctx context.Context, timeout time.Duration, stdin io.Reader, env []string, log io.Writer, argv ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	var out, errb bytes.Buffer
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Env = env
+	cmd.Stdin = stdin
 	cmd.Stdout, cmd.Stderr = io.Writer(&out), io.Writer(&errb)
 	if log != nil {
 		cmd.Stdout, cmd.Stderr = io.MultiWriter(&out, log), io.MultiWriter(&errb, log)

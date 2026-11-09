@@ -18,6 +18,7 @@ type Timer struct {
 	Args        []string // e.g. backup run db:shop
 	OnCalendar  string   // systemd calendar spec, e.g. "*-*-* 03:00:00 Asia/Jakarta"
 	RandomDelay int      // seconds (RandomizedDelaySec=)
+	OnFailure   string   // optional failure unit, e.g. dg-backup-failed@%n.service
 }
 
 var (
@@ -26,7 +27,20 @@ var (
 	argRE      = regexp.MustCompile(`^[A-Za-z0-9_.:/=@+-]+$`)
 	calendarRE = regexp.MustCompile(`^[A-Za-z0-9 *:,./~_+-]{1,128}$`)
 	descRE     = regexp.MustCompile(`^[A-Za-z0-9 :,./_()+-]{1,128}$`)
+	hhmmRE     = regexp.MustCompile(`^[0-2][0-9]:[0-5][0-9]$`)
 )
+
+// FormatCalendar normalizes a schedule (e.g. "03:00") into a systemd calendar spec.
+func FormatCalendar(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		s = "03:00"
+	}
+	if hhmmRE.MatchString(s) {
+		return "*-*-* " + s + ":00 Asia/Jakarta"
+	}
+	return s
+}
 
 // Units renders dg-<Name>.service and dg-<Name>.timer (for ~/.config/systemd/user).
 func (t Timer) Units() (service, timer []byte, err error) {
@@ -47,8 +61,12 @@ func (t Timer) Units() (service, timer []byte, err error) {
 			return nil, nil, fmt.Errorf("timer argument %q: invalid", a)
 		}
 	}
+	unitHeaders := [][2]string{{"Description", name.Name + " " + t.Description}}
+	if t.OnFailure != "" {
+		unitHeaders = append(unitHeaders, [2]string{"OnFailure", t.OnFailure})
+	}
 	service, err = unit{
-		{"Unit", [][2]string{{"Description", name.Name + " " + t.Description}}},
+		{"Unit", unitHeaders},
 		{"Service", [][2]string{
 			{"Type", "oneshot"},
 			{"ExecStart", strings.Join(append([]string{t.Binary}, t.Args...), " ")},

@@ -26,6 +26,7 @@ import (
 	"github.com/r3p-dev/dermaga/internal/apps"
 	"github.com/r3p-dev/dermaga/internal/audit"
 	"github.com/r3p-dev/dermaga/internal/auth"
+	"github.com/r3p-dev/dermaga/internal/backup"
 	"github.com/r3p-dev/dermaga/internal/config"
 	"github.com/r3p-dev/dermaga/internal/databases"
 	"github.com/r3p-dev/dermaga/internal/deploy"
@@ -111,8 +112,13 @@ func Run() error {
 	engine := &deploy.Engine{Apps: appStore, Databases: dbStore, Host: deploy.NewSystem(p, self), Paths: p, Site: site}
 	startup(appStore, p, site, self)
 
+	backupMgr := backup.NewManager(db, box, dbStore, p, nil)
+	if err := backupMgr.SyncAllTimers(context.Background()); err != nil {
+		slog.Warn("syncing timers failed", "err", err)
+	}
+
 	srv := &api.Server{DB: db, Auth: auth.New(db, box), Port: cfg.Panel.Port, Started: time.Now(),
-		Apps: appStore, Databases: dbStore, Engine: engine, Paths: p,
+		Apps: appStore, Databases: dbStore, Engine: engine, Backup: backupMgr, Paths: p,
 		OnSettings: func(ctx context.Context) error { return writeGlobal(ctx, appStore, p, site) }}
 	hooks := &webhook.Handler{
 		Lookup: appStore.ByID,

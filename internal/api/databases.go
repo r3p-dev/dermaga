@@ -13,6 +13,7 @@ import (
 
 	"github.com/r3p-dev/dermaga/internal/apps"
 	"github.com/r3p-dev/dermaga/internal/audit"
+	"github.com/r3p-dev/dermaga/internal/backup"
 	"github.com/r3p-dev/dermaga/internal/databases"
 	"github.com/r3p-dev/dermaga/internal/host"
 	"github.com/r3p-dev/dermaga/internal/quadlet"
@@ -62,6 +63,9 @@ func (s *Server) databaseRoutes(mux *http.ServeMux, wrap func(http.HandlerFunc) 
 	mux.Handle("POST /api/databases/{name}/restart", h(s.restartDatabase))
 	mux.Handle("POST /api/databases/{name}/link", h(s.linkDatabase))
 	mux.Handle("POST /api/databases/{name}/unlink", h(s.unlinkDatabase))
+	mux.Handle("POST /api/databases/{name}/backup", h(s.backupDatabase))
+	mux.Handle("POST /api/databases/{name}/restore", h(s.restoreDatabase))
+	mux.Handle("POST /api/databases/{name}/restore-test", h(s.testRestoreDatabase))
 }
 
 func (s *Server) dbStatus(ctx context.Context, name string) string {
@@ -189,6 +193,10 @@ func (s *Server) createDatabase(w http.ResponseWriter, r *http.Request, actor st
 		}
 	}
 
+	if s.Backup != nil {
+		_ = s.Backup.InstallDBTimer(r.Context(), db)
+	}
+
 	_ = audit.Log(s.DB, actor, "db.create", db.Name, fmt.Sprintf("engine=%s version=%s", db.Engine, db.Version))
 
 	hostName, _ := os.Hostname()
@@ -307,6 +315,10 @@ func (s *Server) deleteDatabase(w http.ResponseWriter, r *http.Request, actor st
 
 	if s.Engine != nil && s.Engine.Host != nil {
 		_ = s.Engine.Host.DaemonReload(r.Context())
+	}
+
+	if s.Backup != nil {
+		_ = s.Backup.RemoveDBTimer(r.Context(), db.Name)
 	}
 
 	if err := s.Databases.Delete(r.Context(), db.Name, force); err != nil {
@@ -434,4 +446,77 @@ func (s *Server) unlinkDatabase(w http.ResponseWriter, r *http.Request, actor st
 		"app":            a.Spec.Name,
 		"redeployQueued": redeployQueued,
 	})
+}
+
+type RestoreDatabaseRequest struct {
+	SnapshotID     string `json:"snapshotId,omitempty"`
+	Into           string `json:"into,omitempty"`
+	SkipSafetyDump bool   `json:"skipSafetyDump,omitempty"`
+	Confirm        bool   `json:"confirm"`
+}
+
+func (s *Server) backupDatabase(w http.ResponseWriter, r *http.Request, actor string) {
+	if s.Backup == nil {
+		writeError(w, http.StatusServiceUnavailable, "backup service unavailable")
+		return
+	}
+	name := r.PathValue("name")
+	snap, err := s.Backup.BackupDatabase(r.Context(), name)
+	if err != nil {
+		_ = audit.Log(s.DB, actor, "db.backup_failed", name, err.Error())
+		internalError(w, err)
+		return
+	}
+	_ = audit.Log(s.DB, actor, "db.backup", name, fmt.Sprintf("snapshot=%s size=%d", snap.ShortID, snap.SizeBytes))
+	writeJSON(w, http.StatusOK, snap)
+}
+
+func (s *Server) restoreDatabase(w http.ResponseWriter, r *http.Request, actor string) {
+	if s.Backup == nil {
+		writeError(w, http.StatusServiceUnavailable, "backup service unavailable")
+		return
+	}
+	name := r.PathValue("name")
+	var req RestoreDatabaseRequest
+	_ = readJSON(w, r, &req)
+
+	if !req.Confirm {
+		writeError(w, http.StatusBadRequest, "confirm=true is required to restore database")
+		return
+	}
+
+	opts := backup.RestoreOpts{
+		SnapshotID:     req.SnapshotID,
+		Into:           req.Into,
+		SkipSafetyDump: req.SkipSafetyDump,
+		Confirm:        req.Confirm,
+	}
+
+	if err := s.Backup.RestoreDatabase(r.Context(), name, opts); err != nil {
+		_ = audit.Log(s.DB, actor, "db.restore_failed", name, err.Error())
+		internalError(w, err)
+		return
+	}
+
+	_ = audit.Log(s.DB, actor, "db.restore", name, fmt.Sprintf("snapshot=%s into=%s", req.SnapshotID, req.Into))
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":   "restored",
+		"database": name,
+	})
+}
+
+func (s *Server) testRestoreDatabase(w http.ResponseWriter, r *http.Request, actor string) {
+	if s.Backup == nil {
+		writeError(w, http.StatusServiceUnavailable, "backup service unavailable")
+		return
+	}
+	name := r.PathValue("name")
+	res, err := s.Backup.TestRestore(r.Context(), name)
+	if err != nil {
+		_ = audit.Log(s.DB, actor, "db.restore_test_failed", name, err.Error())
+		internalError(w, err)
+		return
+	}
+	_ = audit.Log(s.DB, actor, "db.restore_test", name, fmt.Sprintf("snapshot=%s duration=%s success=%v", res.SnapshotID, res.Duration, res.Success))
+	writeJSON(w, http.StatusOK, res)
 }

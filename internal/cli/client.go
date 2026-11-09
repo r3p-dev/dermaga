@@ -16,11 +16,16 @@ import (
 
 // call sends one JSON request to the daemon over its Unix socket.
 func call(method, path string, in, out any) error {
+	return callTimeout(method, path, 60*time.Second, in, out)
+}
+
+// callTimeout sends one JSON request to the daemon over its Unix socket with a custom timeout.
+func callTimeout(method, path string, timeout time.Duration, in, out any) error {
 	p, err := config.DefaultPaths()
 	if err != nil {
 		return err
 	}
-	c := &http.Client{Timeout: 30 * time.Second, Transport: &http.Transport{
+	c := &http.Client{Timeout: timeout, Transport: &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "unix", p.Socket())
 		},
