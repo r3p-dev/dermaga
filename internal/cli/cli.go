@@ -54,6 +54,7 @@ func commands() map[string]command {
 		"github":         {cmdGitHub, "known-hosts: pin GitHub's SSH host keys"},
 		"settings":       {cmdSettings, "show or change settings [--hook-host H]"},
 		"traefik":        {cmdTraefik, "static: print traefik.yml [--acme-email E] [--acme-staging]"},
+		"self-update":    {cmdSelfUpdate, "check for or apply updates [--check] [--version V] [--force]"},
 		"version":        {func([]string) error { fmt.Println(name.Name, name.Version()); return nil }, "print the version"},
 		"hook-relay":     {cmdHookRelay, "TCP → hooks.sock relay (runs inside the dg-hooks container)"},
 		"probe":          {cmdProbe, "HTTP health probe (runs inside the rootless netns)"},
@@ -65,7 +66,7 @@ func usage(w io.Writer) {
 	fmt.Fprintf(w, "usage: %s <command> [flags]\n\ncommands:\n", name.Name)
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	for _, n := range []string{"status", "apps", "db", "backup", "restore-system", "keys", "deploy", "rollback", "logs", "env", "domains", "middleware", "settings", "github",
-		"audit", "admin", "panel", "doctor", "traefik", "daemon", "version", "hook-relay", "probe"} {
+		"audit", "admin", "panel", "doctor", "traefik", "self-update", "daemon", "version", "hook-relay", "probe"} {
 		fmt.Fprintf(tw, "  %s\t%s\n", n, commands()[n].usage)
 	}
 	tw.Flush()

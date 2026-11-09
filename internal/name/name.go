@@ -14,11 +14,18 @@ const (
 	AppFile = "app-" // Traefik dynamic files app-<name>.yml, and the routers/services in them
 )
 
+// VersionOverride allows injecting the version at build time via
+// -ldflags "-X github.com/r3p-dev/dermaga/internal/name.VersionOverride=...".
+var VersionOverride string
+
 // Version is the module version stamped by the Go toolchain (VCS revision for
-// local builds, the tag for releases).
+// local builds, the tag for releases) or overridden by VersionOverride.
 func Version() string {
+	if VersionOverride != "" {
+		return VersionOverride
+	}
 	if bi, ok := debug.ReadBuildInfo(); ok && bi.Main.Version != "" {
 		return bi.Main.Version
 	}
-	return "unknown"
+	return "dev"
 }
