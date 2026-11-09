@@ -5,6 +5,7 @@ import type * as databases from './databases';
 import type * as backup from './backup';
 import type * as audit from './audit';
 import type * as doctor from './doctor';
+import type * as telemetry from './telemetry';
 
 //////////
 // source: api.go
@@ -24,6 +25,9 @@ export interface Server {
   Engine?: any /* deploy.Engine */;
   Backup?: any /* backup.Manager */;
   Paths: any /* config.Paths */;
+  Telemetry?: any /* telemetry.Collector */;
+  Notifier?: any /* notify.Dispatcher */;
+  Box?: any /* secrets.Box */;
   OnSettings: any; // re-renders 00-global.yml after a settings change
   UI: any /* fs.FS */; // embedded frontend assets (M7)
 }
@@ -128,4 +132,38 @@ export interface RestoreDatabaseRequest {
   into?: string;
   skipSafetyDump?: boolean;
   confirm: boolean;
+}
+
+//////////
+// source: telemetry.go
+
+export interface NotificationSettingsView {
+  provider: string;
+  target: string;
+  configured: boolean;
+  events: string;
+}
+export interface UpdateNotificationSettingsRequest {
+  provider: string;
+  target: string;
+  token?: string;
+  events: string;
+}
+export interface TestNotificationRequest {
+  provider?: string;
+  target?: string;
+  token?: string;
+}
+export interface TestNotificationResponse {
+  success: boolean;
+  detail: string;
+}
+export interface TelemetryOverview {
+  host: telemetry.HostTelemetry;
+  daemonRssKb: number /* uint64 */;
+  daemonPid: number /* int */;
+  uptime: string;
+  activeApps: number /* int */;
+  totalApps: number /* int */;
+  totalDbs: number /* int */;
 }
