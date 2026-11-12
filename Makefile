@@ -30,7 +30,7 @@ ui:
 	cd ui && $(BUN) install --frozen-lockfile && $(BUN) run build
 
 ui-check:
-	cd ui && $(BUN) run check
+	cd ui && $(BUN) run check && $(BUN) run format:check
 
 build:
 	GOARCH=amd64 $(GO) build -trimpath -ldflags='$(LDFLAGS)' -o bin/dermaga-linux-amd64 ./cmd/dermaga
