@@ -540,6 +540,22 @@ EOF
   ok "podman configured with journald logging and pasta network (podman.socket disabled)"
 }
 
+# Fetches checksums.txt and checks <dir>/<bin> against it. Aborts (never warns)
+# when the list can't be fetched, has no line for the binary, or doesn't match:
+# an unverified binary is never installed.
+verify_release_checksum() {
+  local dir=$1 bin=$2 cs_url=$3 expected got
+  curl -fsSL -o "$dir/checksums.txt" "$cs_url" \
+    || die "cannot fetch $cs_url; refusing to install $bin without its SHA-256 from checksums.txt"
+  expected=$(awk -v f="$bin" '$2 == f || $2 == "*"f {print $1}' "$dir/checksums.txt")
+  [[ -n $expected ]] \
+    || die "$cs_url has no SHA-256 line for $bin; refusing to install it unverified"
+  got=$(sha256sum "$dir/$bin" | awk '{print $1}')
+  [[ $expected == "$got" ]] \
+    || die "checksum verification failed for $bin (expected $expected from $cs_url, got $got)"
+  ok "SHA-256 checksum verified ($got)"
+}
+
 install_dermaga_binary() {
   step "Dermaga binary installation"
   local target_bin="dermaga-linux-${ARCH}"
@@ -579,17 +595,7 @@ install_dermaga_binary() {
   fi
 
   info "verifying checksum against $cs_url"
-  if curl -fsSL -o "$tmpdir/checksums.txt" "$cs_url"; then
-    local expected got
-    expected=$(awk -v f="$target_bin" '$2 == f || $2 == "*"f {print $1}' "$tmpdir/checksums.txt")
-    got=$(sha256sum "$tmpdir/$target_bin" | awk '{print $1}')
-    if [[ -n $expected && $expected != "$got" ]]; then
-      die "checksum verification failed for $target_bin (expected $expected, got $got)"
-    fi
-    ok "SHA-256 checksum verified ($got)"
-  else
-    warn "could not fetch checksums.txt, skipping signature verification"
-  fi
+  verify_release_checksum "$tmpdir" "$target_bin" "$cs_url"
 
   install -m 0755 -o root -g root "$tmpdir/$target_bin" "$INSTALL_PATH"
   ok "$($INSTALL_PATH version) installed to $INSTALL_PATH"
@@ -1043,4 +1049,5 @@ main() {
   esac
 }
 
-main "$@"
+# install_test.sh sources this file for its functions without running it.
+[[ -n ${DERMAGA_INSTALL_SOURCE_ONLY:-} ]] || main "$@"
