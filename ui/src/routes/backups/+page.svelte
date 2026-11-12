@@ -96,7 +96,8 @@
 		checkModalOpen = true;
 		try {
 			await api.checkBackup();
-			checkResult = 'Repository integrity check: SUCCESS\nAll snapshots, pack files, and trees verified cleanly.\nZero index errors.';
+			checkResult =
+				'Repository integrity check: SUCCESS\nAll snapshots, pack files, and trees verified cleanly.\nZero index errors.';
 			toast.success('Backup repository integrity check passed');
 		} catch (err: any) {
 			checkResult = `Integrity check failed:\n${err.message || 'Error occurred'}`;
@@ -143,7 +144,8 @@
 				Backups & Disaster Recovery
 			</h1>
 			<p class="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-				Streaming encrypted backups powered by restic to Cloudflare R2, Backblaze B2, or local storage.
+				Streaming encrypted backups powered by restic to Cloudflare R2, Backblaze B2, or local
+				storage.
 			</p>
 		</div>
 
@@ -174,10 +176,14 @@
 	</div>
 
 	<!-- Storage Repository Banner -->
-	<div class="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+	<div
+		class="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+	>
 		<div>
 			<span class="text-xs font-bold uppercase tracking-wider text-zinc-500">Repository</span>
-			<div class="mt-1 font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate max-w-xl">
+			<div
+				class="mt-1 font-mono text-sm font-semibold text-zinc-900 dark:text-zinc-100 truncate max-w-xl"
+			>
 				{settings?.repository || 'Not configured'}
 			</div>
 			<p class="text-xs text-zinc-500 mt-0.5">
@@ -197,8 +203,12 @@
 	</div>
 
 	<!-- Snapshots Explorer -->
-	<div class="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xs overflow-hidden">
-		<div class="p-4 border-b border-zinc-200 dark:border-zinc-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+	<div
+		class="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xs overflow-hidden"
+	>
+		<div
+			class="p-4 border-b border-zinc-200 dark:border-zinc-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+		>
 			<div>
 				<h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-100">Snapshot Explorer</h2>
 				<span class="text-xs text-zinc-500">{snapshots.length} total restic snapshots</span>
@@ -217,13 +227,13 @@
 		</div>
 
 		{#if snapshots.length === 0}
-			<div class="text-center py-12 text-xs text-zinc-500">
-				No snapshots found in repository.
-			</div>
+			<div class="text-center py-12 text-xs text-zinc-500">No snapshots found in repository.</div>
 		{:else}
 			<div class="overflow-x-auto">
 				<table class="w-full text-left text-xs">
-					<thead class="bg-zinc-50 dark:bg-zinc-950/60 border-b border-zinc-200 dark:border-zinc-800 text-zinc-500 font-semibold uppercase tracking-wider text-[11px]">
+					<thead
+						class="bg-zinc-50 dark:bg-zinc-950/60 border-b border-zinc-200 dark:border-zinc-800 text-zinc-500 font-semibold uppercase tracking-wider text-[11px]"
+					>
 						<tr>
 							<th class="py-3 px-4">Snapshot ID</th>
 							<th class="py-3 px-4">Tags</th>
@@ -241,7 +251,9 @@
 								<td class="py-3 px-4">
 									<div class="flex flex-wrap gap-1">
 										{#each snap.tags || [] as tag}
-											<span class="px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[10px] font-mono">
+											<span
+												class="px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-[10px] font-mono"
+											>
 												{tag}
 											</span>
 										{/each}
@@ -266,35 +278,80 @@
 </div>
 
 <!-- S3 / Restic Settings Modal -->
-<Modal open={settingsModalOpen} title="Restic & S3 Backup Settings" onclose={() => (settingsModalOpen = false)}>
+<Modal
+	open={settingsModalOpen}
+	title="Restic & S3 Backup Settings"
+	onclose={() => (settingsModalOpen = false)}
+>
 	<form onsubmit={handleSaveSettings} class="space-y-4 text-xs">
 		<div>
-			<label for="repoUrl" class="block font-semibold mb-1">Repository URL / Path <span class="text-rose-500">*</span></label>
-			<input id="repoUrl" type="text" bind:value={repoInput} required placeholder="s3:https://<account>.r2.cloudflarestorage.com/<bucket>" class="w-full p-2 border rounded font-mono bg-white dark:bg-zinc-900" />
+			<label for="repoUrl" class="block font-semibold mb-1"
+				>Repository URL / Path <span class="text-rose-500">*</span></label
+			>
+			<input
+				id="repoUrl"
+				type="text"
+				bind:value={repoInput}
+				required
+				placeholder="s3:https://<account>.r2.cloudflarestorage.com/<bucket>"
+				class="w-full p-2 border rounded font-mono bg-white dark:bg-zinc-900"
+			/>
 		</div>
 		<div class="grid grid-cols-2 gap-3">
 			<div>
 				<label for="s3Ep" class="block font-semibold mb-1">S3 Endpoint</label>
-				<input id="s3Ep" type="text" bind:value={endpointInput} placeholder="https://..." class="w-full p-2 border rounded font-mono bg-white dark:bg-zinc-900" />
+				<input
+					id="s3Ep"
+					type="text"
+					bind:value={endpointInput}
+					placeholder="https://..."
+					class="w-full p-2 border rounded font-mono bg-white dark:bg-zinc-900"
+				/>
 			</div>
 			<div>
 				<label for="s3Reg" class="block font-semibold mb-1">S3 Region</label>
-				<input id="s3Reg" type="text" bind:value={regionInput} placeholder="auto" class="w-full p-2 border rounded font-mono bg-white dark:bg-zinc-900" />
+				<input
+					id="s3Reg"
+					type="text"
+					bind:value={regionInput}
+					placeholder="auto"
+					class="w-full p-2 border rounded font-mono bg-white dark:bg-zinc-900"
+				/>
 			</div>
 		</div>
 		<div class="grid grid-cols-2 gap-3">
 			<div>
 				<label for="s3Acc" class="block font-semibold mb-1">Access Key ID</label>
-				<input id="s3Acc" type="text" bind:value={accessKeyInput} class="w-full p-2 border rounded font-mono bg-white dark:bg-zinc-900" />
+				<input
+					id="s3Acc"
+					type="text"
+					bind:value={accessKeyInput}
+					class="w-full p-2 border rounded font-mono bg-white dark:bg-zinc-900"
+				/>
 			</div>
 			<div>
 				<label for="s3Sec" class="block font-semibold mb-1">Secret Access Key</label>
-				<input id="s3Sec" type="password" bind:value={secretKeyInput} placeholder="••••••••" class="w-full p-2 border rounded font-mono bg-white dark:bg-zinc-900" />
+				<input
+					id="s3Sec"
+					type="password"
+					bind:value={secretKeyInput}
+					placeholder="••••••••"
+					class="w-full p-2 border rounded font-mono bg-white dark:bg-zinc-900"
+				/>
 			</div>
 		</div>
 		<div>
-			<label for="rPass" class="block font-semibold mb-1">Restic Password <span class="text-zinc-400 font-normal">(leave blank to keep current)</span></label>
-			<input id="rPass" type="password" bind:value={passwordInput} placeholder="Repository encryption password" class="w-full p-2 border rounded font-mono bg-white dark:bg-zinc-900" />
+			<label for="rPass" class="block font-semibold mb-1"
+				>Restic Password <span class="text-zinc-400 font-normal">(leave blank to keep current)</span
+				></label
+			>
+			<input
+				id="rPass"
+				type="password"
+				bind:value={passwordInput}
+				placeholder="Repository encryption password"
+				class="w-full p-2 border rounded font-mono bg-white dark:bg-zinc-900"
+			/>
 		</div>
 		<button type="submit" class="w-full py-2 bg-indigo-600 text-white rounded font-semibold">
 			Save Backup Configuration
@@ -303,11 +360,20 @@
 </Modal>
 
 <!-- Integrity Check Modal -->
-<Modal open={checkModalOpen} title="Repository Integrity Check Report" onclose={() => (checkModalOpen = false)}>
+<Modal
+	open={checkModalOpen}
+	title="Repository Integrity Check Report"
+	onclose={() => (checkModalOpen = false)}
+>
 	<div class="space-y-3">
-		<pre class="p-3 bg-zinc-950 text-zinc-300 font-mono text-xs rounded-lg overflow-x-auto select-all border border-zinc-800 whitespace-pre-wrap">{checkResult}</pre>
+		<pre
+			class="p-3 bg-zinc-950 text-zinc-300 font-mono text-xs rounded-lg overflow-x-auto select-all border border-zinc-800 whitespace-pre-wrap">{checkResult}</pre>
 		<div class="flex justify-end">
-			<button type="button" onclick={() => (checkModalOpen = false)} class="px-3 py-1.5 rounded bg-zinc-200 dark:bg-zinc-800 text-xs font-semibold">
+			<button
+				type="button"
+				onclick={() => (checkModalOpen = false)}
+				class="px-3 py-1.5 rounded bg-zinc-200 dark:bg-zinc-800 text-xs font-semibold"
+			>
 				Close
 			</button>
 		</div>
@@ -315,24 +381,37 @@
 </Modal>
 
 <!-- Export Master Key Modal -->
-<Modal open={keyExportOpen} title="Master Encryption Key Export" onclose={() => (keyExportOpen = false)}>
+<Modal
+	open={keyExportOpen}
+	title="Master Encryption Key Export"
+	onclose={() => (keyExportOpen = false)}
+>
 	<div class="space-y-4 text-xs">
-		<div class="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-100">
+		<div
+			class="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-100"
+		>
 			<p class="font-bold">Crucial Disaster Recovery Secret</p>
 			<p class="mt-1 leading-relaxed">
-				This master key encrypts all database passwords, environment variables, and webhook secrets. Keep a secure offline backup in your password manager (e.g. Bitwarden, 1Password).
+				This master key encrypts all database passwords, environment variables, and webhook secrets.
+				Keep a secure offline backup in your password manager (e.g. Bitwarden, 1Password).
 			</p>
 		</div>
 		<div>
 			<span class="block font-semibold mb-1">Master Key (Base64)</span>
 			<div class="relative">
-				<textarea readonly rows="2" class="w-full p-2 bg-zinc-950 border border-zinc-800 rounded font-mono text-zinc-200 select-all">{exportedKey}</textarea>
+				<textarea
+					readonly
+					rows="2"
+					class="w-full p-2 bg-zinc-950 border border-zinc-800 rounded font-mono text-zinc-200 select-all"
+					>{exportedKey}</textarea
+				>
 			</div>
 		</div>
 		{#if exportInstructions}
 			<div>
 				<span class="block font-semibold mb-1">Recovery Instructions</span>
-				<pre class="p-3 bg-zinc-950 border border-zinc-800 rounded font-mono text-zinc-400 whitespace-pre-wrap text-[11px]">{exportInstructions}</pre>
+				<pre
+					class="p-3 bg-zinc-950 border border-zinc-800 rounded font-mono text-zinc-400 whitespace-pre-wrap text-[11px]">{exportInstructions}</pre>
 			</div>
 		{/if}
 	</div>

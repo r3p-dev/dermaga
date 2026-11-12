@@ -55,7 +55,9 @@
 {/if}
 
 <aside
-	class="fixed md:sticky top-16 z-40 md:z-0 h-[calc(100vh-4rem)] w-64 shrink-0 border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 p-4 transition-transform duration-200 ease-in-out md:translate-x-0 {open ? 'translate-x-0' : '-translate-x-full'}"
+	class="fixed md:sticky top-16 z-40 md:z-0 h-[calc(100vh-4rem)] w-64 shrink-0 border-r border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 p-4 transition-transform duration-200 ease-in-out md:translate-x-0 {open
+		? 'translate-x-0'
+		: '-translate-x-full'}"
 >
 	<nav class="space-y-1">
 		{#each links as link}
@@ -76,8 +78,12 @@
 		{/each}
 	</nav>
 
-	<div class="mt-8 pt-4 border-t border-zinc-200 dark:border-zinc-800 text-xs text-zinc-400 dark:text-zinc-500 px-3 space-y-1">
+	<div
+		class="mt-8 pt-4 border-t border-zinc-200 dark:border-zinc-800 text-xs text-zinc-400 dark:text-zinc-500 px-3 space-y-1"
+	>
 		<p class="font-medium text-zinc-500 dark:text-zinc-400">Security Notice</p>
-		<p class="leading-relaxed">Panel reachable only via SSH tunnel to 127.0.0.1:7070. Never exposed to public internet.</p>
+		<p class="leading-relaxed">
+			Panel reachable only via SSH tunnel to 127.0.0.1:7070. Never exposed to public internet.
+		</p>
 	</div>
 </aside>

@@ -148,23 +148,30 @@
 	</div>
 
 	<!-- Alert Notifications Configuration (M9) -->
-	<div class="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs space-y-5">
+	<div
+		class="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs space-y-5"
+	>
 		<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
 			<div>
 				<h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
 					Alert Notifications
 				</h2>
 				<p class="text-xs text-zinc-500 mt-0.5 leading-relaxed">
-					Deliver real-time alerts for deployment failures, automated backup failures, and disk saturation.
+					Deliver real-time alerts for deployment failures, automated backup failures, and disk
+					saturation.
 				</p>
 			</div>
 			<div>
 				{#if notifyProvider && notifyConfigured}
-					<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400">
+					<span
+						class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-400"
+					>
 						Active ({notifyProvider})
 					</span>
 				{:else}
-					<span class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+					<span
+						class="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+					>
 						Disabled
 					</span>
 				{/if}
@@ -174,7 +181,10 @@
 		<div class="space-y-4">
 			<!-- Channel Provider Selection -->
 			<div>
-				<label for="notify-provider" class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+				<label
+					for="notify-provider"
+					class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1"
+				>
 					Notification Channel Provider
 				</label>
 				<select
@@ -193,7 +203,10 @@
 				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 					<!-- Target Field -->
 					<div>
-						<label for="notify-target" class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+						<label
+							for="notify-target"
+							class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1"
+						>
 							{#if notifyProvider === 'ntfy'}
 								Topic Name or URL
 							{:else if notifyProvider === 'telegram'}
@@ -227,7 +240,10 @@
 					<!-- Token / Secret Field (except Discord) -->
 					{#if notifyProvider === 'telegram' || notifyProvider === 'ntfy'}
 						<div>
-							<label for="notify-token" class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+							<label
+								for="notify-token"
+								class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1"
+							>
 								{#if notifyProvider === 'telegram'}
 									Bot API Token
 								{:else}
@@ -238,7 +254,9 @@
 								id="notify-token"
 								type="password"
 								bind:value={notifyToken}
-								placeholder={notifyConfigured ? '•••••••••••••••• (leave empty to keep)' : 'Enter secret token'}
+								placeholder={notifyConfigured
+									? '•••••••••••••••• (leave empty to keep)'
+									: 'Enter secret token'}
 								class="w-full px-3 py-2 text-xs font-mono rounded-lg border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100"
 							/>
 							<p class="text-[11px] text-zinc-400 mt-1">
@@ -250,7 +268,10 @@
 
 				<!-- Trigger Events -->
 				<div>
-					<label for="notify-events" class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+					<label
+						for="notify-events"
+						class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1"
+					>
 						Active Event Triggers (comma-separated)
 					</label>
 					<input
@@ -261,7 +282,8 @@
 						class="w-full sm:w-96 px-3 py-2 text-xs font-mono rounded-lg border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100"
 					/>
 					<p class="text-[11px] text-zinc-400 mt-1">
-						Supported: <code>deploy.failed</code>, <code>backup.failed</code>, <code>disk.warning</code> (triggered at &gt; 85% disk usage).
+						Supported: <code>deploy.failed</code>, <code>backup.failed</code>,
+						<code>disk.warning</code> (triggered at &gt; 85% disk usage).
 					</p>
 				</div>
 			{/if}
@@ -300,13 +322,17 @@
 	</div>
 
 	<!-- Hook Hostname Configuration -->
-	<div class="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs space-y-4">
+	<div
+		class="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs space-y-4"
+	>
 		<div>
 			<h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
 				GitHub Inbound Webhook Hostname
 			</h2>
 			<p class="text-xs text-zinc-500 mt-0.5 leading-relaxed">
-				The public domain routed by Traefik to the unprivileged Unix hook relay socket (<code>/hooks/github/...</code>).
+				The public domain routed by Traefik to the unprivileged Unix hook relay socket (<code
+					>/hooks/github/...</code
+				>).
 			</p>
 		</div>
 
@@ -329,24 +355,31 @@
 	</div>
 
 	<!-- Admin Security & TOTP Status -->
-	<div class="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs space-y-4">
+	<div
+		class="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs space-y-4"
+	>
 		<div>
 			<h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
 				Admin Authentication & Credentials
 			</h2>
 			<p class="text-xs text-zinc-500 mt-0.5">
-				To uphold strict security invariants (BRIEF §4.2), credential mutations are accepted exclusively via the local 0600 Unix socket.
+				To uphold strict security invariants (BRIEF §4.2), credential mutations are accepted
+				exclusively via the local 0600 Unix socket.
 			</p>
 		</div>
 
 		<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-			<div class="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 space-y-2">
+			<div
+				class="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 space-y-2"
+			>
 				<div class="flex items-center justify-between text-xs font-semibold">
 					<span>Master Password</span>
 					<span class="text-emerald-600 dark:text-emerald-400">Set</span>
 				</div>
 				<p class="text-xs text-zinc-500">To rotate your admin password, run via SSH:</p>
-				<div class="flex items-center justify-between p-2 rounded bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 font-mono text-[11px]">
+				<div
+					class="flex items-center justify-between p-2 rounded bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 font-mono text-[11px]"
+				>
 					<span>dermaga admin set-password</span>
 					<button
 						type="button"
@@ -358,15 +391,23 @@
 				</div>
 			</div>
 
-			<div class="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 space-y-2">
+			<div
+				class="p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 space-y-2"
+			>
 				<div class="flex items-center justify-between text-xs font-semibold">
 					<span>TOTP 2FA Authentication</span>
-					<span class={status?.totpEnabled ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-500'}>
+					<span
+						class={status?.totpEnabled
+							? 'text-emerald-600 dark:text-emerald-400'
+							: 'text-amber-500'}
+					>
 						{status?.totpEnabled ? 'Enabled' : 'Disabled'}
 					</span>
 				</div>
 				<p class="text-xs text-zinc-500">To enable or disable TOTP 2FA:</p>
-				<div class="flex items-center justify-between p-2 rounded bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 font-mono text-[11px]">
+				<div
+					class="flex items-center justify-between p-2 rounded bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 font-mono text-[11px]"
+				>
 					<span>dermaga admin totp enable</span>
 					<button
 						type="button"
@@ -381,14 +422,17 @@
 	</div>
 
 	<!-- GitHub Host Keys Verification -->
-	<div class="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs space-y-4">
+	<div
+		class="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs space-y-4"
+	>
 		<div class="flex items-center justify-between">
 			<div>
 				<h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
 					GitHub Host Keys (pinned known_hosts)
 				</h2>
 				<p class="text-xs text-zinc-500 mt-0.5">
-					Fetches official SSH host keys directly from api.github.com/meta to prevent MITM during git clone.
+					Fetches official SSH host keys directly from api.github.com/meta to prevent MITM during
+					git clone.
 				</p>
 			</div>
 			<button
@@ -402,7 +446,9 @@
 		</div>
 
 		{#if knownHostsResult}
-			<div class="p-3 bg-zinc-950 rounded-lg border border-zinc-800 font-mono text-xs text-zinc-300 space-y-1">
+			<div
+				class="p-3 bg-zinc-950 rounded-lg border border-zinc-800 font-mono text-xs text-zinc-300 space-y-1"
+			>
 				<p class="text-zinc-400 text-[11px]">Saved to {knownHostsResult.file}:</p>
 				{#each knownHostsResult.fingerprints as fp}
 					<p class="text-emerald-400">{fp}</p>
@@ -412,14 +458,18 @@
 	</div>
 
 	<!-- SSH Tunnel Connection Snippet -->
-	<div class="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs space-y-3">
+	<div
+		class="p-6 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs space-y-3"
+	>
 		<h2 class="text-sm font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
 			Localhost SSH Tunnel Setup
 		</h2>
 		<p class="text-xs text-zinc-500 leading-relaxed">
-			Because the web panel is bound strictly to <code>127.0.0.1:7070</code> on the host, configure your laptop's <code>~/.ssh/config</code> for one-click access:
+			Because the web panel is bound strictly to <code>127.0.0.1:7070</code> on the host, configure
+			your laptop's <code>~/.ssh/config</code> for one-click access:
 		</p>
-		<pre class="p-3 bg-zinc-950 text-zinc-300 rounded-lg font-mono text-xs overflow-x-auto select-all border border-zinc-800">Host dermaga-panel
+		<pre
+			class="p-3 bg-zinc-950 text-zinc-300 rounded-lg font-mono text-xs overflow-x-auto select-all border border-zinc-800">Host dermaga-panel
     HostName &lt;your-server-ip&gt;
     Port 4222
     User server
@@ -427,7 +477,8 @@
     SessionType none
     ExitOnForwardFailure yes</pre>
 		<p class="text-[11px] text-zinc-500">
-			Then run <code>ssh dermaga-panel</code> and navigate to <strong>http://localhost:7070</strong> in your browser.
+			Then run <code>ssh dermaga-panel</code> and navigate to <strong>http://localhost:7070</strong> in
+			your browser.
 		</p>
 	</div>
 </div>

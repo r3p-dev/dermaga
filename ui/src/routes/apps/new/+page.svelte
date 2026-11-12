@@ -32,7 +32,9 @@
 			port = 3000;
 			containerfile = 'Containerfile';
 			healthPath = '/healthz';
-			toast.info('Auto-detected stack configuration for portfolio (Astro / Node port 3000, /healthz)');
+			toast.info(
+				'Auto-detected stack configuration for portfolio (Astro / Node port 3000, /healthz)'
+			);
 		}
 	}
 
@@ -121,28 +123,52 @@
 
 	<!-- Step Indicators -->
 	<div class="flex items-center space-x-4 border-b border-zinc-200 dark:border-zinc-800 pb-4">
-		<div class="flex items-center space-x-2 {step === 1 ? 'text-indigo-600 dark:text-indigo-400 font-bold' : 'text-zinc-400 font-medium'} text-xs">
-			<span class="w-6 h-6 rounded-full flex items-center justify-center border {step === 1 ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/60' : 'border-zinc-300 dark:border-zinc-700'}">1</span>
+		<div
+			class="flex items-center space-x-2 {step === 1
+				? 'text-indigo-600 dark:text-indigo-400 font-bold'
+				: 'text-zinc-400 font-medium'} text-xs"
+		>
+			<span
+				class="w-6 h-6 rounded-full flex items-center justify-center border {step === 1
+					? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/60'
+					: 'border-zinc-300 dark:border-zinc-700'}">1</span
+			>
 			<span>Configuration & Stack</span>
 		</div>
 		<div class="w-8 border-t border-zinc-200 dark:border-zinc-800"></div>
-		<div class="flex items-center space-x-2 {step === 2 ? 'text-indigo-600 dark:text-indigo-400 font-bold' : 'text-zinc-400 font-medium'} text-xs">
-			<span class="w-6 h-6 rounded-full flex items-center justify-center border {step === 2 ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/60' : 'border-zinc-300 dark:border-zinc-700'}">2</span>
+		<div
+			class="flex items-center space-x-2 {step === 2
+				? 'text-indigo-600 dark:text-indigo-400 font-bold'
+				: 'text-zinc-400 font-medium'} text-xs"
+		>
+			<span
+				class="w-6 h-6 rounded-full flex items-center justify-center border {step === 2
+					? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/60'
+					: 'border-zinc-300 dark:border-zinc-700'}">2</span
+			>
 			<span>Deploy Key & Webhooks</span>
 		</div>
 	</div>
 
 	{#if step === 1}
-		<form onsubmit={handleCreate} class="space-y-6 bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xs">
+		<form
+			onsubmit={handleCreate}
+			class="space-y-6 bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xs"
+		>
 			<!-- Repository & Name -->
 			<div class="space-y-4">
-				<h2 class="text-sm font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400 border-b border-zinc-100 dark:border-zinc-800/80 pb-2">
+				<h2
+					class="text-sm font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400 border-b border-zinc-100 dark:border-zinc-800/80 pb-2"
+				>
 					Git Source
 				</h2>
 
 				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 					<div>
-						<label for="repo" class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+						<label
+							for="repo"
+							class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1"
+						>
 							Repository URL / Slug <span class="text-rose-500">*</span>
 						</label>
 						<input
@@ -158,7 +184,10 @@
 					</div>
 
 					<div>
-						<label for="appName" class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+						<label
+							for="appName"
+							class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1"
+						>
 							App Name <span class="text-rose-500">*</span>
 						</label>
 						<input
@@ -169,13 +198,18 @@
 							placeholder="e.g. portfolio"
 							class="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
 						/>
-						<p class="text-[11px] text-zinc-500 mt-1">Unique identifier (lowercase letters, digits, hyphens).</p>
+						<p class="text-[11px] text-zinc-500 mt-1">
+							Unique identifier (lowercase letters, digits, hyphens).
+						</p>
 					</div>
 				</div>
 
 				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
 					<div>
-						<label for="branch" class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+						<label
+							for="branch"
+							class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1"
+						>
 							Target Branch
 						</label>
 						<input
@@ -188,7 +222,10 @@
 					</div>
 
 					<div>
-						<label for="containerfile" class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+						<label
+							for="containerfile"
+							class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1"
+						>
 							Containerfile / Dockerfile
 						</label>
 						<input
@@ -204,13 +241,18 @@
 
 			<!-- Routing & Health -->
 			<div class="space-y-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
-				<h2 class="text-sm font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400 border-b border-zinc-100 dark:border-zinc-800/80 pb-2">
+				<h2
+					class="text-sm font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400 border-b border-zinc-100 dark:border-zinc-800/80 pb-2"
+				>
 					Routing & Health Checks
 				</h2>
 
 				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
 					<div>
-						<label for="domain" class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+						<label
+							for="domain"
+							class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1"
+						>
 							Primary Domain
 						</label>
 						<input
@@ -224,7 +266,10 @@
 					</div>
 
 					<div>
-						<label for="port" class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+						<label
+							for="port"
+							class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1"
+						>
 							Internal Container Port <span class="text-rose-500">*</span>
 						</label>
 						<input
@@ -236,13 +281,18 @@
 							max="65535"
 							class="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-mono"
 						/>
-						<p class="text-[11px] text-zinc-500 mt-1">Port exposed by your web service (e.g. 3000, 8080).</p>
+						<p class="text-[11px] text-zinc-500 mt-1">
+							Port exposed by your web service (e.g. 3000, 8080).
+						</p>
 					</div>
 				</div>
 
 				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
 					<div>
-						<label for="healthPath" class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+						<label
+							for="healthPath"
+							class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1"
+						>
 							Health Check Path
 						</label>
 						<input
@@ -252,11 +302,16 @@
 							placeholder="/"
 							class="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 font-mono"
 						/>
-						<p class="text-[11px] text-zinc-500 mt-1">Polled during zero-downtime blue-green switches.</p>
+						<p class="text-[11px] text-zinc-500 mt-1">
+							Polled during zero-downtime blue-green switches.
+						</p>
 					</div>
 
 					<div>
-						<label for="strategy" class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1">
+						<label
+							for="strategy"
+							class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1"
+						>
 							Deployment Strategy
 						</label>
 						<select
@@ -271,7 +326,9 @@
 				</div>
 
 				<div class="pt-2">
-					<label class="flex items-center space-x-2 text-xs font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer">
+					<label
+						class="flex items-center space-x-2 text-xs font-medium text-zinc-700 dark:text-zinc-300 cursor-pointer"
+					>
 						<input
 							type="checkbox"
 							bind:checked={autoDeploy}
@@ -290,8 +347,19 @@
 				>
 					{#if loading}
 						<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+							<circle
+								class="opacity-25"
+								cx="12"
+								cy="12"
+								r="10"
+								stroke="currentColor"
+								stroke-width="4"
+							></circle>
+							<path
+								class="opacity-75"
+								fill="currentColor"
+								d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+							></path>
 						</svg>
 						<span>Creating Application...</span>
 					{:else}
@@ -302,15 +370,30 @@
 		</form>
 	{:else}
 		<!-- Step 2: Deploy Key & Webhook setup screen -->
-		<div class="space-y-6 bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xs">
-			<div class="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 text-xs text-emerald-900 dark:text-emerald-100 flex items-start space-x-3">
-				<svg class="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+		<div
+			class="space-y-6 bg-white dark:bg-zinc-900 p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xs"
+		>
+			<div
+				class="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-900 text-xs text-emerald-900 dark:text-emerald-100 flex items-start space-x-3"
+			>
+				<svg
+					class="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0"
+					fill="none"
+					viewBox="0 0 24 24"
+					stroke="currentColor"
+				>
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+					/>
 				</svg>
 				<div>
 					<p class="font-bold text-sm">Application record created on Dermaga!</p>
 					<p class="mt-1 leading-relaxed">
-						Complete GitHub integration by adding the generated deploy key and webhook URL below. Once added, click <strong>Trigger Initial Deploy</strong>.
+						Complete GitHub integration by adding the generated deploy key and webhook URL below.
+						Once added, click <strong>Trigger Initial Deploy</strong>.
 					</p>
 				</div>
 			</div>
@@ -331,7 +414,12 @@
 						>
 							<span>Open GitHub Deploy Keys</span>
 							<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+								/>
 							</svg>
 						</a>
 					</div>
@@ -341,7 +429,8 @@
 							readonly
 							rows="3"
 							class="w-full p-3 font-mono text-xs rounded-lg border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-800 dark:text-zinc-200 select-all"
-						>{ghSettings.deployKey}</textarea>
+							>{ghSettings.deployKey}</textarea
+						>
 						<button
 							type="button"
 							onclick={() => copyToClipboard(ghSettings?.deployKey || '', 'Deploy key')}
@@ -372,7 +461,12 @@
 						>
 							<span>Open GitHub Webhooks</span>
 							<svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+								<path
+									stroke-linecap="round"
+									stroke-linejoin="round"
+									stroke-width="2"
+									d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+								/>
 							</svg>
 						</a>
 					</div>
@@ -399,7 +493,9 @@
 
 						{#if ghSettings.webhookSecret}
 							<div>
-								<span class="block text-xs font-medium text-zinc-500 mb-1">Secret (HMAC-SHA256)</span>
+								<span class="block text-xs font-medium text-zinc-500 mb-1"
+									>Secret (HMAC-SHA256)</span
+								>
 								<div class="flex items-center space-x-2">
 									<input
 										type="text"
@@ -409,7 +505,8 @@
 									/>
 									<button
 										type="button"
-										onclick={() => copyToClipboard(ghSettings?.webhookSecret || '', 'Webhook Secret')}
+										onclick={() =>
+											copyToClipboard(ghSettings?.webhookSecret || '', 'Webhook Secret')}
 										class="px-2.5 py-1.5 text-xs font-semibold rounded bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 shadow-2xs hover:bg-zinc-100"
 									>
 										Copy Secret
@@ -425,7 +522,9 @@
 			{/if}
 
 			<!-- Action buttons -->
-			<div class="flex items-center justify-between pt-6 border-t border-zinc-200 dark:border-zinc-800">
+			<div
+				class="flex items-center justify-between pt-6 border-t border-zinc-200 dark:border-zinc-800"
+			>
 				<a
 					href="/apps/{createdApp?.name}"
 					class="px-4 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 text-xs font-medium text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"
@@ -441,14 +540,35 @@
 				>
 					{#if loading}
 						<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-							<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-							<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+							<circle
+								class="opacity-25"
+								cx="12"
+								cy="12"
+								r="10"
+								stroke="currentColor"
+								stroke-width="4"
+							></circle>
+							<path
+								class="opacity-75"
+								fill="currentColor"
+								d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+							></path>
 						</svg>
 						<span>Queuing Deploy...</span>
 					{:else}
 						<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+							/>
+							<path
+								stroke-linecap="round"
+								stroke-linejoin="round"
+								stroke-width="2"
+								d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+							/>
 						</svg>
 						<span>Deploy Key Added — Trigger Initial Deploy</span>
 					{/if}

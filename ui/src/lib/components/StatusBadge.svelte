@@ -4,7 +4,9 @@
 	const st = $derived(status?.toLowerCase() || 'unknown');
 
 	const isSuccess = $derived(['live', 'active', 'ok'].includes(st));
-	const isProgress = $derived(['building', 'verifying', 'draining', 'queued', 'pending'].includes(st));
+	const isProgress = $derived(
+		['building', 'verifying', 'draining', 'queued', 'pending'].includes(st)
+	);
 	const isFail = $derived(['failed', 'fail', 'error'].includes(st));
 	const isWarn = $derived(['warn', 'rolled_back', 'superseded'].includes(st));
 </script>

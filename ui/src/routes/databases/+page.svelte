@@ -104,8 +104,18 @@
 				aria-label="Refresh databases"
 				class="p-2 text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-2xs"
 			>
-				<svg class="w-4 h-4 {loading ? 'animate-spin' : ''}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+				<svg
+					class="w-4 h-4 {loading ? 'animate-spin' : ''}"
+					fill="none"
+					viewBox="0 0 24 24"
+					stroke="currentColor"
+				>
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+					/>
 				</svg>
 			</button>
 			<button
@@ -114,7 +124,12 @@
 				class="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-xs"
 			>
 				<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-					<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+					<path
+						stroke-linecap="round"
+						stroke-linejoin="round"
+						stroke-width="2"
+						d="M12 4v16m8-8H4"
+					/>
 				</svg>
 				<span>New Database</span>
 			</button>
@@ -123,12 +138,28 @@
 
 	<!-- Databases Grid -->
 	{#if databases.length === 0}
-		<div class="text-center py-12 rounded-2xl border border-dashed border-zinc-300 dark:border-zinc-800 bg-white dark:bg-zinc-900/30">
-			<svg class="mx-auto h-10 w-10 text-zinc-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" />
+		<div
+			class="text-center py-12 rounded-2xl border border-dashed border-zinc-300 dark:border-zinc-800 bg-white dark:bg-zinc-900/30"
+		>
+			<svg
+				class="mx-auto h-10 w-10 text-zinc-400"
+				fill="none"
+				viewBox="0 0 24 24"
+				stroke="currentColor"
+			>
+				<path
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					stroke-width="1.5"
+					d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"
+				/>
 			</svg>
-			<h3 class="mt-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">No databases provisioned</h3>
-			<p class="mt-1 text-xs text-zinc-500">Launch a dedicated PostgreSQL, MariaDB, or Valkey instance.</p>
+			<h3 class="mt-2 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+				No databases provisioned
+			</h3>
+			<p class="mt-1 text-xs text-zinc-500">
+				Launch a dedicated PostgreSQL, MariaDB, or Valkey instance.
+			</p>
 			<div class="mt-4">
 				<button
 					type="button"
@@ -142,11 +173,15 @@
 	{:else}
 		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 			{#each databases as db}
-				<div class="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 shadow-2xs flex flex-col justify-between space-y-4">
+				<div
+					class="rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 shadow-2xs flex flex-col justify-between space-y-4"
+				>
 					<div>
 						<div class="flex items-start justify-between">
 							<div class="flex items-center space-x-3">
-								<div class="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center font-bold text-sm uppercase text-zinc-800 dark:text-zinc-200">
+								<div
+									class="w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center font-bold text-sm uppercase text-zinc-800 dark:text-zinc-200"
+								>
 									{db.engine.slice(0, 2)}
 								</div>
 								<div>
@@ -157,21 +192,26 @@
 										{db.name}
 									</a>
 									<p class="text-xs text-zinc-500 font-mono">
-										{db.engine} {db.version}
+										{db.engine}
+										{db.version}
 									</p>
 								</div>
 							</div>
 							<StatusBadge status={db.status} />
 						</div>
 
-						<div class="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-2 text-xs text-zinc-500">
+						<div
+							class="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-2 text-xs text-zinc-500"
+						>
 							<div class="flex items-center justify-between">
 								<span>Port</span>
 								<span class="font-mono text-zinc-800 dark:text-zinc-200">:{db.port}</span>
 							</div>
 							<div class="flex items-center justify-between">
 								<span>Volume</span>
-								<span class="font-mono text-zinc-800 dark:text-zinc-200 truncate max-w-[150px]">{db.volume}</span>
+								<span class="font-mono text-zinc-800 dark:text-zinc-200 truncate max-w-[150px]"
+									>{db.volume}</span
+								>
 							</div>
 							<div class="flex items-center justify-between">
 								<span>Linked Apps</span>
@@ -182,7 +222,9 @@
 						</div>
 					</div>
 
-					<div class="pt-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between gap-2">
+					<div
+						class="pt-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between gap-2"
+					>
 						<a
 							href="/databases/{db.name}"
 							class="px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 text-xs font-semibold text-zinc-700 dark:text-zinc-300 hover:bg-zinc-50 dark:hover:bg-zinc-800"
@@ -197,7 +239,12 @@
 								title="Restart database"
 							>
 								<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-									<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+									/>
 								</svg>
 							</button>
 							<button
@@ -216,7 +263,11 @@
 </div>
 
 <!-- Create Database Modal -->
-<Modal open={createModalOpen} title="Provision Managed Database" onclose={() => (createModalOpen = false)}>
+<Modal
+	open={createModalOpen}
+	title="Provision Managed Database"
+	onclose={() => (createModalOpen = false)}
+>
 	<form onsubmit={handleCreate} class="space-y-4 text-xs">
 		<div>
 			<label for="newDbName" class="block font-semibold mb-1 text-zinc-700 dark:text-zinc-300">

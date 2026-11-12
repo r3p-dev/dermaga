@@ -67,21 +67,49 @@
 	<title>Login - dermaga</title>
 </svelte:head>
 
-<div class="w-full max-w-md p-8 bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xl">
+<div
+	class="w-full max-w-md p-8 bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-2xl"
+>
 	<div class="text-center mb-8">
-		<div class="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-2xl mx-auto mb-3 shadow-md shadow-indigo-600/20">
-			<svg class="w-7 h-7 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-				<path d="M4 18h16M7 14l5-9 5 9M12 5v9"/>
+		<div
+			class="w-12 h-12 rounded-xl bg-indigo-600 flex items-center justify-center text-white font-bold text-2xl mx-auto mb-3 shadow-md shadow-indigo-600/20"
+		>
+			<svg
+				class="w-7 h-7 text-white"
+				viewBox="0 0 24 24"
+				fill="none"
+				stroke="currentColor"
+				stroke-width="2.5"
+				stroke-linecap="round"
+				stroke-linejoin="round"
+			>
+				<path d="M4 18h16M7 14l5-9 5 9M12 5v9" />
 			</svg>
 		</div>
-		<h1 class="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">Welcome to dermaga</h1>
-		<p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Authenticate to access your PaaS panel</p>
+		<h1 class="text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-100">
+			Welcome to dermaga
+		</h1>
+		<p class="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+			Authenticate to access your PaaS panel
+		</p>
 	</div>
 
 	{#if errorMessage}
-		<div class="mb-5 p-3 rounded-lg bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-300 flex items-start space-x-2">
-			<svg class="w-4 h-4 text-rose-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-				<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+		<div
+			class="mb-5 p-3 rounded-lg bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-300 flex items-start space-x-2"
+		>
+			<svg
+				class="w-4 h-4 text-rose-500 shrink-0 mt-0.5"
+				fill="none"
+				viewBox="0 0 24 24"
+				stroke="currentColor"
+			>
+				<path
+					stroke-linecap="round"
+					stroke-linejoin="round"
+					stroke-width="2"
+					d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+				/>
 			</svg>
 			<div class="flex-1">
 				<span>{errorMessage}</span>
@@ -94,7 +122,10 @@
 
 	<form onsubmit={handleSubmit} class="space-y-4">
 		<div>
-			<label for="password" class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5 uppercase tracking-wider">
+			<label
+				for="password"
+				class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 mb-1.5 uppercase tracking-wider"
+			>
 				Master Admin Password
 			</label>
 			<input
@@ -111,7 +142,10 @@
 
 		<div>
 			<div class="flex items-center justify-between mb-1.5">
-				<label for="totp" class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider">
+				<label
+					for="totp"
+					class="block text-xs font-semibold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider"
+				>
 					TOTP Code <span class="text-zinc-400 font-normal lowercase">(if enabled)</span>
 				</label>
 			</div>
@@ -136,8 +170,13 @@
 		>
 			{#if loading}
 				<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-					<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+					<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"
+					></circle>
+					<path
+						class="opacity-75"
+						fill="currentColor"
+						d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+					></path>
 				</svg>
 				<span>Verifying credentials...</span>
 			{:else if retryCountdown > 0}
@@ -148,7 +187,9 @@
 		</button>
 	</form>
 
-	<div class="mt-6 pt-4 border-t border-zinc-100 dark:border-zinc-800/80 text-center text-[11px] text-zinc-400">
+	<div
+		class="mt-6 pt-4 border-t border-zinc-100 dark:border-zinc-800/80 text-center text-[11px] text-zinc-400"
+	>
 		Protected by Argon2id & RFC 6238 TOTP
 	</div>
 </div>

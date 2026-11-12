@@ -3,9 +3,10 @@ import { writable } from 'svelte/store';
 export type Theme = 'dark' | 'light' | 'system';
 
 function createThemeStore() {
-	const initial: Theme = typeof localStorage !== 'undefined'
-		? ((localStorage.getItem('dermaga_theme') as Theme) || 'system')
-		: 'system';
+	const initial: Theme =
+		typeof localStorage !== 'undefined'
+			? (localStorage.getItem('dermaga_theme') as Theme) || 'system'
+			: 'system';
 
 	const { subscribe, set } = writable<Theme>(initial);
 

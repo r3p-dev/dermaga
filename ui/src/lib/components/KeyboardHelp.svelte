@@ -21,7 +21,8 @@
 <Modal {open} title="Keyboard Navigation Shortcuts" onclose={() => (open = false)}>
 	<div class="space-y-3">
 		<p class="text-xs text-zinc-500 dark:text-zinc-400">
-			Press key sequences in quick succession to navigate anywhere in the dashboard without touching your mouse.
+			Press key sequences in quick succession to navigate anywhere in the dashboard without touching
+			your mouse.
 		</p>
 		<div class="divide-y divide-zinc-100 dark:divide-zinc-800">
 			{#each shortcuts as s}

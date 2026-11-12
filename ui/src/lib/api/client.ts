@@ -112,7 +112,11 @@ export const api = {
 		return request<AppView>(`/api/apps/${encodeURIComponent(name)}`);
 	},
 
-	async createApp(req: { name: string; domains?: spec.Domain[]; spec: spec.App }): Promise<AppView> {
+	async createApp(req: {
+		name: string;
+		domains?: spec.Domain[];
+		spec: spec.App;
+	}): Promise<AppView> {
 		return request<AppView>('/api/apps', {
 			method: 'POST',
 			body: JSON.stringify(req)
@@ -152,7 +156,9 @@ export const api = {
 
 	async getEnv(name: string, reveal = false): Promise<Record<string, string> | string[]> {
 		const q = reveal ? '?reveal=1' : '';
-		return request<Record<string, string> | string[]>(`/api/apps/${encodeURIComponent(name)}/env${q}`);
+		return request<Record<string, string> | string[]>(
+			`/api/apps/${encodeURIComponent(name)}/env${q}`
+		);
 	},
 
 	async updateEnv(

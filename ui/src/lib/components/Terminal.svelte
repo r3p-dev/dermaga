@@ -60,9 +60,13 @@
 	}
 </script>
 
-<div class="rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl overflow-hidden font-mono text-xs text-zinc-300">
+<div
+	class="rounded-xl border border-zinc-800 bg-zinc-950 shadow-xl overflow-hidden font-mono text-xs text-zinc-300"
+>
 	<!-- Terminal header -->
-	<div class="flex items-center justify-between border-b border-zinc-800/80 bg-zinc-900/90 px-4 py-2.5 select-none">
+	<div
+		class="flex items-center justify-between border-b border-zinc-800/80 bg-zinc-900/90 px-4 py-2.5 select-none"
+	>
 		<div class="flex items-center space-x-2">
 			<span class="w-3 h-3 rounded-full bg-rose-500/80 inline-block"></span>
 			<span class="w-3 h-3 rounded-full bg-amber-500/80 inline-block"></span>
@@ -94,7 +98,9 @@
 			<!-- Wrap toggle -->
 			<button
 				type="button"
-				class="px-2 py-1 rounded border border-zinc-800 bg-zinc-950/60 hover:bg-zinc-800 text-[11px] {wrapText ? 'text-indigo-400 border-indigo-900/50' : 'text-zinc-400'}"
+				class="px-2 py-1 rounded border border-zinc-800 bg-zinc-950/60 hover:bg-zinc-800 text-[11px] {wrapText
+					? 'text-indigo-400 border-indigo-900/50'
+					: 'text-zinc-400'}"
 				onclick={() => (wrapText = !wrapText)}
 				title="Toggle line wrapping"
 			>
@@ -104,7 +110,9 @@
 			<!-- Auto scroll toggle -->
 			<button
 				type="button"
-				class="px-2 py-1 rounded border border-zinc-800 bg-zinc-950/60 hover:bg-zinc-800 text-[11px] {autoScroll ? 'text-emerald-400 border-emerald-900/50' : 'text-zinc-400'}"
+				class="px-2 py-1 rounded border border-zinc-800 bg-zinc-950/60 hover:bg-zinc-800 text-[11px] {autoScroll
+					? 'text-emerald-400 border-emerald-900/50'
+					: 'text-zinc-400'}"
 				onclick={() => {
 					autoScroll = !autoScroll;
 					if (autoScroll && container) container.scrollTop = container.scrollHeight;
@@ -138,8 +146,14 @@
 		{:else}
 			{#each filteredLines as line, i}
 				<div class="flex items-start hover:bg-zinc-900/50 -mx-4 px-4 py-0.5">
-					<span class="w-10 shrink-0 text-zinc-600 select-none text-right pr-4 text-[10px]">{i + 1}</span>
-					<span class="flex-1 {wrapText ? 'break-all whitespace-pre-wrap' : 'whitespace-pre overflow-x-auto'}">{line}</span>
+					<span class="w-10 shrink-0 text-zinc-600 select-none text-right pr-4 text-[10px]"
+						>{i + 1}</span
+					>
+					<span
+						class="flex-1 {wrapText
+							? 'break-all whitespace-pre-wrap'
+							: 'whitespace-pre overflow-x-auto'}">{line}</span
+					>
 				</div>
 			{/each}
 		{/if}
