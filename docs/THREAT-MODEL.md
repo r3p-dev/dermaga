@@ -225,6 +225,15 @@ No container runs with `CAP_SYS_ADMIN`, `CAP_NET_ADMIN`, `CAP_SYS_PTRACE`, or `C
   - Global single-threaded build queue (concurrency 1).
   - 20-minute hard timeout per build.
 
+### 7.4 Residual Risk 4: Unprivileged Low Ports (Accepted, decision D-b of 2026-11-12)
+- **Description:** `install.sh` sets `net.ipv4.ip_unprivileged_port_start = 80` (as `vps-setup.sh` did). The Traefik sockets (`traefik-http.socket`, `traefik-https.socket`) are units of the `server` user's systemd user manager, which binds as that unprivileged user and so needs this setting for :80/:443. Side effect: **any** local user or process can bind ports 80–1023.
+- **Impact:** A local process could listen on an unused low port and pose as a system service, or take :80/:443 while the Traefik socket units are stopped.
+- **Why accepted:**
+  - The host is single-user: sshd `AllowUsers` admits only `server`, which already owns the Traefik sockets, so the setting gives it nothing new.
+  - No container publishes ports. Containers run in their own network namespaces and dermaga writes no `PublishPort=`, so a compromised container cannot bind a host port.
+  - nftables default-deny exposes only SSH, :80 and :443, so a listener on another low port is not reachable from outside.
+- **Not built:** user sockets on high ports with an nftables redirect (considered in `docs/v2/P0-AUDIT.md` §6, D-b).
+
 ---
 
 ## 8. Threat Model Summary & Compliance
