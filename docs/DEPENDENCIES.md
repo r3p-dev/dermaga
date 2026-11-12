@@ -60,13 +60,14 @@ trailing commas, width 100. `ui/src/lib/types/` is ignored because tygo generate
 Newer releases seen on 2026-11-12 (`bun outdated`), **not** taken in the pinning change:
 `@sveltejs/kit` 3.2.0, `vite` 8.3.8, `typescript` 7.0.2 (new major).
 
-## CI (`.github/workflows/release.yml`)
+## CI (`.github/workflows/ci.yml` on push and pull request, `release.yml` on tags)
 
 Every action is pinned to the full commit SHA of its release tag, with the tag as a trailing
 comment, because tags can be moved and this workflow builds the binaries and `checksums.txt` that
 the installer verifies. Tags are the newest within the major already in use; SHAs resolved with
 `git ls-remote https://github.com/<owner>/<repo> refs/tags/<tag>` on 2026-11-12 (all four are
-lightweight tags, so the SHA is the commit). Go comes from `go.mod` (`go-version-file`).
+lightweight tags, so the SHA is the commit). Go comes from `go.mod` (`go-version-file`). Both
+workflows use the same pins; `ci.yml` has `contents: read` only.
 
 | Action / runtime | Pin | Newer major exists |
 |---|---|---|
