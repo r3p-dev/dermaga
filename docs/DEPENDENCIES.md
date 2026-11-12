@@ -51,6 +51,11 @@ changes no installed package. Built and checked with **Bun 1.4.2** (local and `r
 | `tailwindcss`, `@tailwindcss/vite` | 4.3.5 | Styling. |
 | `typescript` | 5.9.3 | Type checking of the UI and of the tygo-generated types. |
 | `svelte-check` | 4.7.8 | `bun run check`, part of `make check` (`ui-check`). |
+| `prettier` | 3.10.1 | One formatter for the UI (`bun run format`, `format:check` in `make check`). Added 2026-11-12 (decision D-d, gap G31); registry `latest` on that date. No alternative considered: it is the formatter SvelteKit projects use and Go already has `gofmt`. |
+| `prettier-plugin-svelte` | 4.1.1 | Lets Prettier parse `.svelte` files; registry `latest` on 2026-11-12, peer range `prettier ^3`, `svelte ^5`. |
+
+Prettier settings (`ui/.prettierrc`) follow the style the code already had: tabs, single quotes, no
+trailing commas, width 100. `ui/src/lib/types/` is ignored because tygo generates it.
 
 Newer releases seen on 2026-11-12 (`bun outdated`), **not** taken in the pinning change:
 `@sveltejs/kit` 3.2.0, `vite` 8.3.8, `typescript` 7.0.2 (new major).
