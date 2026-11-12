@@ -227,7 +227,7 @@ The key is `~/.config/dermaga/master.key` (32 random bytes, 0600). Env files mus
 | tygo (dev tool, added in M7) | v0.2.21 | |
 | staticcheck (`go tool`) | honnef.co/go/tools v0.8.2 (2026.2.2) | proxy.golang.org |
 | govulncheck (`go tool`) | golang.org/x/vuln v1.9.0 | proxy.golang.org |
-| Bun | 1.4.4 (spike used 1.4.2) | |
+| Bun | 1.4.2 (installed locally, pinned in `release.yml`) | |
 | SvelteKit / Svelte / adapter-static | 3.1.1 / 5.57.3 / 4.0.1 | npm |
 | Tailwind CSS / Vite / vite-plugin-svelte | 4.3.5 / 8.3.6 / 7.3.1 | npm |
 | Traefik | `docker.io/library/traefik:v3.7` (now v3.7.17), `AutoUpdate=registry` | as in vps-setup.sh |
