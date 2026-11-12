@@ -220,7 +220,7 @@ The key is `~/.config/dermaga/master.key` (32 random bytes, 0600). Env files mus
 
 | Component | Version | Source |
 |---|---|---|
-| Go | 1.27.3 | go.dev |
+| Go | 1.27.4 (raised from 1.27.3 on 2026-11-12, GO-2026-6859) | go.dev |
 | modernc.org/sqlite | v1.61.1 (SQLite 3.54.1) | proxy.golang.org |
 | golang.org/x/crypto | v0.58.0 | |
 | github.com/pelletier/go-toml/v2 | v2.4.3 | |

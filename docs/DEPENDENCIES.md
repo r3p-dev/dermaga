@@ -37,6 +37,11 @@ binary. `tygo` (Go → TypeScript types) joins this list in M7.
 
 ## Known advisories
 
+- **GO-2026-6859** (`net/http`, HTTP/1 server crash through a `MaxBytesReader` header race):
+  reported by govulncheck on 2026-11-12 with reachable call paths (the daemon serves HTTP). Found
+  in go1.27.3, fixed in go1.27.4. `go.mod` now says `go 1.27.4` (no `toolchain` line is needed;
+  the `go` line is the minimum and `GOTOOLCHAIN=auto` fetches it). CI reads the same file through
+  `go-version-file: go.mod`, so there is no second Go version to keep in step.
 - **GO-2026-5932** (`golang.org/x/crypto/openpgp` is unmaintained and unsafe by design): reported
   by govulncheck at module level. dermaga doesn't import `openpgp` (govulncheck: "your code
   doesn't appear to call these vulnerabilities"). The fix exists only as a pseudo-version
