@@ -101,7 +101,9 @@ func backupRun(args []string) error {
 	if err != nil {
 		return err
 	}
-	req := api.RunBackupRequest{Target: target}
+	// systemd sets INVOCATION_ID for the units it starts: a timer run leaves the
+	// failure notification to the unit's OnFailure=.
+	req := api.RunBackupRequest{Target: target, Scheduled: os.Getenv("INVOCATION_ID") != ""}
 	var snap backup.Snapshot
 	if err := callTimeout("POST", "/api/backup/run", 5*time.Minute, req, &snap); err != nil {
 		return err

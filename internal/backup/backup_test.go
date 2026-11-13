@@ -361,7 +361,7 @@ func TestTimerGenerationAndOrchestration(t *testing.T) {
 	if !strings.Contains(string(svc), "backup run db:shopdb") {
 		t.Errorf("service missing command: %s", string(svc))
 	}
-	if !strings.Contains(string(svc), "OnFailure=dg-backup-failed@%%n.service") {
+	if !strings.Contains(string(svc), "OnFailure=dg-backup-failed@%n.service\n") {
 		t.Errorf("service missing OnFailure: %s", string(svc))
 	}
 

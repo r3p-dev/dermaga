@@ -1,9 +1,12 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/r3p-dev/dermaga/internal/audit"
 	"github.com/r3p-dev/dermaga/internal/backup"
@@ -12,6 +15,9 @@ import (
 
 type RunBackupRequest struct {
 	Target string `json:"target"` // db:<name>, system, or volume:<app>:<vol>
+	// Scheduled is set by the CLI when a systemd timer runs it. The unit's
+	// OnFailure= then sends the notification, so the API must not send a second one.
+	Scheduled bool `json:"scheduled,omitempty"`
 }
 
 type RestoreSystemRequest struct {
@@ -143,6 +149,9 @@ func (s *Server) runBackup(w http.ResponseWriter, r *http.Request, actor string)
 
 	if err != nil {
 		_ = audit.Log(s.DB, actor, "backup.failed", target, err.Error())
+		if !req.Scheduled {
+			s.notifyBackupFailed(r.Context(), target, err)
+		}
 		internalError(w, err)
 		return
 	}
@@ -175,6 +184,7 @@ func (s *Server) systemBackup(w http.ResponseWriter, r *http.Request, actor stri
 	snap, err := s.Backup.BackupSystem(r.Context())
 	if err != nil {
 		_ = audit.Log(s.DB, actor, "system.backup_failed", "system", err.Error())
+		s.notifyBackupFailed(r.Context(), "system", err)
 		internalError(w, err)
 		return
 	}
@@ -229,15 +239,28 @@ func (s *Server) failureNotify(w http.ResponseWriter, r *http.Request, _ string)
 		target = "unknown-unit"
 	}
 	_ = audit.Log(s.DB, "timer", "backup.failed", target, "systemd failure event triggered")
-	if s.Notifier != nil && s.DB != nil && s.Box != nil {
-		if cfg, err := notify.LoadSettings(r.Context(), s.DB, s.Box); err == nil {
-			_ = s.Notifier.Dispatch(r.Context(), cfg, notify.Message{
-				Event: "backup.failed",
-				Title: "Dermaga Backup Failed",
-				Body:  "Backup unit " + target + " failed execution",
-				Level: "error",
-			})
-		}
-	}
+	s.notifyBackupFailed(r.Context(), target, errors.New("the scheduled unit failed; see journalctl --user -u "+target))
 	writeJSON(w, http.StatusOK, map[string]string{"status": "recorded"})
+}
+
+// notifyBackupFailed sends the backup.failed notification for every failed
+// backup: scheduled (through OnFailure= and failure-notify), manual CLI runs
+// and panel requests. It is detached from the request, so the alert still goes
+// out when the client has hung up.
+func (s *Server) notifyBackupFailed(ctx context.Context, target string, cause error) {
+	if s.Notifier == nil || s.DB == nil || s.Box == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+	defer cancel()
+	cfg, err := notify.LoadSettings(ctx, s.DB, s.Box)
+	if err != nil {
+		return
+	}
+	_ = s.Notifier.Dispatch(ctx, cfg, notify.Message{
+		Event: "backup.failed",
+		Title: "Dermaga Backup Failed",
+		Body:  "Backup of " + target + " failed: " + cause.Error(),
+		Level: "error",
+	})
 }

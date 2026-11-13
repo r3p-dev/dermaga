@@ -464,6 +464,7 @@ func (s *Server) backupDatabase(w http.ResponseWriter, r *http.Request, actor st
 	snap, err := s.Backup.BackupDatabase(r.Context(), name)
 	if err != nil {
 		_ = audit.Log(s.DB, actor, "db.backup_failed", name, err.Error())
+		s.notifyBackupFailed(r.Context(), "db:"+name, err)
 		internalError(w, err)
 		return
 	}

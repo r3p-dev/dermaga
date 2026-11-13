@@ -1,6 +1,7 @@
 package quadlet
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -84,6 +85,48 @@ func TestOtherUnitsGolden(t *testing.T) {
 	}
 	golden.Check(t, "systemd/"+tm.UnitName()+".service", svc)
 	golden.Check(t, "systemd/"+tm.UnitName()+".timer", tmr)
+}
+
+// TestSpecifierEscapingGolden pins the one place a systemd specifier passes
+// through (OnFailure=…@%n.service) next to literal % and $ in Exec and
+// Environment values, which must stay doubled.
+func TestSpecifierEscapingGolden(t *testing.T) {
+	tm := Timer{Name: "backup-system", Description: "backup system", Binary: "/usr/local/bin/dermaga",
+		Args: []string{"backup", "run", "system"}, OnCalendar: "*-*-* 02:00:00 Asia/Jakarta", RandomDelay: 1800,
+		OnFailure: "dg-backup-failed@%n.service"}
+	svc, _, err := tm.Units()
+	if err != nil {
+		t.Fatal(err)
+	}
+	golden.Check(t, "systemd/"+tm.UnitName()+".service", svc)
+	if !bytes.Contains(svc, []byte("\nOnFailure=dg-backup-failed@%n.service\n")) {
+		t.Errorf("OnFailure lost its specifier:\n%s", svc)
+	}
+
+	b, err := unit{
+		{"Unit", [][2]string{{"OnFailure", "dg-backup-failed@%n.service"}}},
+		{"Container", [][2]string{{"Exec", "sh -c 'date +%s; echo 100% $HOME'"}}},
+		{"Service", [][2]string{{"Environment", "DISCOUNT=50% PRICE=$5"}, {"ExecStartPre", "/bin/echo %n 100%"}}},
+	}.render()
+	if err != nil {
+		t.Fatal(err)
+	}
+	golden.Check(t, "systemd/specifier-escaping.service", b)
+	for _, want := range []string{
+		"OnFailure=dg-backup-failed@%n.service\n",
+		"Exec=sh -c 'date +%%s; echo 100%% $$HOME'\n",
+		"Environment=DISCOUNT=50%% PRICE=$$5\n",
+		"ExecStartPre=/bin/echo %%n 100%%\n",
+	} {
+		if !bytes.Contains(b, []byte(want)) {
+			t.Errorf("missing %q in:\n%s", want, b)
+		}
+	}
+	for _, bad := range []string{"other.service", "dg-backup-failed@%i.service", "dg-x@%n.service extra", "%n", "dg-x@%%n.service"} {
+		if _, err := (unit{{"Unit", [][2]string{{"OnFailure", bad}}}}).render(); err == nil {
+			t.Errorf("OnFailure=%q accepted", bad)
+		}
+	}
 }
 
 func TestDatabaseUnitsGolden(t *testing.T) {

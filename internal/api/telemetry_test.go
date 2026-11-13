@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/r3p-dev/dermaga/internal/backup"
 	"github.com/r3p-dev/dermaga/internal/notify"
 	"github.com/r3p-dev/dermaga/internal/telemetry"
 )
@@ -180,5 +181,40 @@ func TestBackupFailureNotificationDispatch(t *testing.T) {
 	}
 	if mockClient.lastReq.URL.String() != "https://ntfy.sh/backup-alerts-test" {
 		t.Errorf("unexpected target URL: %s", mockClient.lastReq.URL.String())
+	}
+}
+
+// Failed backups started through the API (panel, manual CLI) notify too; a
+// timer run (scheduled) leaves it to the unit's OnFailure= so there is one alert.
+func TestAPIBackupFailureNotifies(t *testing.T) {
+	s := newServer(t)
+	box := s.Apps.Box
+	s.Box = box
+	mock := &mockNotifyClient{}
+	s.Notifier = &notify.Dispatcher{Client: mock, DefaultBox: box}
+	s.Backup = backup.NewManager(s.DB, box, s.Databases, s.Paths, nil)
+	_ = notify.SaveSettings(context.Background(), s.DB, box, notify.Settings{
+		Provider: notify.ProviderNtfy, Target: "backup-alerts-test", Events: "backup.failed",
+	})
+	post := func(path, body string) int {
+		rec := httptest.NewRecorder()
+		s.Socket().ServeHTTP(rec, httptest.NewRequest("POST", path, strings.NewReader(body)))
+		return rec.Code
+	}
+	for _, c := range []struct {
+		name, path, body string
+		notified         bool
+	}{
+		{"manual run", "/api/backup/run", `{"target":"db:nope"}`, true},
+		{"timer run", "/api/backup/run", `{"target":"db:nope","scheduled":true}`, false},
+		{"database page", "/api/databases/nope/backup", ``, true},
+	} {
+		mock.lastReq = nil
+		if code := post(c.path, c.body); code < 400 {
+			t.Fatalf("%s: backup of a missing database returned %d", c.name, code)
+		}
+		if got := mock.lastReq != nil; got != c.notified {
+			t.Errorf("%s: notified = %v, want %v", c.name, got, c.notified)
+		}
 	}
 }
