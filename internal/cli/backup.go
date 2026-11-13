@@ -32,7 +32,7 @@ func cmdBackup(args []string) error {
 		args = []string{"list"}
 	}
 	if args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
-		fmt.Fprintf(os.Stdout, "usage: %s backup [list | snapshots [--tag T] | run <target> | system | check [--read-data] | settings [--reveal-password] [--json] | settings set … | failure-notify <unit>]\n", name.Name)
+		fmt.Fprintf(os.Stdout, "usage: %s backup [list | snapshots [--tag T] | run <target> | system | check [--read-data] | settings [--json] | settings set … | password <init|reveal|confirm> | failure-notify <unit>]\n", name.Name)
 		return flag.ErrHelp
 	}
 	switch args[0] {
@@ -46,10 +46,12 @@ func cmdBackup(args []string) error {
 		return backupCheck(args[1:])
 	case "settings":
 		return backupSettings(args[1:])
+	case "password":
+		return backupPassword(args[1:])
 	case "failure-notify":
 		return backupFailureNotify(args[1:])
 	}
-	fmt.Fprintf(os.Stderr, "usage: %s backup [list | snapshots [--tag T] | run <target> | system | check [--read-data] | settings [--reveal-password] [--json] | settings set … | failure-notify <unit>]\n", name.Name)
+	fmt.Fprintf(os.Stderr, "usage: %s backup [list | snapshots [--tag T] | run <target> | system | check [--read-data] | settings [--json] | settings set … | password <init|reveal|confirm> | failure-notify <unit>]\n", name.Name)
 	return errQuiet
 }
 
@@ -165,23 +167,19 @@ func backupSettings(args []string) error {
 		return backupSettingsSet(args[1:])
 	}
 	fs := flag.NewFlagSet("backup settings", flag.ContinueOnError)
-	reveal := fs.Bool("reveal-password", false, "reveal the restic repository password in cleartext")
-	asJSON := fs.Bool("json", false, "JSON output (without the restic password unless --reveal-password)")
+	asJSON := fs.Bool("json", false, "JSON output")
 	if err := parse(fs, args); err != nil {
 		return err
 	}
-	return showBackupSettings(*reveal, *asJSON)
+	return showBackupSettings(*asJSON)
 }
 
-func showBackupSettings(reveal, asJSON bool) error {
+func showBackupSettings(asJSON bool) error {
 	var st backup.Settings
 	if err := call("GET", "/api/backup/settings", nil, &st); err != nil {
 		return err
 	}
 	if asJSON {
-		if !reveal {
-			st.Password = ""
-		}
 		return printJSON(st)
 	}
 
@@ -193,11 +191,62 @@ func showBackupSettings(reveal, asJSON bool) error {
 		fmt.Printf("S3 Access:   %s\n", st.S3AccessKey)
 		fmt.Printf("S3 Secret:   %s\n", yesNo(st.S3SecretKey != "", "set", "(not set)"))
 	}
-	if reveal && st.Password != "" {
-		fmt.Printf("Restic Pass: %s\n", st.Password)
-	} else if st.Password != "" {
-		fmt.Println("Restic Pass: •••••••• (pass --reveal-password to show)")
+	switch st.PasswordState {
+	case backup.PasswordConfirmed:
+		fmt.Println("Restic Pass: set, offline copy confirmed (dermaga backup password reveal)")
+	case backup.PasswordUnconfirmed:
+		fmt.Println("Restic Pass: set, NOT confirmed as stored offline (dermaga backup password reveal)")
+	default:
+		fmt.Println("Restic Pass: not set, backups fail (dermaga backup password init)")
 	}
+	return nil
+}
+
+const backupPasswordUsage = "backup password <init | reveal | confirm>"
+
+// backupPassword manages the restic password: generated once and shown once
+// (init), shown again on an explicit, audited request (reveal), and marked as
+// stored offline (confirm).
+func backupPassword(args []string) error {
+	if len(args) != 1 {
+		fmt.Fprintf(os.Stderr, "usage: %s %s\n", name.Name, backupPasswordUsage)
+		return errQuiet
+	}
+	var res api.BackupPasswordResponse
+	switch args[0] {
+	case "init":
+		if err := call("POST", "/api/backup/password", nil, &res); err != nil {
+			return err
+		}
+	case "reveal":
+		if v, err := readLine("This prints the restic repository password. Type 'reveal' to continue: "); err != nil || v != "reveal" {
+			return errors.New("not revealed")
+		}
+		if err := call("POST", "/api/backup/password/reveal", nil, &res); err != nil {
+			return err
+		}
+	case "confirm":
+		if err := call("POST", "/api/backup/password/confirm", nil, nil); err != nil {
+			return err
+		}
+		fmt.Println("Recorded: the restic password is stored offline.")
+		return nil
+	default:
+		fmt.Fprintf(os.Stderr, "usage: %s %s\n", name.Name, backupPasswordUsage)
+		return errQuiet
+	}
+	fmt.Printf("Restic password: %s\n\n%s\n\n", res.Password, res.RecoveryStatement)
+	if res.PasswordState == backup.PasswordConfirmed {
+		return nil
+	}
+	if v, _ := readLine("Type 'stored' once you have saved it offline: "); v != "stored" {
+		fmt.Printf("Not confirmed. %s doctor keeps warning until you run: %s backup password confirm\n", name.Name, name.Name)
+		return nil
+	}
+	if err := call("POST", "/api/backup/password/confirm", nil, nil); err != nil {
+		return err
+	}
+	fmt.Println("Recorded: the restic password is stored offline.")
 	return nil
 }
 
@@ -245,17 +294,17 @@ func backupSettingsSet(args []string) error {
 	if !*asJSON {
 		fmt.Println("✓ backup settings updated")
 	}
-	return showBackupSettings(false, *asJSON)
+	return showBackupSettings(*asJSON)
 }
 
 // mergeBackupSettings applies the given flags to the current settings. The
-// secrets are never echoed back: an empty password or secret key keeps the
-// stored one (the GET masks the key, and resending the mask would store it).
+// S3 secret is never echoed back: an empty secret key keeps the stored one
+// (the GET masks the key, and resending the mask would store it).
 // Changing the S3 endpoint or bucket without --repo lets the server derive
 // the repository from them again.
 func mergeBackupSettings(cur, in backup.Settings, given map[string]bool) backup.Settings {
 	req := cur
-	req.Password, req.S3SecretKey = "", ""
+	req.S3SecretKey = ""
 	if given["repo"] {
 		req.Repository = in.Repository
 	} else if given["s3-endpoint"] || given["s3-bucket"] {

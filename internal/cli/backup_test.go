@@ -88,15 +88,15 @@ func TestBackupSettingsSetSecretFromStdin(t *testing.T) {
 
 func TestMergeBackupSettings(t *testing.T) {
 	cur := backup.Settings{
-		Repository: "/home/server/.local/share/dermaga/restic", Password: "restic-pass",
-		S3Region: "auto", S3AccessKey: "AK", S3SecretKey: "••••••••", Configured: true,
+		Repository: "/home/server/.local/share/dermaga/restic",
+		S3Region:   "auto", S3AccessKey: "AK", S3SecretKey: "••••••••", Configured: true,
 	}
 	in := backup.Settings{Repository: "s3:https://h/b2", S3Endpoint: "s3.example.com", S3Bucket: "bkt", S3Region: "eu", S3AccessKey: "AK2"}
 
 	// Only the region changes; secrets are never sent back.
 	got := mergeBackupSettings(cur, in, map[string]bool{"s3-region": true})
-	if got.Password != "" || got.S3SecretKey != "" {
-		t.Errorf("secrets echoed back: %+v", got)
+	if got.S3SecretKey != "" {
+		t.Errorf("secret echoed back: %+v", got)
 	}
 	if got.S3Region != "eu" || got.Repository != cur.Repository || got.S3AccessKey != "AK" || got.S3Endpoint != "" {
 		t.Errorf("region-only change: %+v", got)

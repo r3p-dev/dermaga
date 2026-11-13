@@ -246,6 +246,32 @@ type Status struct {
 	RSSKB            int64     `json:"rssKB"`
 	AdminPasswordSet bool      `json:"adminPasswordSet"`
 	TOTPEnabled      bool      `json:"totpEnabled"`
+	// BackupPasswordState is none, unconfirmed or confirmed ("" without a backup service).
+	BackupPasswordState string `json:"backupPasswordState"`
+}
+
+// backupPasswordState is "" when the state can't be read.
+func (s *Server) backupPasswordState(ctx context.Context) string {
+	if s.Backup == nil {
+		return ""
+	}
+	st, err := s.Backup.GetSettings(ctx)
+	if err != nil {
+		return ""
+	}
+	return st.PasswordState
+}
+
+// BackupPasswordCheck is the doctor row for the restic password (shared with the CLI through Status).
+func BackupPasswordCheck(state string) doctor.Check {
+	switch state {
+	case backup.PasswordConfirmed:
+		return doctor.Check{Name: "backup password", Status: "ok", Detail: "set, offline copy confirmed"}
+	case backup.PasswordUnconfirmed:
+		return doctor.Check{Name: "backup password", Status: "warn", Detail: "set, but no offline copy confirmed: dermaga backup password reveal"}
+	default:
+		return doctor.Check{Name: "backup password", Status: "warn", Detail: "not set, backups fail: dermaga backup password init"}
+	}
 }
 
 func (s *Server) status(w http.ResponseWriter, r *http.Request) {
@@ -257,6 +283,7 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, Status{
 		Name: name.Name, Version: name.Version(), GoVersion: runtime.Version(), PID: os.Getpid(),
 		StartedAt: s.Started, RSSKB: rssKB(), AdminPasswordSet: pw, TOTPEnabled: totp,
+		BackupPasswordState: s.backupPasswordState(r.Context()),
 	})
 }
 
@@ -276,6 +303,7 @@ func (s *Server) doctor(w http.ResponseWriter, r *http.Request) {
 	} else {
 		daemonCs = append(daemonCs, doctor.Check{Name: "totp", Status: "warn", Detail: "off: dermaga admin totp enable (strongly recommended)"})
 	}
+	daemonCs = append(daemonCs, BackupPasswordCheck(s.backupPasswordState(r.Context())))
 
 	var all []doctor.Check
 	if len(cs) >= 3 {

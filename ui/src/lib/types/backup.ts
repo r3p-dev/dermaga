@@ -26,7 +26,7 @@ export interface Snapshot {
  */
 export interface Settings {
   repository: string;
-  password?: string;
+  passwordState: string;
   s3Endpoint?: string;
   s3Bucket?: string;
   s3Region?: string;
@@ -80,6 +80,22 @@ export interface RestoreOpts {
 //////////
 // source: settings.go
 
+/**
+ * Password states (ARCHITECTURE v2 D62).
+ */
+export const PasswordNone = "none"; // no password yet: backups fail until one is generated
+/**
+ * Password states (ARCHITECTURE v2 D62).
+ */
+export const PasswordUnconfirmed = "unconfirmed"; // set, but the owner has not confirmed an offline copy
+/**
+ * Password states (ARCHITECTURE v2 D62).
+ */
+export const PasswordConfirmed = "confirmed";
+/**
+ * RecoveryStatement is shown wherever the password is shown (UI and CLI).
+ */
+export const RecoveryStatement = "To restore this server you need two things: the master key (`dermaga keys export`) and this restic password. " + "Without the restic password the backups cannot be read by anyone. " + "Without the master key the restored database cannot decrypt app secrets, environment variables and database passwords. " + "Store both offline, in different places from the server.";
 
 //////////
 // source: system_host.go

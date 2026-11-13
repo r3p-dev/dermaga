@@ -5,6 +5,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -169,6 +171,9 @@ func setupTestManager(t *testing.T) (*Manager, *fakeHost, config.Paths, *sql.DB)
 	dbStore := databases.Store{DB: db, Box: box}
 	host := newFakeHost()
 	mgr := NewManager(db, box, dbStore, paths, host)
+	if _, err := mgr.GeneratePassword(context.Background()); err != nil { // backups need one; never generated silently
+		t.Fatal(err)
+	}
 	return mgr, host, paths, db
 }
 
@@ -177,31 +182,66 @@ func TestSettingsGenerationAndEncryption(t *testing.T) {
 	defer db.Close()
 
 	ctx := context.Background()
-	st1, err := mgr.GetSettings(ctx)
+	// Start without a password (setupTestManager generates one for the other tests).
+	if _, err := db.Exec("UPDATE settings SET restic_password = '', restic_password_confirmed_at = 0"); err != nil {
+		t.Fatal(err)
+	}
+	st0, err := mgr.GetSettings(ctx)
 	if err != nil {
 		t.Fatalf("GetSettings: %v", err)
 	}
-
-	if len(st1.Password) != 64 {
-		t.Errorf("expected 64 hex chars password, got %d (%s)", len(st1.Password), st1.Password)
-	}
-
-	// Verify it's encrypted in SQLite
 	var encPass string
 	if err := db.QueryRow("SELECT restic_password FROM settings WHERE id = 1").Scan(&encPass); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(encPass, "v1:") {
-		t.Errorf("restic_password in DB not sealed: %s", encPass)
+	if st0.Password != "" || st0.PasswordState != PasswordNone || encPass != "" {
+		t.Errorf("GetSettings must not create a password: state %q, stored %q", st0.PasswordState, encPass)
+	}
+	if _, err := mgr.ResticEnv(ctx); !errors.Is(err, ErrNoPassword) {
+		t.Errorf("ResticEnv without a password: %v, want ErrNoPassword", err)
+	}
+	if err := mgr.ConfirmPassword(ctx); !errors.Is(err, ErrNoPassword) {
+		t.Errorf("ConfirmPassword without a password: %v, want ErrNoPassword", err)
 	}
 
-	// Verify subsequent calls return the same password
-	st2, err := mgr.GetSettings(ctx)
+	pass, err := mgr.GeneratePassword(ctx)
+	if err != nil || len(pass) != 64 {
+		t.Fatalf("GeneratePassword: %d chars, %v; want 64 hex chars", len(pass), err)
+	}
+	if _, err := mgr.GeneratePassword(ctx); !errors.Is(err, ErrPasswordExists) {
+		t.Errorf("second GeneratePassword: %v, want ErrPasswordExists", err)
+	}
+
+	// Verify it's encrypted in SQLite
+	if err := db.QueryRow("SELECT restic_password FROM settings WHERE id = 1").Scan(&encPass); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(encPass, "v1:") || strings.Contains(encPass, pass) {
+		t.Errorf("restic_password in DB not sealed")
+	}
+
+	st1, err := mgr.GetSettings(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st1.Password != st2.Password {
-		t.Errorf("passwords mismatch: %s vs %s", st1.Password, st2.Password)
+	if st1.Password != pass || st1.PasswordState != PasswordUnconfirmed {
+		t.Errorf("after generation: state %q, password matches = %v", st1.PasswordState, st1.Password == pass)
+	}
+	if got, err := mgr.RevealPassword(ctx); err != nil || got != pass {
+		t.Errorf("RevealPassword differs from the generated password (%v)", err)
+	}
+	if err := mgr.ConfirmPassword(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// Saving settings never replaces the password, whatever the struct carries.
+	if err := mgr.SaveSettings(ctx, Settings{Password: "attacker-or-typo"}); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := mgr.GetSettings(ctx); st.PasswordState != PasswordConfirmed || st.Password != pass {
+		t.Errorf("after confirm + save: state %q, password unchanged = %v", st.PasswordState, st.Password == pass)
+	}
+	if b, _ := json.Marshal(st1); strings.Contains(string(b), pass) {
+		t.Errorf("Settings JSON carries the password")
 	}
 
 	// Test S3 settings save

@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/r3p-dev/dermaga/internal/audit"
+	"github.com/r3p-dev/dermaga/internal/auth"
 	"github.com/r3p-dev/dermaga/internal/backup"
 	"github.com/r3p-dev/dermaga/internal/notify"
 )
@@ -34,6 +36,21 @@ type FailureNotifyRequest struct {
 	Unit string `json:"unit"`
 }
 
+// BackupPasswordResponse carries the restic password for its one display
+// (generate) or an audited reveal, with the recovery statement to show next to it.
+type BackupPasswordResponse struct {
+	Password          string `json:"password"`
+	PasswordState     string `json:"passwordState"`
+	RecoveryStatement string `json:"recoveryStatement"`
+}
+
+// RevealBackupPasswordRequest re-authenticates a panel reveal. The CLI socket
+// sends an empty body: socket access already is full owner access.
+type RevealBackupPasswordRequest struct {
+	Password string `json:"password,omitempty"` // admin password
+	TOTP     string `json:"totp,omitempty"`
+}
+
 func (s *Server) backupRoutes(mux *http.ServeMux, wrap func(http.HandlerFunc) http.Handler, actor string) {
 	h := func(f func(http.ResponseWriter, *http.Request, string)) http.Handler {
 		return wrap(func(w http.ResponseWriter, r *http.Request) { f(w, r, actor) })
@@ -47,6 +64,9 @@ func (s *Server) backupRoutes(mux *http.ServeMux, wrap func(http.HandlerFunc) ht
 	mux.Handle("POST /api/backup/restore-system", h(s.restoreSystem))
 	mux.Handle("GET /api/keys/export", h(s.exportKeys))
 	mux.Handle("POST /api/backup/failure-notify", h(s.failureNotify))
+	mux.Handle("POST /api/backup/password", h(s.generateBackupPassword))
+	mux.Handle("POST /api/backup/password/reveal", h(s.revealBackupPassword))
+	mux.Handle("POST /api/backup/password/confirm", h(s.confirmBackupPassword))
 }
 
 func (s *Server) getBackupSettings(w http.ResponseWriter, r *http.Request, _ string) {
@@ -59,11 +79,100 @@ func (s *Server) getBackupSettings(w http.ResponseWriter, r *http.Request, _ str
 		internalError(w, err)
 		return
 	}
-	// Mask secret key in GET response
+	// Mask secret key in GET response. The restic password is never part of
+	// it (backup.Settings.Password is json:"-").
 	if st.S3SecretKey != "" {
 		st.S3SecretKey = "••••••••"
 	}
 	writeJSON(w, http.StatusOK, st)
+}
+
+// writeBackupPassword sends the password with caching forbidden. The password
+// goes only into this response body: never into logs, audit details or errors.
+func (s *Server) writeBackupPassword(w http.ResponseWriter, r *http.Request, pass string) {
+	st, err := s.Backup.GetSettings(r.Context())
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, BackupPasswordResponse{Password: pass, PasswordState: st.PasswordState, RecoveryStatement: backup.RecoveryStatement})
+}
+
+func (s *Server) generateBackupPassword(w http.ResponseWriter, r *http.Request, actor string) {
+	if s.Backup == nil {
+		writeError(w, http.StatusServiceUnavailable, "backup service unavailable")
+		return
+	}
+	pass, err := s.Backup.GeneratePassword(r.Context())
+	if errors.Is(err, backup.ErrPasswordExists) {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	_ = audit.Log(s.DB, actor, "backup.password_generated", "", "source="+actor)
+	s.writeBackupPassword(w, r, pass)
+}
+
+func (s *Server) revealBackupPassword(w http.ResponseWriter, r *http.Request, actor string) {
+	if s.Backup == nil {
+		writeError(w, http.StatusServiceUnavailable, "backup service unavailable")
+		return
+	}
+	var req RevealBackupPasswordRequest
+	if r.ContentLength != 0 && !readJSON(w, r, &req) {
+		return
+	}
+	if actor != "cli" { // the panel re-authenticates; failures share the login limiter
+		err := s.Auth.Verify(req.Password, req.TOTP)
+		var blocked *auth.BlockedError
+		switch {
+		case errors.As(err, &blocked):
+			w.Header().Set("Retry-After", strconv.Itoa(int(blocked.RetryAfter.Seconds()+0.999)))
+			writeError(w, http.StatusTooManyRequests, blocked.Error())
+			return
+		case errors.Is(err, auth.ErrInvalid):
+			_ = audit.Log(s.DB, actor, "backup.password_reveal_denied", "", "source="+actor)
+			// 403, not 401: the session is valid (the UI treats 401 as "log in again").
+			writeError(w, http.StatusForbidden, "wrong admin password or TOTP code")
+			return
+		case err != nil:
+			internalError(w, err)
+			return
+		}
+	}
+	pass, err := s.Backup.RevealPassword(r.Context())
+	if errors.Is(err, backup.ErrNoPassword) {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	_ = audit.Log(s.DB, actor, "backup.password_revealed", "", "source="+actor)
+	s.writeBackupPassword(w, r, pass)
+}
+
+func (s *Server) confirmBackupPassword(w http.ResponseWriter, r *http.Request, actor string) {
+	if s.Backup == nil {
+		writeError(w, http.StatusServiceUnavailable, "backup service unavailable")
+		return
+	}
+	err := s.Backup.ConfirmPassword(r.Context())
+	if errors.Is(err, backup.ErrNoPassword) {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	if err != nil {
+		internalError(w, err)
+		return
+	}
+	_ = audit.Log(s.DB, actor, "backup.password_confirmed", "", "source="+actor)
+	writeJSON(w, http.StatusOK, map[string]string{"passwordState": backup.PasswordConfirmed})
 }
 
 func (s *Server) putBackupSettings(w http.ResponseWriter, r *http.Request, actor string) {

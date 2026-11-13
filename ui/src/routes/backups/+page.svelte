@@ -23,7 +23,18 @@
 	let regionInput = $state('');
 	let accessKeyInput = $state('');
 	let secretKeyInput = $state('');
-	let passwordInput = $state('');
+
+	// Restic password dialog: 'auth' asks for the admin password (reveal only),
+	// 'show' displays the password once with the offline-storage confirmation.
+	let passwordModalOpen = $state(false);
+	let passwordStep = $state<'auth' | 'show'>('auth');
+	let passwordBusy = $state(false);
+	let totpEnabled = $state(false);
+	let adminPasswordInput = $state('');
+	let totpInput = $state('');
+	let shownPassword = $state('');
+	let recoveryStatement = $state('');
+	let storedOffline = $state(false);
 
 	// Key export modal
 	let keyExportOpen = $state(false);
@@ -66,7 +77,7 @@
 				s3Region: regionInput.trim(),
 				s3AccessKey: accessKeyInput.trim(),
 				s3SecretKey: secretKeyInput.trim(),
-				password: passwordInput ? passwordInput.trim() : undefined,
+				passwordState: settings?.passwordState ?? 'none',
 				configured: true
 			});
 			toast.success('Restic backup settings saved successfully');
@@ -74,6 +85,85 @@
 			await loadData();
 		} catch (err: any) {
 			toast.error(err.message || 'Failed to save backup settings');
+		}
+	}
+
+	function closePasswordModal() {
+		passwordModalOpen = false;
+		shownPassword = '';
+		adminPasswordInput = '';
+		totpInput = '';
+		storedOffline = false;
+	}
+
+	function showPassword(res: { password: string; recoveryStatement: string }) {
+		shownPassword = res.password;
+		recoveryStatement = res.recoveryStatement;
+		storedOffline = false;
+		passwordStep = 'show';
+		passwordModalOpen = true;
+	}
+
+	async function handleGeneratePassword() {
+		passwordBusy = true;
+		try {
+			showPassword(await api.generateBackupPassword());
+			await loadData();
+			window.dispatchEvent(new Event('dermaga:status'));
+		} catch (err: any) {
+			toast.error(err.message || 'Failed to generate the restic password');
+		} finally {
+			passwordBusy = false;
+		}
+	}
+
+	async function openReveal() {
+		adminPasswordInput = '';
+		totpInput = '';
+		passwordStep = 'auth';
+		passwordModalOpen = true;
+		try {
+			totpEnabled = (await api.getStatus()).totpEnabled;
+		} catch {
+			totpEnabled = false;
+		}
+	}
+
+	async function handleReveal(e: Event) {
+		e.preventDefault();
+		passwordBusy = true;
+		try {
+			showPassword(await api.revealBackupPassword(adminPasswordInput, totpInput.trim()));
+		} catch (err: any) {
+			toast.error(err.message || 'Reveal denied');
+		} finally {
+			adminPasswordInput = '';
+			totpInput = '';
+			passwordBusy = false;
+		}
+	}
+
+	async function handleConfirmStored() {
+		passwordBusy = true;
+		try {
+			await api.confirmBackupPassword();
+			toast.success('Recorded: the restic password is stored offline');
+			closePasswordModal();
+			await loadData();
+			window.dispatchEvent(new Event('dermaga:status'));
+		} catch (err: any) {
+			toast.error(err.message || 'Failed to record the confirmation');
+		} finally {
+			passwordBusy = false;
+		}
+	}
+
+	async function copyPassword() {
+		try {
+			await navigator.clipboard.writeText(shownPassword);
+			toast.success('Copied');
+		} catch {
+			toast.error('Copy failed: select the text and copy it by hand');
 		}
 	}
 
@@ -199,6 +289,48 @@
 			>
 				{checkingIntegrity ? 'Checking...' : 'Check Integrity'}
 			</button>
+		</div>
+	</div>
+
+	<!-- Restic password -->
+	<div
+		class="p-5 rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-2xs flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+	>
+		<div>
+			<span class="text-xs font-bold uppercase tracking-wider text-zinc-500">Restic password</span>
+			<div class="mt-1 text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+				{#if settings?.passwordState === 'confirmed'}
+					Set, offline copy confirmed
+				{:else if settings?.passwordState === 'unconfirmed'}
+					Set, but not confirmed as stored offline
+				{:else}
+					Not set: backups fail until you generate it
+				{/if}
+			</div>
+			<p class="text-xs text-zinc-500 mt-0.5 max-w-xl">
+				Restoring this server needs both the master key and this password. dermaga shows the
+				password only when you ask for it, and records every reveal in the audit log.
+			</p>
+		</div>
+		<div class="flex items-center space-x-2">
+			{#if settings?.passwordState === 'unconfirmed' || settings?.passwordState === 'confirmed'}
+				<button
+					type="button"
+					onclick={openReveal}
+					class="px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 text-xs font-semibold hover:bg-zinc-50 dark:hover:bg-zinc-800"
+				>
+					Reveal password
+				</button>
+			{:else if settings}
+				<button
+					type="button"
+					disabled={passwordBusy}
+					onclick={handleGeneratePassword}
+					class="px-3.5 py-2 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs"
+				>
+					Generate password
+				</button>
+			{/if}
 		</div>
 	</div>
 
@@ -340,23 +472,104 @@
 				/>
 			</div>
 		</div>
-		<div>
-			<label for="rPass" class="block font-semibold mb-1"
-				>Restic Password <span class="text-zinc-400 font-normal">(leave blank to keep current)</span
-				></label
-			>
-			<input
-				id="rPass"
-				type="password"
-				bind:value={passwordInput}
-				placeholder="Repository encryption password"
-				class="w-full p-2 border rounded font-mono bg-white dark:bg-zinc-900"
-			/>
-		</div>
 		<button type="submit" class="w-full py-2 bg-indigo-600 text-white rounded font-semibold">
 			Save Backup Configuration
 		</button>
 	</form>
+</Modal>
+
+<!-- Restic password: re-authenticate (reveal), then show once with the offline confirmation -->
+<Modal open={passwordModalOpen} title="Restic repository password" onclose={closePasswordModal}>
+	{#if passwordStep === 'auth'}
+		<form onsubmit={handleReveal} class="space-y-4 text-xs">
+			<p class="text-zinc-600 dark:text-zinc-400 leading-relaxed">
+				Enter your admin password{totpEnabled ? ' and a current TOTP code' : ''} to show the restic password.
+				Failed attempts count against the login limit, and every reveal is audited.
+			</p>
+			<div>
+				<label for="revPw" class="block font-semibold mb-1">Admin password</label>
+				<input
+					id="revPw"
+					type="password"
+					autocomplete="current-password"
+					required
+					bind:value={adminPasswordInput}
+					class="w-full p-2 border rounded font-mono bg-white dark:bg-zinc-900"
+				/>
+			</div>
+			{#if totpEnabled}
+				<div>
+					<label for="revTotp" class="block font-semibold mb-1">TOTP code</label>
+					<input
+						id="revTotp"
+						type="text"
+						inputmode="numeric"
+						autocomplete="one-time-code"
+						required
+						bind:value={totpInput}
+						class="w-full p-2 border rounded font-mono bg-white dark:bg-zinc-900"
+					/>
+				</div>
+			{/if}
+			<button
+				type="submit"
+				disabled={passwordBusy}
+				class="w-full py-2 bg-indigo-600 text-white rounded font-semibold"
+			>
+				{passwordBusy ? 'Checking...' : 'Reveal password'}
+			</button>
+		</form>
+	{:else}
+		<div class="space-y-4 text-xs">
+			<div>
+				<span class="block font-semibold mb-1">Restic password</span>
+				<textarea
+					readonly
+					rows="2"
+					class="w-full p-2 bg-zinc-950 border border-zinc-800 rounded font-mono text-zinc-200 select-all"
+					>{shownPassword}</textarea
+				>
+				<button
+					type="button"
+					onclick={copyPassword}
+					class="mt-1 px-3 py-1.5 rounded border border-zinc-200 dark:border-zinc-700 font-semibold"
+				>
+					Copy
+				</button>
+			</div>
+			<div
+				class="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900 text-amber-900 dark:text-amber-100 leading-relaxed"
+			>
+				{recoveryStatement}
+			</div>
+			{#if settings?.passwordState === 'confirmed'}
+				<button
+					type="button"
+					onclick={closePasswordModal}
+					class="w-full py-2 bg-zinc-200 dark:bg-zinc-800 rounded font-semibold"
+				>
+					Close
+				</button>
+			{:else}
+				<label class="flex items-start space-x-2">
+					<input type="checkbox" bind:checked={storedOffline} class="mt-0.5" />
+					<span>I stored this password offline, away from this server.</span>
+				</label>
+				<button
+					type="button"
+					disabled={!storedOffline || passwordBusy}
+					onclick={handleConfirmStored}
+					class="w-full py-2 bg-indigo-600 disabled:opacity-50 text-white rounded font-semibold"
+				>
+					Confirm
+				</button>
+				<p class="text-zinc-500">
+					Closing without confirming keeps the warning banner; you can reveal the password again
+					later.
+				</p>
+			{/if}
+		</div>
+	{/if}
 </Modal>
 
 <!-- Integrity Check Modal -->

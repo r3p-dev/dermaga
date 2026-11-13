@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 )
 
 const (
@@ -21,32 +22,50 @@ func randHex(n int) string {
 	return hex.EncodeToString(b)
 }
 
-// GetSettings retrieves backup settings, auto-generating and persisting a secure
-// restic password if one has not yet been initialized.
+// Password states (ARCHITECTURE v2 D62).
+const (
+	PasswordNone        = "none"        // no password yet: backups fail until one is generated
+	PasswordUnconfirmed = "unconfirmed" // set, but the owner has not confirmed an offline copy
+	PasswordConfirmed   = "confirmed"
+)
+
+// ErrNoPassword is returned by every restic operation while no password exists.
+var ErrNoPassword = errors.New("set up the backup password first: `dermaga backup password init`, or Backups in the panel")
+
+// ErrPasswordExists is returned by GeneratePassword: a second password would
+// lock the existing repository.
+var ErrPasswordExists = errors.New("a restic password already exists; reveal it instead")
+
+// RecoveryStatement is shown wherever the password is shown (UI and CLI).
+const RecoveryStatement = "To restore this server you need two things: the master key (`dermaga keys export`) and this restic password. " +
+	"Without the restic password the backups cannot be read by anyone. " +
+	"Without the master key the restored database cannot decrypt app secrets, environment variables and database passwords. " +
+	"Store both offline, in different places from the server."
+
+// GetSettings reads the backup settings. It never writes: the password is
+// created only by GeneratePassword.
 func (m *Manager) GetSettings(ctx context.Context) (Settings, error) {
 	var repo, encPass, s3Endpoint, s3Bucket, s3Region, s3Access, encSecret string
+	var confirmedAt int64
 	err := m.DB.QueryRowContext(ctx, `SELECT
-		restic_repository, restic_password, s3_endpoint, s3_bucket, s3_region, s3_access_key, s3_secret_key
+		restic_repository, restic_password, restic_password_confirmed_at, s3_endpoint, s3_bucket, s3_region, s3_access_key, s3_secret_key
 		FROM settings WHERE id = 1`).Scan(
-		&repo, &encPass, &s3Endpoint, &s3Bucket, &s3Region, &s3Access, &encSecret,
+		&repo, &encPass, &confirmedAt, &s3Endpoint, &s3Bucket, &s3Region, &s3Access, &encSecret,
 	)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return Settings{}, err
 	}
 
 	var pass, s3Secret string
+	state := PasswordNone
 	if encPass != "" && m.Box != nil {
-		p, err := m.Box.Open(encPass, aadResticPass)
-		if err == nil {
-			pass = p
+		if pass, err = m.Box.Open(encPass, aadResticPass); err != nil {
+			return Settings{}, fmt.Errorf("decrypting the restic password (wrong master key?): %w", err)
 		}
-	}
-
-	// Auto-generate restic password if missing (BRIEF §3.8: generate restic password)
-	if pass == "" && m.Box != nil {
-		pass = randHex(32) // 32 random bytes = 64 hex chars
-		sealed := m.Box.Seal(pass, aadResticPass)
-		_, _ = m.DB.ExecContext(ctx, `UPDATE settings SET restic_password = ? WHERE id = 1`, sealed)
+		state = PasswordUnconfirmed
+		if confirmedAt > 0 {
+			state = PasswordConfirmed
+		}
 	}
 
 	if encSecret != "" && m.Box != nil {
@@ -69,23 +88,62 @@ func (m *Manager) GetSettings(ctx context.Context) (Settings, error) {
 	configured := encPass != "" || repo != m.Paths.ResticDir()
 
 	return Settings{
-		Repository:  repo,
-		Password:    pass,
-		S3Endpoint:  s3Endpoint,
-		S3Bucket:    s3Bucket,
-		S3Region:    s3Region,
-		S3AccessKey: s3Access,
-		S3SecretKey: s3Secret,
-		Configured:  configured,
+		Repository:    repo,
+		Password:      pass,
+		PasswordState: state,
+		S3Endpoint:    s3Endpoint,
+		S3Bucket:      s3Bucket,
+		S3Region:      s3Region,
+		S3AccessKey:   s3Access,
+		S3SecretKey:   s3Secret,
+		Configured:    configured,
 	}, nil
 }
 
-// SaveSettings updates the repository and credentials settings.
-func (m *Manager) SaveSettings(ctx context.Context, s Settings) error {
-	var encPass, encSecret string
-	if s.Password != "" && m.Box != nil {
-		encPass = m.Box.Seal(s.Password, aadResticPass)
+// GeneratePassword creates the restic password once and returns it for its
+// single display. It fails with ErrPasswordExists when one is already stored.
+func (m *Manager) GeneratePassword(ctx context.Context) (string, error) {
+	pass := randHex(32) // 32 random bytes = 64 hex chars
+	res, err := m.DB.ExecContext(ctx, `UPDATE settings SET restic_password = ?, restic_password_confirmed_at = 0
+		WHERE id = 1 AND restic_password = ''`, m.Box.Seal(pass, aadResticPass))
+	if err != nil {
+		return "", err
 	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return "", ErrPasswordExists
+	}
+	return pass, nil
+}
+
+// RevealPassword returns the stored password; the caller authenticates and audits.
+func (m *Manager) RevealPassword(ctx context.Context) (string, error) {
+	st, err := m.GetSettings(ctx)
+	if err != nil {
+		return "", err
+	}
+	if st.Password == "" {
+		return "", ErrNoPassword
+	}
+	return st.Password, nil
+}
+
+// ConfirmPassword records that the owner stored the password offline.
+func (m *Manager) ConfirmPassword(ctx context.Context) error {
+	res, err := m.DB.ExecContext(ctx, `UPDATE settings SET restic_password_confirmed_at = ?
+		WHERE id = 1 AND restic_password != ''`, time.Now().Unix())
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n != 1 {
+		return ErrNoPassword
+	}
+	return nil
+}
+
+// SaveSettings updates the repository and S3 settings. It never touches the
+// restic password: replacing it would lock the existing repository.
+func (m *Manager) SaveSettings(ctx context.Context, s Settings) error {
+	var encSecret string
 	if s.S3SecretKey != "" && m.Box != nil {
 		encSecret = m.Box.Seal(s.S3SecretKey, aadS3Secret)
 	}
@@ -99,14 +157,13 @@ func (m *Manager) SaveSettings(ctx context.Context, s Settings) error {
 
 	_, err := m.DB.ExecContext(ctx, `UPDATE settings SET
 		restic_repository = ?,
-		restic_password = CASE WHEN ? != '' THEN ? ELSE restic_password END,
 		s3_endpoint = ?,
 		s3_bucket = ?,
 		s3_region = ?,
 		s3_access_key = ?,
 		s3_secret_key = CASE WHEN ? != '' THEN ? ELSE s3_secret_key END
 		WHERE id = 1`,
-		repo, encPass, encPass, s.S3Endpoint, s.S3Bucket, s.S3Region, s.S3AccessKey, encSecret, encSecret,
+		repo, s.S3Endpoint, s.S3Bucket, s.S3Region, s.S3AccessKey, encSecret, encSecret,
 	)
 	return err
 }
@@ -116,6 +173,9 @@ func (m *Manager) ResticEnv(ctx context.Context) ([]string, error) {
 	st, err := m.GetSettings(ctx)
 	if err != nil {
 		return nil, err
+	}
+	if st.Password == "" {
+		return nil, ErrNoPassword
 	}
 	env := []string{
 		"RESTIC_REPOSITORY=" + st.Repository,

@@ -32,8 +32,11 @@
 		}
 
 		window.addEventListener('keydown', handleKeydown);
+		// Pages that change what the status reports (the backup password) ask for a reload.
+		window.addEventListener('dermaga:status', loadStatus);
 		return () => {
 			window.removeEventListener('keydown', handleKeydown);
+			window.removeEventListener('dermaga:status', loadStatus);
 		};
 	});
 
@@ -138,6 +141,20 @@
 			<Sidebar open={sidebarOpen} onclose={() => (sidebarOpen = false)} />
 
 			<main class="flex-1 p-4 sm:p-6 lg:p-8 min-w-0">
+				{#if status?.backupPasswordState === 'unconfirmed' || status?.backupPasswordState === 'none'}
+					<a
+						href="/backups"
+						class="mb-4 block rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/60 px-4 py-2.5 text-xs text-amber-900 dark:text-amber-100"
+					>
+						<span class="font-bold">Backups:</span>
+						{#if status.backupPasswordState === 'none'}
+							no restic password yet, so backups fail. Set it up on the Backups page.
+						{:else}
+							the restic password has not been confirmed as stored offline. Without it the backups
+							cannot be restored. Reveal and confirm it on the Backups page.
+						{/if}
+					</a>
+				{/if}
 				{@render children()}
 			</main>
 		</div>

@@ -77,5 +77,6 @@ func checkDaemon() []doctor.Check {
 	} else {
 		cs = append(cs, doctor.Check{Name: "totp", Status: "warn", Detail: "off: dermaga admin totp enable (strongly recommended)"})
 	}
+	cs = append(cs, api.BackupPasswordCheck(st.BackupPasswordState))
 	return cs
 }

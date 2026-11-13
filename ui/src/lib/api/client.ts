@@ -5,6 +5,7 @@ import type {
 	CreateDatabaseRequest,
 	LinkDatabaseRequest,
 	RunBackupRequest,
+	BackupPasswordResponse,
 	Settings as AppSettings,
 	GitHubSettings,
 	NotificationSettingsView,
@@ -251,6 +252,22 @@ export const api = {
 	// Backups
 	async getBackupSettings(): Promise<backup.Settings> {
 		return request<backup.Settings>('/api/backup/settings');
+	},
+
+	// Restic password: generated once, revealed only on an explicit, audited request.
+	async generateBackupPassword(): Promise<BackupPasswordResponse> {
+		return request<BackupPasswordResponse>('/api/backup/password', { method: 'POST' });
+	},
+
+	async revealBackupPassword(password: string, totp: string): Promise<BackupPasswordResponse> {
+		return request<BackupPasswordResponse>('/api/backup/password/reveal', {
+			method: 'POST',
+			body: JSON.stringify({ password, totp })
+		});
+	},
+
+	async confirmBackupPassword(): Promise<void> {
+		await request<unknown>('/api/backup/password/confirm', { method: 'POST' });
 	},
 
 	async updateBackupSettings(settings: backup.Settings): Promise<void> {

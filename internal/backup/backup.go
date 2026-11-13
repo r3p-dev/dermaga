@@ -29,14 +29,17 @@ type Snapshot struct {
 
 // Settings holds restic repository and S3 backend configuration.
 type Settings struct {
-	Repository  string `json:"repository"`
-	Password    string `json:"password,omitempty"`
-	S3Endpoint  string `json:"s3Endpoint,omitempty"`
-	S3Bucket    string `json:"s3Bucket,omitempty"`
-	S3Region    string `json:"s3Region,omitempty"`
-	S3AccessKey string `json:"s3AccessKey,omitempty"`
-	S3SecretKey string `json:"s3SecretKey,omitempty"`
-	Configured  bool   `json:"configured"`
+	Repository string `json:"repository"`
+	// Password never leaves the daemon through this struct: see GeneratePassword
+	// and RevealPassword. PasswordState is none, unconfirmed or confirmed.
+	Password      string `json:"-"`
+	PasswordState string `json:"passwordState"`
+	S3Endpoint    string `json:"s3Endpoint,omitempty"`
+	S3Bucket      string `json:"s3Bucket,omitempty"`
+	S3Region      string `json:"s3Region,omitempty"`
+	S3AccessKey   string `json:"s3AccessKey,omitempty"`
+	S3SecretKey   string `json:"s3SecretKey,omitempty"`
+	Configured    bool   `json:"configured"`
 }
 
 // TestRestoreResult is the outcome of restoring into an isolated throwaway sandbox.

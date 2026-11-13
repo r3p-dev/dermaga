@@ -58,18 +58,35 @@ func (s *Service) Login(password, code string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.now()
+	if err := s.check(password, code, now); err != nil {
+		return "", err
+	}
+	return s.createSession(now)
+}
+
+// Verify re-authenticates the admin for a sensitive action (revealing the
+// restic password) without creating a session. Failures count against the same
+// limiter and backoff as Login.
+func (s *Service) Verify(password, code string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.check(password, code, s.now())
+}
+
+// check is the one place credentials are tested; callers hold mu.
+func (s *Service) check(password, code string, now time.Time) error {
 	if now.Before(s.blockedUntil) {
-		return "", &BlockedError{s.blockedUntil.Sub(now)}
+		return &BlockedError{s.blockedUntil.Sub(now)}
 	}
 	var hash, totpSealed string
 	if err := s.db.QueryRow(`SELECT admin_password_hash, totp_secret FROM settings WHERE id = 1`).Scan(&hash, &totpSealed); err != nil {
-		return "", err
+		return err
 	}
 	ok := hash != "" && VerifyPassword(hash, password)
 	if ok && totpSealed != "" {
 		secret, err := s.box.Open(totpSealed, aadTOTP)
 		if err != nil {
-			return "", err
+			return err
 		}
 		step, valid := checkTOTP(secret, code, now)
 		ok = valid && step > s.lastTOTPStep
@@ -82,10 +99,10 @@ func (s *Service) Login(password, code string) (string, error) {
 		if n := s.fails - freeFailures; n >= 0 {
 			s.blockedUntil = now.Add(min(time.Second<<min(n, 10), maxBackoff))
 		}
-		return "", ErrInvalid
+		return ErrInvalid
 	}
 	s.fails = 0
-	return s.createSession(now)
+	return nil
 }
 
 func tokenHash(token string) []byte {

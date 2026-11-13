@@ -43,6 +43,10 @@ export interface Status {
   rssKB: number /* int64 */;
   adminPasswordSet: boolean;
   totpEnabled: boolean;
+  /**
+   * BackupPasswordState is none, unconfirmed or confirmed ("" without a backup service).
+   */
+  backupPasswordState: string;
 }
 
 //////////
@@ -97,6 +101,23 @@ export interface CheckBackupRequest {
 }
 export interface FailureNotifyRequest {
   unit: string;
+}
+/**
+ * BackupPasswordResponse carries the restic password for its one display
+ * (generate) or an audited reveal, with the recovery statement to show next to it.
+ */
+export interface BackupPasswordResponse {
+  password: string;
+  passwordState: string;
+  recoveryStatement: string;
+}
+/**
+ * RevealBackupPasswordRequest re-authenticates a panel reveal. The CLI socket
+ * sends an empty body: socket access already is full owner access.
+ */
+export interface RevealBackupPasswordRequest {
+  password?: string; // admin password
+  totp?: string;
 }
 
 //////////
