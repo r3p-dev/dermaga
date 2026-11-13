@@ -344,13 +344,7 @@ func (e *Engine) run(ctx context.Context, a apps.App, env map[string]string, lin
 		}
 		files[vf] = vu
 	}
-	route, err := traefik.App(a.Spec, cname, "", e.Site)
-	if err != nil {
-		return err
-	}
-	token := randToken()
-	verifyRoute, err := traefik.App(a.Spec, cname, token, e.Site)
-	if err != nil {
+	if _, err := traefik.App(a.Spec, cname, "", e.Site); err != nil { // fail before touching the host
 		return err
 	}
 	prevEnv, err := e.Host.WriteEnv(name, apps.EnvFile(env))
@@ -424,17 +418,8 @@ func (e *Engine) run(ctx context.Context, a apps.App, env map[string]string, lin
 	routed = true
 	// Snapshot the current route (D8, BRIEF §3.5 step 7)
 	_, _ = e.Host.ReadAppFile(traefik.AppFileName(name))
-	if err := e.Host.WriteAppFile(traefik.AppFileName(name), verifyRoute); err != nil {
-		return fail(fmt.Errorf("writing the route: %w", err))
-	}
-	vpath, anyStatus := verifyPath(a.Spec)
-	if err := e.Host.Verify(ctx, a.Spec.Primary(), vpath, token, anyStatus, log); err != nil {
-		return fail(fmt.Errorf("the new route was not served through Traefik within %s, so Traefik probably did not load the config: "+
-			"look for an invalid file in Traefik's dynamic directory (often %s) with journalctl --user -u traefik (%w)", VerifyTimeout, traefik.CustomFile, err))
-	}
-	if err := e.Host.WriteAppFile(traefik.AppFileName(name), route); err != nil {
-		// the verified route serves the candidate; only the token router is left over until the next start
-		logf("removing the verify router: %v (startup reconciliation removes it)", err)
+	if err := e.switchRoute(ctx, a.Spec, cname, log, logf); err != nil {
+		return fail(err)
 	}
 	if err := e.Apps.PromoteLive(ctx, a.ID, *r); err != nil {
 		return err // route already points at the candidate; startup reconciliation repairs from the DB
@@ -509,6 +494,72 @@ func verifyPath(a spec.App) (string, bool) {
 	return "/", true
 }
 
+// ErrRouteNotServed: Traefik did not serve a newly written route within
+// VerifyTimeout (D7), so it most likely rejected the file.
+var ErrRouteNotServed = errors.New("the new route was not served through Traefik")
+
+// switchRoute is D7, shared by deploys and route edits: write a's route to
+// backend cname together with a one-time token router, wait until Traefik
+// serves it, then write the steady file without the token router. On an error
+// the caller restores the previous route (D8, restoreRoute).
+func (e *Engine) switchRoute(ctx context.Context, a spec.App, cname string, log io.Writer, logf func(string, ...any)) error {
+	f := traefik.AppFileName(a.Name)
+	token := randToken()
+	withToken, err1 := traefik.App(a, cname, token, e.Site)
+	steady, err2 := traefik.App(a, cname, "", e.Site)
+	if err := errors.Join(err1, err2); err != nil {
+		return err
+	}
+	if err := e.Host.WriteAppFile(f, injectRouteFault(a.Name, withToken)); err != nil {
+		return fmt.Errorf("writing the route: %w", err)
+	}
+	vpath, anyStatus := verifyPath(a)
+	if err := e.Host.Verify(ctx, a.Primary(), vpath, token, anyStatus, log); err != nil {
+		return fmt.Errorf("%w within %s, so Traefik probably did not load the config: "+
+			"look for an invalid file in Traefik's dynamic directory (often %s) with journalctl --user -u traefik (%w)", ErrRouteNotServed, VerifyTimeout, traefik.CustomFile, err)
+	}
+	if err := e.Host.WriteAppFile(f, steady); err != nil {
+		// the verified route serves the backend; only the token router is left over until the next start
+		logf("removing the verify router: %v (startup reconciliation removes it)", err)
+	}
+	return nil
+}
+
+// ApplyRoute makes the live route of app a follow the edited spec n, before
+// the caller stores n (domains, middleware). It uses the deploy pipeline's
+// D7/D8: the new route must be served through Traefik, otherwise the previous
+// route is restored and an error is returned, and the caller keeps the old
+// spec. The caller holds the app's lock. An app without a live release has no
+// route, so there is nothing to verify.
+func (e *Engine) ApplyRoute(ctx context.Context, a apps.App, n spec.App) error {
+	if a.Live == nil {
+		return nil
+	}
+	cname := quadlet.ContainerName(a.Spec.Name, a.Live.Rel8)
+	var log bytes.Buffer
+	logf := func(f string, args ...any) { fmt.Fprintf(&log, f+"\n", args...) }
+	if err := e.switchRoute(ctx, n, cname, &log, logf); err != nil {
+		if a.Spec.Validate() == nil { // nothing was written if only n failed to render
+			e.restoreRoute(context.WithoutCancel(ctx), a.Spec, cname, &log, logf)
+		}
+		slog.Warn("route edit failed", "app", a.Spec.Name, "err", err, "log", log.String())
+		return err
+	}
+	return nil
+}
+
+// RestoreRoute puts app a's stored route back (D8) after ApplyRoute succeeded
+// but the caller could not store the new spec.
+func (e *Engine) RestoreRoute(ctx context.Context, a apps.App) {
+	if a.Live == nil {
+		return
+	}
+	var log bytes.Buffer
+	e.restoreRoute(context.WithoutCancel(ctx), a.Spec, quadlet.ContainerName(a.Spec.Name, a.Live.Rel8), &log,
+		func(f string, args ...any) { fmt.Fprintf(&log, f+"\n", args...) })
+	slog.Warn("route restored after a failed save", "app", a.Spec.Name, "log", log.String())
+}
+
 // restoreRoute points the app's route back at the previous release and
 // verifies it with its own token before dropping the token router (D8).
 func (e *Engine) restoreRoute(ctx context.Context, a spec.App, old string, log io.Writer, logf func(string, ...any)) {
@@ -557,19 +608,6 @@ func describe(c Check) string {
 		return fmt.Sprintf("container health check (Notify=healthy) within %s", c.Timeout)
 	}
 	return "WEAK: no health check configured, only 'running without restarts' (set a health path)"
-}
-
-// RenderRoute rewrites an app's route after a domain or middleware change.
-// The caller holds the app's lock. Apps without a live release have no route.
-func (e *Engine) RenderRoute(ctx context.Context, a apps.App) error {
-	if a.Live == nil {
-		return nil
-	}
-	b, err := traefik.App(a.Spec, quadlet.ContainerName(a.Spec.Name, a.Live.Rel8), "", e.Site)
-	if err != nil {
-		return err
-	}
-	return e.Host.WriteAppFile(traefik.AppFileName(a.Spec.Name), b)
 }
 
 // actor: deploys from a webhook are logged as such; manual ones come through the CLI or panel.

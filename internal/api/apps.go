@@ -8,12 +8,16 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/r3p-dev/dermaga/internal/apps"
+	"github.com/r3p-dev/dermaga/internal/audit"
 	"github.com/r3p-dev/dermaga/internal/deploy"
 	"github.com/r3p-dev/dermaga/internal/gitsrc"
 	"github.com/r3p-dev/dermaga/internal/host"
@@ -45,8 +49,89 @@ type GitHubSettings struct {
 	WebhookSecret  string `json:"webhookSecret,omitempty"` // only on create and on explicit reveal
 }
 
+// view is what clients see of an app: basic-auth users without their hashes.
 func view(a apps.App) AppView {
-	return AppView{ID: a.ID, Name: a.Spec.Name, Domains: a.Spec.Domains, Spec: a.Spec, Strategy: a.Spec.EffectiveStrategy(), Live: a.Live}
+	sp := a.Spec
+	if len(sp.Middleware.BasicAuth) > 0 {
+		users := make([]spec.BasicAuthUser, len(sp.Middleware.BasicAuth))
+		for i, u := range sp.Middleware.BasicAuth {
+			users[i] = spec.BasicAuthUser{User: u.User}
+		}
+		sp.Middleware.BasicAuth = users
+	}
+	return AppView{ID: a.ID, Name: sp.Name, Domains: sp.Domains, Spec: sp, Strategy: sp.EffectiveStrategy(), Live: a.Live}
+}
+
+// minBasicAuthPassword is the shortest basic-auth password the API accepts.
+const minBasicAuthPassword = 12
+
+// resolveBasicAuth turns the basic-auth users of a request into storable
+// ones: a user with a password gets a fresh bcrypt hash, a user without one
+// keeps the hash stored for that name, and a hash sent by the client is
+// ignored. Passwords are cleared; they are never stored, logged or returned.
+func resolveBasicAuth(m *spec.Middleware, stored []spec.BasicAuthUser) error {
+	for i, u := range m.BasicAuth {
+		out := spec.BasicAuthUser{User: u.User}
+		switch {
+		case u.Password != "":
+			if len(u.Password) < minBasicAuthPassword || len(u.Password) > 72 {
+				return fmt.Errorf("basic auth user %q: the password must be %d to 72 bytes", u.User, minBasicAuthPassword)
+			}
+			if err := spec.Text("basic auth password", u.Password, 72); err != nil {
+				return err
+			}
+			// cost 10: Traefik checks the hash on every request, so higher costs show up as latency
+			h, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
+			if err != nil {
+				return err
+			}
+			out.Hash = string(h)
+		default:
+			j := slices.IndexFunc(stored, func(s spec.BasicAuthUser) bool { return s.User == u.User })
+			if j < 0 {
+				return fmt.Errorf("basic auth user %q: a new user needs a password", u.User)
+			}
+			out.Hash = stored[j].Hash
+		}
+		m.BasicAuth[i] = out
+	}
+	return nil
+}
+
+// EffectiveHeader is one response header an app's route sets or strips.
+type EffectiveHeader struct {
+	Name   string `json:"name"`
+	Value  string `json:"value"`  // empty: the header is stripped from responses
+	Source string `json:"source"` // "default" (global default) or "app" (the app's own setting)
+}
+
+// EffectiveHeadersView is the app's effective header set: the global defaults
+// with the app's removals and overrides applied, sorted by name.
+type EffectiveHeadersView struct {
+	DefaultsOff bool              `json:"defaultsOff"`
+	Headers     []EffectiveHeader `json:"headers"`
+}
+
+func (s *Server) appHeaders(w http.ResponseWriter, r *http.Request, _ string) {
+	a, ok := s.app(w, r)
+	if !ok {
+		return
+	}
+	h := a.Spec.Middleware.Headers
+	own := map[string]bool{}
+	for k := range h.Set {
+		own[http.CanonicalHeaderKey(k)] = true
+	}
+	v := EffectiveHeadersView{DefaultsOff: h.Off, Headers: []EffectiveHeader{}}
+	for name, value := range h.EffectiveHeaders() {
+		src := "default"
+		if own[name] {
+			src = "app"
+		}
+		v.Headers = append(v.Headers, EffectiveHeader{Name: name, Value: value, Source: src})
+	}
+	slices.SortFunc(v.Headers, func(a, b EffectiveHeader) int { return strings.Compare(a.Name, b.Name) })
+	writeJSON(w, http.StatusOK, v)
 }
 
 // appRoutes registers the app API. wrap is identity on the socket and the
@@ -60,6 +145,7 @@ func (s *Server) appRoutes(mux *http.ServeMux, wrap func(http.HandlerFunc) http.
 	mux.Handle("GET /api/apps/{app}", h(s.getApp))
 	mux.Handle("PUT /api/apps/{app}", h(s.putApp))
 	mux.Handle("DELETE /api/apps/{app}", h(s.deleteApp))
+	mux.Handle("GET /api/apps/{app}/headers", h(s.appHeaders))
 	mux.Handle("POST /api/apps/{app}/deploy", h(s.deployApp))
 	mux.Handle("POST /api/apps/{app}/rollback", h(s.rollbackApp))
 	mux.Handle("GET /api/apps/{app}/releases/{rel8}/log", h(s.releaseLog))
@@ -135,6 +221,10 @@ func (s *Server) createApp(w http.ResponseWriter, r *http.Request, actor string)
 	a := req.Spec
 	a.Name, a.Domains = req.Name, req.Domains
 	a.Source.Repo = spec.NormalizeRepo(a.Source.Repo)
+	if err := resolveBasicAuth(&a.Middleware, nil); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	id, secret, err := s.Apps.Create(r.Context(), a)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -170,8 +260,10 @@ func (s *Server) getApp(w http.ResponseWriter, r *http.Request, _ string) {
 	writeJSON(w, http.StatusOK, v)
 }
 
-// putApp replaces an app's spec and domains (apps edit, domains, middleware)
-// and re-renders its route at once if it is live.
+// putApp replaces an app's spec and domains (apps edit, domains, middleware).
+// If the app is live, the new route must first be served by Traefik (D7); if
+// it is not, the previous route is restored (D8) and nothing is stored. The
+// app's lock is the one deploys take, so an edit and a deploy never interleave.
 func (s *Server) putApp(w http.ResponseWriter, r *http.Request, actor string) {
 	var req appRequest
 	if !readJSON(w, r, &req) {
@@ -189,15 +281,37 @@ func (s *Server) putApp(w http.ResponseWriter, r *http.Request, actor string) {
 		writeError(w, http.StatusBadRequest, "source type and repo can't change: create a new app")
 		return
 	}
-	if err := s.Apps.Save(r.Context(), a.ID, n); err != nil {
+	if err := resolveBasicAuth(&n.Middleware, a.Spec.Middleware.BasicAuth); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	a.Spec = n
-	if err := s.Engine.RenderRoute(r.Context(), a); err != nil {
-		internalError(w, err)
+	if err := n.Validate(); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if err := s.Apps.CheckDomains(r.Context(), a.ID, n.Domains); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	failed := func(code int, err error) {
+		_ = audit.Log(s.DB, actor, "app.edit_failed", a.Spec.Name, err.Error())
+		writeError(w, code, err.Error())
+	}
+	if err := s.Engine.ApplyRoute(r.Context(), a, n); err != nil {
+		code := http.StatusInternalServerError
+		if errors.Is(err, deploy.ErrRouteNotServed) {
+			code = http.StatusBadGateway
+			err = fmt.Errorf("%w. The previous route was restored and nothing was saved", err)
+		}
+		failed(code, err)
+		return
+	}
+	if err := s.Apps.Save(r.Context(), a.ID, n); err != nil {
+		s.Engine.RestoreRoute(r.Context(), a)
+		failed(http.StatusInternalServerError, fmt.Errorf("saving the app: %w. The previous route was restored", err))
+		return
+	}
+	a.Spec = n
 	s.audit(actor, "app.edit", a.Spec.Name)
 	writeJSON(w, http.StatusOK, view(a))
 }

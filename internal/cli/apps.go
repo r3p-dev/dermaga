@@ -17,8 +17,6 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
-
 	"github.com/r3p-dev/dermaga/internal/api"
 	"github.com/r3p-dev/dermaga/internal/apps"
 	"github.com/r3p-dev/dermaga/internal/config"
@@ -668,13 +666,9 @@ func cmdMiddleware(args []string) error {
 			if len(pw) < 12 {
 				return errors.New("use at least 12 characters")
 			}
-			// cost 10: Traefik checks the hash on every request, so higher costs show up as latency
-			h, err := bcrypt.GenerateFromPassword([]byte(pw), bcrypt.DefaultCost)
-			if err != nil {
-				return err
-			}
+			// The daemon hashes it (bcrypt): the CLI and the panel share one path.
 			mw.BasicAuth = slices.DeleteFunc(mw.BasicAuth, func(u spec.BasicAuthUser) bool { return u.User == user })
-			mw.BasicAuth = append(mw.BasicAuth, spec.BasicAuthUser{User: user, Hash: string(h)})
+			mw.BasicAuth = append(mw.BasicAuth, spec.BasicAuthUser{User: user, Password: pw})
 		case "remove":
 			mw.BasicAuth = slices.DeleteFunc(mw.BasicAuth, func(u spec.BasicAuthUser) bool { return u.User == user })
 		default:

@@ -110,6 +110,22 @@ func (s Store) Save(ctx context.Context, id string, a spec.App) error {
 	return tx.Commit()
 }
 
+// CheckDomains reports a domain that already belongs to another app, before a
+// route for it is written (Save would refuse it too, but only afterwards).
+func (s Store) CheckDomains(ctx context.Context, id string, ds []spec.Domain) error {
+	for _, d := range ds {
+		var owner string
+		err := s.DB.QueryRowContext(ctx, `SELECT app_id FROM domains WHERE host = ?`, d.Host).Scan(&owner)
+		if err == nil && owner != id {
+			return fmt.Errorf("domain %s already belongs to another app", d.Host)
+		}
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+	}
+	return nil
+}
+
 func putDomains(ctx context.Context, tx *sql.Tx, id string, ds []spec.Domain) error {
 	for _, d := range ds {
 		if _, err := tx.ExecContext(ctx, `INSERT INTO domains (host, app_id, is_primary, redirect) VALUES (?, ?, ?, ?)`,

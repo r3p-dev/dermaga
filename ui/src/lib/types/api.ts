@@ -76,6 +76,22 @@ export interface GitHubSettings {
   webhooksPage: string;
   webhookSecret?: string; // only on create and on explicit reveal
 }
+/**
+ * EffectiveHeader is one response header an app's route sets or strips.
+ */
+export interface EffectiveHeader {
+  name: string;
+  value: string; // empty: the header is stripped from responses
+  source: string; // "default" (global default) or "app" (the app's own setting)
+}
+/**
+ * EffectiveHeadersView is the app's effective header set: the global defaults
+ * with the app's removals and overrides applied, sorted by name.
+ */
+export interface EffectiveHeadersView {
+  defaultsOff: boolean;
+  headers: EffectiveHeader[];
+}
 export interface Settings {
   hookHost: string;
 }
