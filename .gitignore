@@ -7,5 +7,8 @@ master.key
 node_modules/
 .svelte-kit/
 
-# Build output (make build)
+# Build output (make build, make ui). ui/dist is embedded by ui/embed.go; the
+# tracked .gitkeep keeps `go build` working before the UI is built.
 /bin/
+/ui/dist/*
+!/ui/dist/.gitkeep

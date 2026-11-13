@@ -2,6 +2,8 @@
 # the linters (`tool` directives), so nothing is installed globally.
 # `check` also runs the UI check, which needs Bun and `ui/node_modules`
 # (`cd ui && bun install --frozen-lockfile`, or `make ui`).
+# ui/dist is not tracked (only ui/dist/.gitkeep): `make build` builds the UI
+# first; a plain `go build` embeds whatever ui/dist holds.
 GO ?= go
 GOFMT := $(shell $(GO) env GOROOT)/bin/gofmt
 BUN ?= bun
@@ -29,10 +31,11 @@ tygo-check:
 
 ui:
 	cd ui && $(BUN) install --frozen-lockfile && $(BUN) run build
+	@touch ui/dist/.gitkeep  # the build empties ui/dist; the placeholder is tracked
 
 ui-check:
 	cd ui && $(BUN) run check && $(BUN) run format:check
 
-build:
+build: ui
 	GOARCH=amd64 $(GO) build -trimpath -ldflags='$(LDFLAGS)' -o bin/dermaga-linux-amd64 ./cmd/dermaga
 	GOARCH=arm64 $(GO) build -trimpath -ldflags='$(LDFLAGS)' -o bin/dermaga-linux-arm64 ./cmd/dermaga

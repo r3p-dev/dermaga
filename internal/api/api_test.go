@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/r3p-dev/dermaga/internal/apps"
@@ -494,3 +495,21 @@ func (f *mockFile) Mode() fs.FileMode  { return 0o444 }
 func (f *mockFile) ModTime() time.Time { return time.Unix(1700000000, 0) }
 func (f *mockFile) IsDir() bool        { return false }
 func (f *mockFile) Sys() any           { return nil }
+
+// A binary built without `make ui` embeds only ui/dist/.gitkeep: the panel
+// must say so instead of answering 404 or an empty page.
+func TestUINotBuilt(t *testing.T) {
+	s := newServer(t)
+	s.UI = fstest.MapFS{".gitkeep": {}}
+	for _, p := range []string{"/", "/apps/shop", "/index.html"} {
+		w := do(s.Panel(), req{method: "GET", path: p})
+		if w.Code != http.StatusServiceUnavailable || !strings.Contains(w.Body.String(), "make ui") ||
+			!strings.HasPrefix(w.Header().Get("Content-Type"), "text/plain") {
+			t.Errorf("GET %s = %d %q (%s), want 503 text/plain naming `make ui`", p, w.Code, w.Body.String(), w.Header().Get("Content-Type"))
+		}
+	}
+	s.UI = fstest.MapFS{"index.html": {Data: []byte("<!doctype html>ok")}}
+	if w := do(s.Panel(), req{method: "GET", path: "/apps/shop"}); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "ok") {
+		t.Errorf("with index.html: GET /apps/shop = %d %q, want the SPA fallback", w.Code, w.Body.String())
+	}
+}

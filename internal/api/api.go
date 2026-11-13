@@ -133,7 +133,11 @@ func (s *Server) mountUI(mux *http.ServeMux) {
 		// Root or SPA client-side routing fallback: serve index.html
 		indexFile, err := s.UI.Open("index.html")
 		if err != nil {
-			http.NotFound(w, r)
+			// The repository tracks only a placeholder in ui/dist; a binary built
+			// without `make ui` has no UI to serve.
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprintf(w, "%s %s: the web UI was not built into this binary. Run `make ui`, then build again (`make build` does both). The JSON API is under /api/.\n", name.Name, name.Version())
 			return
 		}
 		defer indexFile.Close()
