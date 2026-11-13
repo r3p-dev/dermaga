@@ -161,3 +161,46 @@ func TestBackupPasswordLifecycle(t *testing.T) {
 		t.Error("no log output was captured; the log check proves nothing")
 	}
 }
+
+// The S3 secret key: GET masks it, PUT keeps it when the field is absent or
+// empty, replaces it when a new one is sent, and refuses the mask (gap G43).
+func TestBackupSettingsS3SecretKept(t *testing.T) {
+	s := newServer(t)
+	s.Box = s.Apps.Box
+	s.Backup = backup.NewManager(s.DB, s.Box, s.Databases, s.Paths, nil)
+	panel := s.Panel()
+	cookie := login(t, panel)
+	put := func(body string) int {
+		return do(panel, req{method: "PUT", path: "/api/backup/settings", origin: "http://127.0.0.1:7070", cookie: cookie, body: body}).Code
+	}
+	stored := func() string {
+		st, err := s.Backup.GetSettings(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		return st.S3SecretKey
+	}
+	base := `"repository":"s3:https://h/b","s3Endpoint":"h","s3Bucket":"b","s3AccessKey":"AK","configured":true,"passwordState":"none"`
+
+	if code := put(`{` + base + `,"s3SecretKey":"first-secret"}`); code != http.StatusNoContent || stored() != "first-secret" {
+		t.Fatalf("initial save: %d, stored %q", code, stored())
+	}
+	w := do(panel, req{method: "GET", path: "/api/backup/settings", cookie: cookie})
+	if strings.Contains(w.Body.String(), "first-secret") || !strings.Contains(w.Body.String(), s3SecretMask) {
+		t.Errorf("GET must mask the secret: %s", w.Body)
+	}
+	if code := put(`{` + base + `,"s3Region":"eu"}`); code != http.StatusNoContent || stored() != "first-secret" {
+		t.Errorf("save without the secret: %d, stored %q; want it kept", code, stored())
+	}
+	if code := put(`{` + base + `,"s3SecretKey":""}`); code != http.StatusNoContent || stored() != "first-secret" {
+		t.Errorf("save with an empty secret: %d, stored %q; want it kept", code, stored())
+	}
+	for _, mask := range []string{s3SecretMask, "••••", "********"} {
+		if code := put(`{` + base + `,"s3SecretKey":"` + mask + `"}`); code != http.StatusBadRequest || stored() != "first-secret" {
+			t.Errorf("save with the mask %q: %d, stored %q; want 400 and the secret kept", mask, code, stored())
+		}
+	}
+	if code := put(`{` + base + `,"s3SecretKey":"second-secret"}`); code != http.StatusNoContent || stored() != "second-secret" {
+		t.Errorf("save with a new secret: %d, stored %q", code, stored())
+	}
+}

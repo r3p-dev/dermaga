@@ -69,6 +69,9 @@ func (s *Server) backupRoutes(mux *http.ServeMux, wrap func(http.HandlerFunc) ht
 	mux.Handle("POST /api/backup/password/confirm", h(s.confirmBackupPassword))
 }
 
+// s3SecretMask stands in for a stored S3 secret key in GET responses.
+const s3SecretMask = "••••••••"
+
 func (s *Server) getBackupSettings(w http.ResponseWriter, r *http.Request, _ string) {
 	if s.Backup == nil {
 		writeError(w, http.StatusServiceUnavailable, "backup service unavailable")
@@ -82,7 +85,7 @@ func (s *Server) getBackupSettings(w http.ResponseWriter, r *http.Request, _ str
 	// Mask secret key in GET response. The restic password is never part of
 	// it (backup.Settings.Password is json:"-").
 	if st.S3SecretKey != "" {
-		st.S3SecretKey = "••••••••"
+		st.S3SecretKey = s3SecretMask
 	}
 	writeJSON(w, http.StatusOK, st)
 }
@@ -182,6 +185,12 @@ func (s *Server) putBackupSettings(w http.ResponseWriter, r *http.Request, actor
 	}
 	var req backup.Settings
 	if !readJSON(w, r, &req) {
+		return
+	}
+	// An absent or empty secret keeps the stored one. The mask from GET must
+	// never be stored as the secret (gap G43): a form that echoes it back is a bug.
+	if req.S3SecretKey != "" && strings.Trim(req.S3SecretKey, "•* ") == "" {
+		writeError(w, http.StatusBadRequest, "s3SecretKey is the display mask, not a secret: leave it out to keep the stored key")
 		return
 	}
 	if err := s.Backup.SaveSettings(r.Context(), req); err != nil {

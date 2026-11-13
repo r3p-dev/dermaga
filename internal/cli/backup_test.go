@@ -84,6 +84,15 @@ func TestBackupSettingsSetSecretFromStdin(t *testing.T) {
 	if st.S3SecretKey != secret || st.S3Bucket != "bkt" || st.S3AccessKey != "AK" || st.Repository != "s3:https://s3.example.com/bkt" {
 		t.Errorf("stored settings: %+v", st)
 	}
+
+	// A later change that doesn't name the secret keeps it (the GET it starts
+	// from only has the mask, which must not be written back: gap G43).
+	if err := backupSettingsSet([]string{"--s3-region", "eu-central", "--json"}); err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := mgr.GetSettings(context.Background()); st.S3SecretKey != secret || st.S3Region != "eu-central" {
+		t.Errorf("after a region-only change: secret kept = %v, region %q", st.S3SecretKey == secret, st.S3Region)
+	}
 }
 
 func TestMergeBackupSettings(t *testing.T) {

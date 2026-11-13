@@ -59,7 +59,7 @@
 				endpointInput = st.s3Endpoint || '';
 				regionInput = st.s3Region || '';
 				accessKeyInput = st.s3AccessKey || '';
-				secretKeyInput = st.s3SecretKey || '';
+				secretKeyInput = ''; // never prefilled: the API only returns a mask
 			}
 		} catch (err: any) {
 			toast.error(err.message || 'Failed to load backup data');
@@ -76,7 +76,8 @@
 				s3Endpoint: endpointInput.trim(),
 				s3Region: regionInput.trim(),
 				s3AccessKey: accessKeyInput.trim(),
-				s3SecretKey: secretKeyInput.trim(),
+				// Sent only when a new key was typed; empty keeps the stored one.
+				s3SecretKey: secretKeyInput.trim() || undefined,
 				passwordState: settings?.passwordState ?? 'none',
 				configured: true
 			});
