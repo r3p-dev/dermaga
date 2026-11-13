@@ -4,4 +4,4 @@ Description=dermaga backup db:shopdb
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/dermaga backup run db:shopdb
+ExecStart=/usr/local/bin/dermaga backup run --scheduled db:shopdb

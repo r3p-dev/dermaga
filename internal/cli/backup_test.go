@@ -6,6 +6,23 @@ import (
 	"github.com/r3p-dev/dermaga/internal/backup"
 )
 
+// Only --scheduled marks a timer run. INVOCATION_ID is inherited by every
+// child of a systemd service (the daemon included) and must not count.
+func TestBackupRunRequestScheduled(t *testing.T) {
+	t.Setenv("INVOCATION_ID", "0123456789abcdef0123456789abcdef")
+	req, err := backupRunRequest([]string{"system"})
+	if err != nil || req.Scheduled || req.Target != "system" {
+		t.Errorf("without the flag: %+v, %v; want an unscheduled run of system", req, err)
+	}
+	req, err = backupRunRequest([]string{"--scheduled", "db:shop"})
+	if err != nil || !req.Scheduled || req.Target != "db:shop" {
+		t.Errorf("with the flag: %+v, %v; want a scheduled run of db:shop", req, err)
+	}
+	if _, err := backupRunRequest(nil); err == nil {
+		t.Error("a run without a target was accepted")
+	}
+}
+
 func TestMergeBackupSettings(t *testing.T) {
 	cur := backup.Settings{
 		Repository: "/home/server/.local/share/dermaga/restic", Password: "restic-pass",

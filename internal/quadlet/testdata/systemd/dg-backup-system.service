@@ -5,4 +5,4 @@ OnFailure=dg-backup-failed@%n.service
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/dermaga backup run system
+ExecStart=/usr/local/bin/dermaga backup run --scheduled system

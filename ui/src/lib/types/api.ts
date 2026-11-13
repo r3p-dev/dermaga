@@ -82,8 +82,9 @@ export interface Settings {
 export interface RunBackupRequest {
   target: string; // db:<name>, system, or volume:<app>:<vol>
   /**
-   * Scheduled is set by the CLI when a systemd timer runs it. The unit's
-   * OnFailure= then sends the notification, so the API must not send a second one.
+   * Scheduled is set only by `backup run --scheduled`, which dermaga's timer
+   * units call. The unit's OnFailure= then sends the notification, so the API
+   * must not send a second one.
    */
   scheduled?: boolean;
 }

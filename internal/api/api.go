@@ -115,6 +115,10 @@ func (s *Server) mountUI(mux *http.ServeMux) {
 	fileServer := http.FileServerFS(s.UI)
 	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 		clean := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
+		if clean != "" && strings.HasPrefix(path.Base(clean), ".") { // ui/dist/.gitkeep is embedded but not part of the UI
+			http.NotFound(w, r)
+			return
+		}
 		if clean != "" && clean != "." && clean != "index.html" {
 			f, err := s.UI.Open(clean)
 			if err == nil {

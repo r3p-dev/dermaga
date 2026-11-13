@@ -53,7 +53,7 @@ func (m *Manager) InstallDBTimer(ctx context.Context, d databases.Database) erro
 		Name:        "backup-db-" + d.Name,
 		Description: "backup db:" + d.Name,
 		Binary:      bin,
-		Args:        []string{"backup", "run", "db:" + d.Name},
+		Args:        []string{"backup", "run", "--scheduled", "db:" + d.Name},
 		OnCalendar:  quadlet.FormatCalendar(sched),
 		RandomDelay: 1800, // 30m randomized delay (BRIEF §3.8)
 		OnFailure:   name.Unit + "backup-failed@%n.service",
@@ -107,7 +107,7 @@ func (m *Manager) InstallSystemTimer(ctx context.Context, sched string) error {
 		Name:        "backup-system",
 		Description: "backup system",
 		Binary:      bin,
-		Args:        []string{"backup", "run", "system"},
+		Args:        []string{"backup", "run", "--scheduled", "system"},
 		OnCalendar:  quadlet.FormatCalendar(sched),
 		RandomDelay: 1800,
 		OnFailure:   name.Unit + "backup-failed@%n.service",

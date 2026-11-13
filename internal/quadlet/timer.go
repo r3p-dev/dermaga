@@ -10,12 +10,12 @@ import (
 )
 
 // Timer is a scheduled dermaga command: dg-<Name>.timer starts dg-<Name>.service,
-// which runs Binary with Args (e.g. backup run db:shop, BRIEF §3.8).
+// which runs Binary with Args (e.g. backup run --scheduled db:shop, BRIEF §3.8).
 type Timer struct {
 	Name        string   // e.g. backup-db-shop
 	Description string   // e.g. "backup db:shop"
 	Binary      string   // absolute path of the dermaga binary
-	Args        []string // e.g. backup run db:shop
+	Args        []string // e.g. backup run --scheduled db:shop
 	OnCalendar  string   // systemd calendar spec, e.g. "*-*-* 03:00:00 Asia/Jakarta"
 	RandomDelay int      // seconds (RandomizedDelaySec=)
 	OnFailure   string   // optional failure unit, e.g. dg-backup-failed@%n.service

@@ -96,14 +96,31 @@ func backupList(args []string) error {
 	return tw.Flush()
 }
 
+// backupRunRequest parses `backup run [--scheduled] <target>`. Only the flag
+// marks a run as scheduled; dermaga's timer units pass it. The environment
+// (INVOCATION_ID) says nothing: every child of any systemd service inherits it.
+func backupRunRequest(args []string) (api.RunBackupRequest, error) {
+	fs := flag.NewFlagSet("backup run", flag.ContinueOnError)
+	scheduled := fs.Bool("scheduled", false, "for dermaga's timer units: a failure is reported by the unit's OnFailure=, not by this run")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return api.RunBackupRequest{}, err
+		}
+		return api.RunBackupRequest{}, errQuiet
+	}
+	if fs.NArg() != 1 {
+		fmt.Fprintf(os.Stderr, "usage: %s backup run <db:NAME | system | volume:APP:VOL>\n", name.Name)
+		return api.RunBackupRequest{}, errQuiet
+	}
+	return api.RunBackupRequest{Target: fs.Arg(0), Scheduled: *scheduled}, nil
+}
+
 func backupRun(args []string) error {
-	target, _, err := sub("backup run", args)
+	req, err := backupRunRequest(args)
 	if err != nil {
 		return err
 	}
-	// systemd sets INVOCATION_ID for the units it starts: a timer run leaves the
-	// failure notification to the unit's OnFailure=.
-	req := api.RunBackupRequest{Target: target, Scheduled: os.Getenv("INVOCATION_ID") != ""}
+	target := req.Target
 	var snap backup.Snapshot
 	if err := callTimeout("POST", "/api/backup/run", 5*time.Minute, req, &snap); err != nil {
 		return err

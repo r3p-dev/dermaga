@@ -508,7 +508,10 @@ func TestUINotBuilt(t *testing.T) {
 			t.Errorf("GET %s = %d %q (%s), want 503 text/plain naming `make ui`", p, w.Code, w.Body.String(), w.Header().Get("Content-Type"))
 		}
 	}
-	s.UI = fstest.MapFS{"index.html": {Data: []byte("<!doctype html>ok")}}
+	s.UI = fstest.MapFS{"index.html": {Data: []byte("<!doctype html>ok")}, ".gitkeep": {}}
+	if w := do(s.Panel(), req{method: "GET", path: "/.gitkeep"}); w.Code != http.StatusNotFound {
+		t.Errorf("GET /.gitkeep = %d, want 404", w.Code)
+	}
 	if w := do(s.Panel(), req{method: "GET", path: "/apps/shop"}); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "ok") {
 		t.Errorf("with index.html: GET /apps/shop = %d %q, want the SPA fallback", w.Code, w.Body.String())
 	}

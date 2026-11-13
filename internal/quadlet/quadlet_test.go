@@ -78,7 +78,7 @@ func TestOtherUnitsGolden(t *testing.T) {
 	check("hooks", fn, b, err)
 
 	tm := Timer{Name: "backup-db-shopdb", Description: "backup db:shopdb", Binary: "/usr/local/bin/dermaga",
-		Args: []string{"backup", "run", "db:shopdb"}, OnCalendar: "*-*-* 03:00:00 Asia/Jakarta", RandomDelay: 1800}
+		Args: []string{"backup", "run", "--scheduled", "db:shopdb"}, OnCalendar: "*-*-* 03:00:00 Asia/Jakarta", RandomDelay: 1800}
 	svc, tmr, err := tm.Units()
 	if err != nil {
 		t.Fatal(err)
@@ -92,7 +92,7 @@ func TestOtherUnitsGolden(t *testing.T) {
 // Environment values, which must stay doubled.
 func TestSpecifierEscapingGolden(t *testing.T) {
 	tm := Timer{Name: "backup-system", Description: "backup system", Binary: "/usr/local/bin/dermaga",
-		Args: []string{"backup", "run", "system"}, OnCalendar: "*-*-* 02:00:00 Asia/Jakarta", RandomDelay: 1800,
+		Args: []string{"backup", "run", "--scheduled", "system"}, OnCalendar: "*-*-* 02:00:00 Asia/Jakarta", RandomDelay: 1800,
 		OnFailure: "dg-backup-failed@%n.service"}
 	svc, _, err := tm.Units()
 	if err != nil {
