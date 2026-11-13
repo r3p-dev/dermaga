@@ -32,7 +32,11 @@ type routeHost struct {
 	reject      string
 	inVerify    chan struct{} // if set: Verify signals here, then waits for release
 	release     chan struct{}
+	tokens      []string // every verify token seen
+	log         string   // what Traefik "logged"
 }
+
+func (h *routeHost) ProxyLog(context.Context, time.Time) (string, error) { return h.log, nil }
 
 func (h *routeHost) WriteAppFile(_ string, b []byte) error {
 	h.mu.Lock()
@@ -50,6 +54,7 @@ func (h *routeHost) Verify(_ context.Context, _, _, token string, _ bool, _ io.W
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	h.tokens = append(h.tokens, token)
 	if !strings.Contains(string(h.file), token) || (h.reject != "" && strings.Contains(string(h.file), h.reject)) {
 		return errors.New("probe: no success within 10s")
 	}
@@ -136,10 +141,34 @@ func TestRouteEditVerifiedAndRolledBack(t *testing.T) {
 	// Traefik "rejects" the next edit: file and DB row must be as before it.
 	good := string(h.file)
 	h.reject, h.writes = "X-Broken", 0
+	h.log = `{"level":"error","error":"collecting file configs: /etc/traefik/dynamic/app-other.yml: yaml: line 3","message":"Error occurred during watcher callback"}
+{"level":"error","error":"collecting file configs: /etc/traefik/dynamic/app-shop.yml: template: :74: unexpected \"{\" in command","message":"Error occurred during watcher callback"}`
 	w = edit(s, a, "", `{"headers":{"set":{"X-Broken":"two"}}}`)
 	if w.Code != http.StatusBadGateway || !strings.Contains(w.Body.String(), "not served through Traefik within 10s") || !strings.Contains(w.Body.String(), "previous route was restored") {
 		t.Errorf("rejected edit: %d %s; want 502 naming the timeout and the restore", w.Code, w.Body)
 	}
+	// The error and the audit row quote Traefik's reason for this app's file
+	// and never carry a verify token, the probe command or another app's error.
+	detail := lastAudit(t, s).Details
+	for where, text := range map[string]string{"API error": w.Body.String(), "audit detail": detail} {
+		if !strings.Contains(text, "Traefik logged: Error occurred during watcher callback: collecting file configs: /etc/traefik/dynamic/app-shop.yml: template: :74") {
+			t.Errorf("%s does not quote Traefik's reason: %s", where, text)
+		}
+		for _, bad := range append([]string{"app-other.yml", "podman", "probe", traefik.VerifyHeader}, h.tokens...) {
+			if strings.Contains(text, bad) {
+				t.Errorf("%s contains %q: %s", where, bad, text)
+			}
+		}
+	}
+	if len(h.tokens) < 3 {
+		t.Fatalf("test bug: only %d verify tokens seen", len(h.tokens))
+	}
+	// Without a log line for this app the error says so plainly.
+	h.log = `{"level":"error","error":"/etc/traefik/dynamic/app-other.yml: broken"}`
+	if w2 := edit(s, a, "", `{"headers":{"set":{"X-Broken":"three"}}}`); !strings.Contains(w2.Body.String(), "no error was logged for this app") || strings.Contains(w2.Body.String(), "app-other.yml") {
+		t.Errorf("no log line for this app: %s", w2.Body)
+	}
+	h.writes -= 3 // the second rejected edit wrote three times as well
 	if string(h.file) != good {
 		t.Errorf("the route file was not restored:\n%s", h.file)
 	}
@@ -379,4 +408,25 @@ func sortedStrings(s []string) bool {
 		}
 	}
 	return true
+}
+
+// An app without a live release has no route: its edit is stored and nothing
+// is written or verified. The first deploy renders it (deploy.TestFirstDeployRendersStoredMiddleware).
+func TestEditWithoutLiveReleaseIsStoredOnly(t *testing.T) {
+	s := newServer(t)
+	h := &routeHost{}
+	s.Engine = &deploy.Engine{Apps: s.Apps, Host: h, Site: traefik.Site{}}
+	if _, _, err := s.Apps.Create(context.Background(), spec.App{Name: "shop", Port: 80,
+		Domains: []spec.Domain{{Host: "shop.example.com", Primary: true}}, Source: spec.Source{Type: "image", Image: "docker.io/library/nginx:1.27.0"}}); err != nil {
+		t.Fatal(err)
+	}
+	if w := edit(s, apps.App{}, "", `{"headers":{"set":{"X-Test":"one"}}}`); w.Code != http.StatusOK {
+		t.Fatalf("edit: %d %s", w.Code, w.Body)
+	}
+	if h.writes != 0 || len(h.tokens) != 0 || storedSpec(t, s).Middleware.Headers.Set["X-Test"] != "one" {
+		t.Errorf("edit without a live release: %d writes, %d verifications, stored %v", h.writes, len(h.tokens), storedSpec(t, s).Middleware.Headers.Set)
+	}
+	if w := edit(s, apps.App{}, "", `{"headers":{"set":{"X-Test":"a\r\nb"}}}`); w.Code != http.StatusBadRequest {
+		t.Errorf("invalid edit without a live release: %d, want 400", w.Code)
+	}
 }

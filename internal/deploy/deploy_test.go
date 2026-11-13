@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -25,12 +26,14 @@ import (
 
 // fake records what a deploy does and can fail one step.
 type fake struct {
-	calls   []string
-	failAt  string // call prefix that fails
-	routes  map[string][]byte
-	units   map[string][]byte
-	env     []byte
-	running map[string]bool
+	calls    []string
+	failAt   string // call prefix that fails
+	proxyLog string // what Traefik "logged"
+	token    string // the last verify token seen
+	routes   map[string][]byte
+	units    map[string][]byte
+	env      []byte
+	running  map[string]bool
 }
 
 func (f *fake) do(c string) error {
@@ -94,12 +97,14 @@ func (f *fake) PruneImages(_ context.Context, app string, keep []string) error {
 	return f.do("prune " + app + " keep=" + strings.Join(keep, ","))
 }
 func (f *fake) Verify(_ context.Context, host, path, token string, any bool, _ io.Writer) error {
+	f.token = token
 	// like Traefik: only a loaded file with this token's router answers
 	if !strings.Contains(string(f.routes["app-shop.yml"]), token) {
 		return f.do("verify-missing-token")
 	}
 	return f.do(fmt.Sprintf("verify %s %s any=%v", host, path, any))
 }
+func (f *fake) ProxyLog(context.Context, time.Time) (string, error) { return f.proxyLog, nil }
 func (f *fake) WriteAppFile(n string, b []byte) error {
 	if err := f.do("route " + n); err != nil {
 		return err
@@ -339,7 +344,7 @@ func TestVerifyFailure(t *testing.T) {
 	e, f := setup(t, app())
 	f.failAt = "verify"
 	r := deploy(t, e)
-	if r.Status != "failed" || !strings.Contains(r.Error, "did not load the config") || len(f.routes) != 0 || len(f.running) != 0 {
+	if r.Status != "failed" || !strings.Contains(r.Error, "not served through Traefik within 10s; no error was logged for this app") || len(f.routes) != 0 || len(f.running) != 0 {
 		t.Fatalf("first deploy: %s %q routes %v running %v", r.Status, r.Error, f.routes, f.running)
 	}
 	f.failAt = ""
@@ -353,6 +358,75 @@ func TestVerifyFailure(t *testing.T) {
 	log, _ := os.ReadFile(r2.LogPath)
 	if !strings.Contains(string(log), "restoring the route to dg-shop-"+r1.Rel8) || !strings.Contains(string(log), "journalctl --user -u traefik") {
 		t.Errorf("log:\n%s", log)
+	}
+}
+
+// A failed verification quotes Traefik's own error for this app's file, and
+// nothing else: no other app's errors, no probe command, no verify token (not
+// in the release record, the build log or the returned error).
+func TestVerifyFailureQuotesTraefikWithoutSecrets(t *testing.T) {
+	e, f := setup(t, app())
+	f.failAt = "verify"
+	f.proxyLog = `{"level":"info","message":"Configuration loaded"}
+{"level":"error","providerName":"file","error":"collecting file configs: /etc/traefik/dynamic/app-other.yml: yaml: line 3","message":"Error occurred during watcher callback"}
+{"level":"error","providerName":"file","error":"collecting file configs: /etc/traefik/dynamic/app-shop.yml: template: :74: unexpected \"{\" in command \u001b[31m","message":"Error occurred during watcher callback"}
+{"level":"error","error":"/etc/traefik/dynamic/app-shop.yml: second error","message":"later"}`
+	r := deploy(t, e)
+	want := `Traefik logged: Error occurred during watcher callback: collecting file configs: /etc/traefik/dynamic/app-shop.yml: template: :74: unexpected "{" in command`
+	if r.Status != "failed" || !strings.Contains(r.Error, want) {
+		t.Fatalf("release error %q, want it to quote %q", r.Error, want)
+	}
+	log, _ := os.ReadFile(r.LogPath)
+	for where, text := range map[string]string{"release error": r.Error, "build log": string(log)} {
+		for what, bad := range map[string]string{"the verify token": f.token, "another app's error": "app-other.yml", "the probe command": "podman unshare",
+			"a control character": "\x1b", "a later line": "second error"} {
+			if bad == "" || strings.Contains(text, bad) {
+				t.Errorf("%s contains %s: %s", where, what, text)
+			}
+		}
+	}
+
+	// Traefik's line itself carrying the token (it should not, but if it does): redacted.
+	if got := proxyReason(`error in app-shop.yml near `+f.token, "app-shop.yml", f.token); strings.Contains(got, f.token) || !strings.Contains(got, "[token]") {
+		t.Errorf("token not redacted: %q", got)
+	}
+	if got := proxyReason(`error app-shop.yml `+strings.Repeat("x", 1000), "app-shop.yml", ""); len(got) > 310 {
+		t.Errorf("reason is %d bytes, want at most about 300", len(got))
+	}
+	if got := proxyReason(`{"level":"error","error":"app-other.yml broke"}`, "app-shop.yml", ""); got != "" {
+		t.Errorf("quoted a line that does not name this app's file: %q", got)
+	}
+}
+
+// An app edited before its first deploy has no route to verify, so the edit is
+// only stored. The first deploy then renders the route from the stored spec,
+// validates it (traefik.App) and verifies it through Traefik (D7, switchRoute).
+func TestFirstDeployRendersStoredMiddleware(t *testing.T) {
+	a := app()
+	a.Middleware.Headers.Set = map[string]string{"X-Stored": "before-first-deploy"}
+	e, f := setup(t, a)
+	if r := deploy(t, e); r.Status != "live" {
+		t.Fatalf("deploy: %s %q", r.Status, r.Error)
+	}
+	if !slices.Contains(f.calls, "verify shop.example.com /robots.txt any=false") {
+		t.Errorf("the first deploy did not verify the route through Traefik: %q", f.calls)
+	}
+	if route := string(f.routes["app-shop.yml"]); !strings.Contains(route, "X-Stored") || !strings.Contains(route, "before-first-deploy") || strings.Contains(route, "-verify") {
+		t.Errorf("the route was not rendered from the stored spec:\n%s", route)
+	}
+
+	// A stored spec that no longer validates fails the deploy before the host is touched.
+	ctx := context.Background()
+	got, _ := e.Apps.Get(ctx, "shop")
+	bad := got.Spec
+	bad.Middleware.Headers.Set = map[string]string{"X-Bad": "a\r\nb"}
+	b, _ := json.Marshal(bad)
+	if _, err := e.Apps.DB.Exec(`UPDATE apps SET spec = ? WHERE id = ?`, string(b), got.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.calls = nil
+	if r := deploy(t, e); r.Status != "failed" || !strings.Contains(r.Error, "X-Bad") || slices.ContainsFunc(f.calls, func(c string) bool { return strings.HasPrefix(c, "route") }) {
+		t.Errorf("deploy of an invalid stored spec: %s %q, calls %q", r.Status, r.Error, f.calls)
 	}
 }
 

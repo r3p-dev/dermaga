@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -68,6 +69,8 @@ type Host interface {
 	// token header until it succeeds or the deadline passes (D7). anyStatus:
 	// the app has no health path, so any app answer counts.
 	Verify(ctx context.Context, host, path, token string, anyStatus bool, log io.Writer) error
+	// ProxyLog returns what Traefik logged since the given time (its journal).
+	ProxyLog(ctx context.Context, since time.Time) (string, error)
 	// ReadAppFile reads a Traefik dynamic file (nil, nil if missing).
 	ReadAppFile(name string) ([]byte, error)
 	// ImageHealthcheck inspects whether an existing image defines a HEALTHCHECK.
@@ -510,19 +513,63 @@ func (e *Engine) switchRoute(ctx context.Context, a spec.App, cname string, log 
 	if err := errors.Join(err1, err2); err != nil {
 		return err
 	}
+	start := time.Now()
 	if err := e.Host.WriteAppFile(f, injectRouteFault(a.Name, withToken)); err != nil {
 		return fmt.Errorf("writing the route: %w", err)
 	}
 	vpath, anyStatus := verifyPath(a)
 	if err := e.Host.Verify(ctx, a.Primary(), vpath, token, anyStatus, log); err != nil {
-		return fmt.Errorf("%w within %s, so Traefik probably did not load the config: "+
-			"look for an invalid file in Traefik's dynamic directory (often %s) with journalctl --user -u traefik (%w)", ErrRouteNotServed, VerifyTimeout, traefik.CustomFile, err)
+		// The message goes into API errors, the audit log and release records:
+		// never the probe command or the token, only Traefik's own reason.
+		out, _ := e.Host.ProxyLog(context.WithoutCancel(ctx), start.Add(-time.Second))
+		if reason := proxyReason(out, f, token); reason != "" {
+			return fmt.Errorf("%w within %s. Traefik logged: %s", ErrRouteNotServed, VerifyTimeout, reason)
+		}
+		return fmt.Errorf("%w within %s; no error was logged for this app. Look for another invalid file in Traefik's dynamic directory (often %s) with journalctl --user -u traefik",
+			ErrRouteNotServed, VerifyTimeout, traefik.CustomFile)
 	}
 	if err := e.Host.WriteAppFile(f, steady); err != nil {
 		// the verified route serves the backend; only the token router is left over until the next start
 		logf("removing the verify router: %v (startup reconciliation removes it)", err)
 	}
 	return nil
+}
+
+// proxyReason picks from Traefik's log the first error line that names the
+// app's route file and returns its message: control characters removed, the
+// verify token redacted, at most 300 bytes. "" if no line names the file, so
+// errors about other apps' files are never quoted.
+func proxyReason(log, file, token string) string {
+	for _, line := range strings.Split(log, "\n") {
+		if !strings.Contains(line, file) || !strings.Contains(strings.ToLower(line), "error") {
+			continue
+		}
+		var j struct {
+			Error   string `json:"error"`
+			Message string `json:"message"`
+		}
+		if json.Unmarshal([]byte(line), &j) == nil && j.Error != "" { // Traefik logs JSON
+			line = j.Error
+			if j.Message != "" {
+				line = j.Message + ": " + j.Error
+			}
+		}
+		line = strings.Map(func(r rune) rune {
+			if r < 0x20 || r == 0x7f {
+				return ' '
+			}
+			return r
+		}, line)
+		if token != "" {
+			line = strings.ReplaceAll(line, token, "[token]")
+		}
+		line = strings.TrimSpace(line)
+		if len(line) > 300 {
+			line = strings.ToValidUTF8(line[:300], "") + "…"
+		}
+		return line
+	}
+	return ""
 }
 
 // ApplyRoute makes the live route of app a follow the edited spec n, before

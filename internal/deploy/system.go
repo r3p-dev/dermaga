@@ -261,8 +261,16 @@ func (s System) Verify(ctx context.Context, appHost, path, token string, anyStat
 	if anyStatus {
 		args = append(args, "-any-status")
 	}
-	_, err = host.RunEnv(ctx, VerifyTimeout+10*time.Second, nil, log, args...)
-	return err
+	if _, err = host.RunEnv(ctx, VerifyTimeout+10*time.Second, nil, log, args...); err != nil {
+		// Not the command's own error: it would repeat the command line, token included.
+		return errors.New("no answer through Traefik's verify entrypoint")
+	}
+	return nil
+}
+
+// ProxyLog returns what Traefik logged since the given time.
+func (s System) ProxyLog(ctx context.Context, since time.Time) (string, error) {
+	return host.Run(ctx, cmdTimeout, append([]string{"journalctl"}, host.JournalArgs("traefik.service", "--since", "@"+strconv.FormatInt(since.Unix(), 10))...)...)
 }
 
 func (s System) ImageHealthcheck(ctx context.Context, image string) (bool, error) {

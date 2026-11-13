@@ -70,6 +70,8 @@ Add any further gap the audit finds. Fix them all in this phase.
 Each item below needs something from me. **Stop and ask** at each one; do not simulate.
 
 - M4: `oha` 50 req/s during a successful and a failing blue-green deploy of portfolio.
+  Every `oha` load test uses `-w` (`--wait-ongoing-requests-after-deadline`, oha 1.16.0 on the VM):
+  without it, HTTP/1 requests in flight at the deadline are counted as "aborted due to deadline".
 - M6: I provide an R2/B2 test bucket. Scheduled backup observed; test restore for all three engines;
   failing dump fails the backup and notifies. **DR drill**: I revert `dermaga-vm` to `fresh` →
   install → `dermaga restore-system` from the bucket → apps and DBs back, verified by content. A

@@ -467,7 +467,7 @@ func (s *Server) runtimeLogs(w http.ResponseWriter, r *http.Request, _ string) {
 	if v, err := strconv.Atoi(r.URL.Query().Get("lines")); err == nil && v > 0 && v <= 10000 {
 		lines = v
 	}
-	args := []string{"--user", "-u", quadlet.ContainerName(a.Spec.Name, a.Live.Rel8) + ".service", "-o", "cat", "-n", strconv.Itoa(lines), "--no-pager"}
+	args := host.JournalArgs(quadlet.ContainerName(a.Spec.Name, a.Live.Rel8)+".service", "-n", strconv.Itoa(lines))
 	if r.URL.Query().Get("follow") == "1" {
 		args = append(args, "-f")
 	}

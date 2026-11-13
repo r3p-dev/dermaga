@@ -103,6 +103,12 @@ func RunStdinEnv(ctx context.Context, timeout time.Duration, stdin io.Reader, en
 }
 
 // Host is the real machine. It implements reconcile.Host.
+// JournalArgs are journalctl's arguments for one user unit's messages without
+// metadata. The app log stream and the Traefik error lookup both use them.
+func JournalArgs(unit string, extra ...string) []string {
+	return append([]string{"--user", "-u", unit, "-o", "cat", "--no-pager"}, extra...)
+}
+
 type Host struct {
 	QuadletDir string // ~/.config/containers/systemd
 	DynamicDir string // ~/.config/traefik/dynamic
