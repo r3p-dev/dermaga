@@ -2,7 +2,12 @@
 	import { onMount } from 'svelte';
 	import { api } from '$lib/api/client';
 	import { toast } from '$lib/stores/toast';
-	import type { Status, Settings as AppSettings, NotificationSettingsView } from '$lib/types/api';
+	import type {
+		Status,
+		Settings as AppSettings,
+		NotificationSettingsView,
+		KnownHostsResponse
+	} from '$lib/types/api';
 
 	let status = $state<Status | null>(null);
 	let settings = $state<AppSettings | null>(null);
@@ -12,7 +17,7 @@
 	let savingHook = $state(false);
 
 	let syncingHosts = $state(false);
-	let knownHostsResult = $state<{ file: string; fingerprints: string[] } | null>(null);
+	let knownHostsResult = $state<KnownHostsResponse | null>(null);
 
 	// Notification Settings (M9)
 	let notifyProvider = $state('');
@@ -23,6 +28,20 @@
 	let savingNotify = $state(false);
 	let testingNotify = $state(false);
 	let testFeedback = $state<{ success: boolean; detail: string } | null>(null);
+
+	// The SSH snippet is built from what the server reports, never from fixed values.
+	let panelPort = $derived(status?.panelPort ?? 7070);
+	let sshSnippet = $derived(
+		status
+			? `Host dermaga
+    HostName ${status.serverAddressPublic ? status.serverAddress : '<server-address>'}
+    Port ${status.sshPort}
+    User ${status.sshUser}
+    LocalForward ${status.panelPort} 127.0.0.1:${status.panelPort}
+    SessionType none
+    ExitOnForwardFailure yes`
+			: 'Loading…'
+	);
 
 	onMount(async () => {
 		await loadData();
@@ -450,9 +469,16 @@
 				class="p-3 bg-zinc-950 rounded-lg border border-zinc-800 font-mono text-xs text-zinc-300 space-y-1"
 			>
 				<p class="text-zinc-400 text-[11px]">Saved to {knownHostsResult.file}:</p>
-				{#each knownHostsResult.fingerprints as fp}
-					<p class="text-emerald-400">{fp}</p>
+				{#each Object.entries(knownHostsResult.fingerprints).sort() as [keyType, fp]}
+					<p>
+						<span class="text-zinc-400">{keyType}</span> <span class="text-emerald-400">{fp}</span>
+					</p>
+				{:else}
+					<p class="text-amber-400">GitHub published no fingerprints.</p>
 				{/each}
+				<p class="text-zinc-400 text-[11px] font-sans">
+					Compare with GitHub's published list: docs.github.com → "GitHub's SSH key fingerprints".
+				</p>
 			</div>
 		{/if}
 	</div>
@@ -465,20 +491,26 @@
 			Localhost SSH Tunnel Setup
 		</h2>
 		<p class="text-xs text-zinc-500 leading-relaxed">
-			Because the web panel is bound strictly to <code>127.0.0.1:7070</code> on the host, configure
-			your laptop's <code>~/.ssh/config</code> for one-click access:
+			The panel listens only on <code>127.0.0.1:{panelPort}</code> on the server. Add this to
+			<code>~/.ssh/config</code> on your laptop:
 		</p>
 		<pre
-			class="p-3 bg-zinc-950 text-zinc-300 rounded-lg font-mono text-xs overflow-x-auto select-all border border-zinc-800">Host dermaga-panel
-    HostName &lt;your-server-ip&gt;
-    Port 4222
-    User server
-    LocalForward 7070 127.0.0.1:7070
-    SessionType none
-    ExitOnForwardFailure yes</pre>
+			class="p-3 bg-zinc-950 text-zinc-300 rounded-lg font-mono text-xs overflow-x-auto select-all border border-zinc-800">{sshSnippet}</pre>
+		{#if !status?.serverAddressPublic}
+			<p
+				class="text-[11px] rounded border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-100 px-3 py-2"
+			>
+				Replace <code>&lt;server-address&gt;</code> with the IP address or name you already use to
+				SSH into this server (your provider's dashboard shows it). The server cannot see its own
+				public address{status?.serverAddress
+					? `: its own address is ${status.serverAddress}, which is private and only works from the same network`
+					: ''}.
+			</p>
+		{/if}
 		<p class="text-[11px] text-zinc-500">
-			Then run <code>ssh dermaga-panel</code> and navigate to <strong>http://localhost:7070</strong> in
-			your browser.
+			Port {status?.sshPort ?? '…'} and user {status?.sshUser ?? '…'} are read from this server. Then
+			run
+			<code>ssh -f dermaga</code> and open <strong>http://localhost:{panelPort}</strong> in your browser.
 		</p>
 	</div>
 </div>

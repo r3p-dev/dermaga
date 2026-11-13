@@ -89,12 +89,26 @@
 
 	async function handleTestRestore() {
 		testingRestore = true;
-		testRestoreLog = 'Starting sandboxed test restore in isolated container...';
+		testRestoreLog = 'Running the test restore…';
 		testRestoreOpen = true;
 		try {
 			const res = await api.testRestoreDatabase(dbName);
-			testRestoreLog = `Sandboxed restore test completed successfully!\nTarget database: ${dbName}\nDuration: ${res.duration || 'verified'}\nIntegrity check: PASS\nSandboxed container destroyed cleanly.`;
-			toast.success(`Test restore passed for ${dbName}!`);
+			// Everything shown here comes from the server's result.
+			testRestoreLog = [
+				`Result: ${res.success ? 'restore succeeded' : 'RESTORE FAILED'}`,
+				`Database: ${res.database}`,
+				`Snapshot: ${res.snapshotId}`,
+				`Duration: ${res.duration}`,
+				`Tested at: ${res.testedAt}`,
+				'',
+				'Sanity check output:',
+				res.sanityOut || '(none)'
+			].join('\n');
+			if (res.success) {
+				toast.success(`Test restore succeeded for ${dbName}`);
+			} else {
+				toast.error(`Test restore failed for ${dbName}`);
+			}
 		} catch (err: any) {
 			testRestoreLog = `Test restore failed:\n${err.message || 'Error occurred'}`;
 			toast.error('Test restore failed');

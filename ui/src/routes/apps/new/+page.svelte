@@ -3,7 +3,7 @@
 	import { api } from '$lib/api/client';
 	import { toast } from '$lib/stores/toast';
 	import type { AppView, GitHubSettings } from '$lib/types/api';
-	import type { App as AppSpec } from '$lib/types/spec';
+	import { StrategyBlueGreen, StrategyRecreate, type App as AppSpec } from '$lib/types/spec';
 
 	let step = $state<1 | 2>(1);
 	let loading = $state(false);
@@ -16,7 +16,8 @@
 	let port = $state(3000);
 	let healthPath = $state('/');
 	let domain = $state('');
-	let strategy = $state('zero-downtime');
+	// Values come from the Go constants (generated), so the server accepts every option.
+	let strategy = $state<string>(StrategyBlueGreen);
 	let autoDeploy = $state(true);
 
 	// Created app result with GitHub setup keys & webhooks
@@ -259,10 +260,14 @@
 							id="domain"
 							type="text"
 							bind:value={domain}
-							placeholder="e.g. portfolio.vm.local"
+							required
+							placeholder="app.example.com"
 							class="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
 						/>
-						<p class="text-[11px] text-zinc-500 mt-1">Routed by Traefik dynamic reverse proxy.</p>
+						<p class="text-[11px] text-zinc-500 mt-1">
+							Required. The name people type to open this app. Point its DNS record at this server
+							before the first deploy, or no certificate can be issued.
+						</p>
 					</div>
 
 					<div>
@@ -319,8 +324,12 @@
 							bind:value={strategy}
 							class="w-full px-3 py-2 text-sm rounded-lg border border-zinc-300 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100"
 						>
-							<option value="zero-downtime">zero-downtime (Blue-Green)</option>
-							<option value="recreate">recreate (In-place restart, for shared volumes)</option>
+							<option value={StrategyBlueGreen}
+								>{StrategyBlueGreen} (zero downtime: new release starts next to the old one)</option
+							>
+							<option value={StrategyRecreate}
+								>{StrategyRecreate} (stop, then start: needed for apps with volumes)</option
+							>
 						</select>
 					</div>
 				</div>

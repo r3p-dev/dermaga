@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/r3p-dev/dermaga/internal/doctor"
+	"github.com/r3p-dev/dermaga/internal/host"
 )
 
 func TestSubIDCount(t *testing.T) {
@@ -32,10 +33,10 @@ func TestSSHPortAndSnippet(t *testing.T) {
 	main := filepath.Join(dir, "sshd_config")
 	os.WriteFile(drop, []byte("# Port 1\nPasswordAuthentication no\nPort 4222\n"), 0o644)
 	os.WriteFile(main, []byte("Include /etc/ssh/sshd_config.d/*.conf\nPort 2222\n"), 0o644)
-	if p := sshPort([]string{filepath.Join(dir, "missing"), drop, main}); p != "4222" {
+	if p := host.SSHPortFrom([]string{filepath.Join(dir, "missing"), drop, main}); p != "4222" {
 		t.Fatal(p)
 	}
-	if p := sshPort(nil); p != "22" {
+	if p := host.SSHPortFrom(nil); p != "22" {
 		t.Fatal(p)
 	}
 	s := panelSnippet("vps.example", "4222", "server", 7070)

@@ -36,6 +36,27 @@ type FailureNotifyRequest struct {
 	Unit string `json:"unit"`
 }
 
+// StatusResponse is the answer of actions that have nothing else to report.
+type StatusResponse struct {
+	Status string `json:"status"`
+}
+
+// CheckBackupResponse carries what `restic check` printed.
+type CheckBackupResponse struct {
+	Output string `json:"output"`
+}
+
+// KeysExportResponse carries the master key (hex) and how to store it.
+type KeysExportResponse struct {
+	Key          string `json:"key"`
+	Instructions string `json:"instructions"`
+}
+
+// PasswordStateResponse reports the restic password state after a change.
+type PasswordStateResponse struct {
+	PasswordState string `json:"passwordState"`
+}
+
 // BackupPasswordResponse carries the restic password for its one display
 // (generate) or an audited reveal, with the recovery statement to show next to it.
 type BackupPasswordResponse struct {
@@ -175,7 +196,7 @@ func (s *Server) confirmBackupPassword(w http.ResponseWriter, r *http.Request, a
 		return
 	}
 	_ = audit.Log(s.DB, actor, "backup.password_confirmed", "", "source="+actor)
-	writeJSON(w, http.StatusOK, map[string]string{"passwordState": backup.PasswordConfirmed})
+	writeJSON(w, http.StatusOK, PasswordStateResponse{PasswordState: backup.PasswordConfirmed})
 }
 
 func (s *Server) putBackupSettings(w http.ResponseWriter, r *http.Request, actor string) {
@@ -286,13 +307,14 @@ func (s *Server) checkBackup(w http.ResponseWriter, r *http.Request, actor strin
 	var req CheckBackupRequest
 	_ = readJSON(w, r, &req)
 
-	if err := s.Backup.Check(r.Context(), req.ReadDataSubset); err != nil {
+	out, err := s.Backup.Check(r.Context(), req.ReadDataSubset)
+	if err != nil {
 		_ = audit.Log(s.DB, actor, "backup.check_failed", "", err.Error())
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	_ = audit.Log(s.DB, actor, "backup.check", "success", "")
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	writeJSON(w, http.StatusOK, CheckBackupResponse{Output: out})
 }
 
 func (s *Server) systemBackup(w http.ResponseWriter, r *http.Request, actor string) {
@@ -330,7 +352,7 @@ func (s *Server) restoreSystem(w http.ResponseWriter, r *http.Request, actor str
 		return
 	}
 	_ = audit.Log(s.DB, actor, "system.restore", "system", "snapshot="+req.SnapshotID)
-	writeJSON(w, http.StatusOK, map[string]string{"status": "system restored successfully"})
+	writeJSON(w, http.StatusOK, StatusResponse{Status: "system restored successfully"})
 }
 
 func (s *Server) exportKeys(w http.ResponseWriter, _ *http.Request, actor string) {
@@ -344,10 +366,7 @@ func (s *Server) exportKeys(w http.ResponseWriter, _ *http.Request, actor string
 		return
 	}
 	_ = audit.Log(s.DB, actor, "keys.export", "", "")
-	writeJSON(w, http.StatusOK, map[string]string{
-		"key":          hexKey,
-		"instructions": inst,
-	})
+	writeJSON(w, http.StatusOK, KeysExportResponse{Key: hexKey, Instructions: inst})
 }
 
 func (s *Server) failureNotify(w http.ResponseWriter, r *http.Request, _ string) {
@@ -363,7 +382,7 @@ func (s *Server) failureNotify(w http.ResponseWriter, r *http.Request, _ string)
 		cause = backup.ErrNoPassword // the usual reason on a new server; say what to do
 	}
 	s.notifyBackupFailed(r.Context(), target, cause)
-	writeJSON(w, http.StatusOK, map[string]string{"status": "recorded"})
+	writeJSON(w, http.StatusOK, StatusResponse{Status: "recorded"})
 }
 
 // notifyBackupFailed sends the backup.failed notification for every failed

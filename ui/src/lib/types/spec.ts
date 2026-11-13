@@ -42,6 +42,16 @@ export interface Source {
   workflow?: string; // workflow name or path for the CI gate
   watchPaths?: string[]; // deploy only if a push touched a match ("**" spans directories)
 }
+/**
+ * The deploy strategies an app can ask for. The UI's options are generated
+ * from these constants (tygo), so the wizard cannot offer a value Validate rejects.
+ */
+export const StrategyBlueGreen = "blue-green"; // start the new release next to the old one, switch, stop the old one
+/**
+ * The deploy strategies an app can ask for. The UI's options are generated
+ * from these constants (tygo), so the wizard cannot offer a value Validate rejects.
+ */
+export const StrategyRecreate = "recreate"; // stop the old release, then start the new one (apps with volumes)
 export interface Domain {
   host: string;
   primary?: boolean;

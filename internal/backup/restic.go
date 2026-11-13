@@ -184,17 +184,17 @@ func (m *Manager) ForgetPrune(ctx context.Context, retention string, tag string)
 }
 
 // Check verifies the restic repository integrity.
-func (m *Manager) Check(ctx context.Context, readDataSubset string) error {
+// It returns what restic printed, so callers can show the real result.
+func (m *Manager) Check(ctx context.Context, readDataSubset string) (string, error) {
 	env, err := m.ResticEnv(ctx)
 	if err != nil {
-		return err
+		return "", err
 	}
 	argv := []string{"check"}
 	if readDataSubset != "" {
 		argv = append(argv, "--read-data-subset="+readDataSubset)
 	}
-	_, err = m.Host.RunRestic(ctx, env, nil, nil, argv...)
-	return err
+	return m.Host.RunRestic(ctx, env, nil, nil, argv...)
 }
 
 func parseResticSummary(output string) (snapID string, totalBytes int64) {

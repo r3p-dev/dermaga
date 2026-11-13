@@ -207,14 +207,31 @@ func (s *Server) github(ctx context.Context, a apps.App, secret string) (*GitHub
 		WebhookURL: url, WebhooksPage: repo + "/settings/hooks/new", WebhookSecret: secret}, nil
 }
 
-type appRequest struct {
+// DeployRequest: Ref "" deploys the app's branch head (git) or image.
+type DeployRequest struct {
+	Ref string `json:"ref"`
+}
+
+// RollbackRequest: To "" rolls back to the previous good release.
+type RollbackRequest struct {
+	To string `json:"to"`
+}
+
+// EnvRequest sets and removes environment variables in one step.
+type EnvRequest struct {
+	Set   map[string]string `json:"set"`
+	Unset []string          `json:"unset"`
+}
+
+// AppRequest is the body of POST /api/apps and PUT /api/apps/{app}.
+type AppRequest struct {
 	Name    string        `json:"name"`
 	Domains []spec.Domain `json:"domains"`
 	Spec    spec.App      `json:"spec"`
 }
 
 func (s *Server) createApp(w http.ResponseWriter, r *http.Request, actor string) {
-	var req appRequest
+	var req AppRequest
 	if !readJSON(w, r, &req) {
 		return
 	}
@@ -265,7 +282,7 @@ func (s *Server) getApp(w http.ResponseWriter, r *http.Request, _ string) {
 // it is not, the previous route is restored (D8) and nothing is stored. The
 // app's lock is the one deploys take, so an edit and a deploy never interleave.
 func (s *Server) putApp(w http.ResponseWriter, r *http.Request, actor string) {
-	var req appRequest
+	var req AppRequest
 	if !readJSON(w, r, &req) {
 		return
 	}
@@ -372,9 +389,7 @@ func (s *Server) Remove(ctx context.Context, a apps.App, purge bool) error {
 }
 
 func (s *Server) deployApp(w http.ResponseWriter, r *http.Request, actor string) {
-	var req struct {
-		Ref string `json:"ref"`
-	}
+	var req DeployRequest
 	if !readJSON(w, r, &req) {
 		return
 	}
@@ -391,9 +406,7 @@ func (s *Server) deployApp(w http.ResponseWriter, r *http.Request, actor string)
 }
 
 func (s *Server) rollbackApp(w http.ResponseWriter, r *http.Request, actor string) {
-	var req struct {
-		To string `json:"to"`
-	}
+	var req RollbackRequest
 	readJSON(w, r, &req)
 	a, ok := s.app(w, r)
 	if !ok {
@@ -513,10 +526,7 @@ func (s *Server) getEnv(w http.ResponseWriter, r *http.Request, actor string) {
 }
 
 func (s *Server) putEnv(w http.ResponseWriter, r *http.Request, actor string) {
-	var req struct {
-		Set   map[string]string `json:"set"`
-		Unset []string          `json:"unset"`
-	}
+	var req EnvRequest
 	if !readJSON(w, r, &req) {
 		return
 	}
@@ -557,6 +567,13 @@ func (s *Server) revealWebhook(w http.ResponseWriter, r *http.Request, actor str
 	writeJSON(w, http.StatusOK, gh)
 }
 
+// KnownHostsResponse reports the pinned known_hosts file and GitHub's published
+// fingerprints by key type (e.g. "SHA256_ED25519"), to compare by eye.
+type KnownHostsResponse struct {
+	File         string            `json:"file"`
+	Fingerprints map[string]string `json:"fingerprints"`
+}
+
 func (s *Server) knownHosts(w http.ResponseWriter, r *http.Request, actor string) {
 	file, fps, err := gitsrc.KnownHosts(r.Context(), &http.Client{Timeout: 20 * time.Second}, gitsrc.MetaURL)
 	if err != nil {
@@ -572,7 +589,7 @@ func (s *Server) knownHosts(w http.ResponseWriter, r *http.Request, actor string
 		return
 	}
 	s.audit(actor, "github.known_hosts", "")
-	writeJSON(w, http.StatusOK, map[string]any{"file": s.Paths.KnownHosts(), "fingerprints": fps})
+	writeJSON(w, http.StatusOK, KnownHostsResponse{File: s.Paths.KnownHosts(), Fingerprints: fps})
 }
 
 type Settings struct {

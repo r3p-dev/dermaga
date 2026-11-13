@@ -50,6 +50,13 @@ func (s Source) RepoFullName() string {
 	return strings.TrimSuffix(strings.TrimPrefix(s.Repo, "git@github.com:"), ".git")
 }
 
+// The deploy strategies an app can ask for. The UI's options are generated
+// from these constants (tygo), so the wizard cannot offer a value Validate rejects.
+const (
+	StrategyBlueGreen = "blue-green" // start the new release next to the old one, switch, stop the old one
+	StrategyRecreate  = "recreate"   // stop the old release, then start the new one (apps with volumes)
+)
+
 // EffectiveStrategy resolves "" (BRIEF §3.5.10: recreate is the default with volumes).
 func (a App) EffectiveStrategy() string {
 	switch {
@@ -264,8 +271,8 @@ func (a App) Validate() error {
 	if err := a.Source.validate(); err != nil {
 		return err
 	}
-	if a.Strategy != "" && a.Strategy != "recreate" && a.Strategy != "blue-green" {
-		return fmt.Errorf("strategy %q: recreate or blue-green", a.Strategy)
+	if a.Strategy != "" && a.Strategy != StrategyRecreate && a.Strategy != StrategyBlueGreen {
+		return fmt.Errorf("strategy %q: %s or %s", a.Strategy, StrategyRecreate, StrategyBlueGreen)
 	}
 	if a.Port < 1 || a.Port > 65535 {
 		return fmt.Errorf("port %d: must be 1-65535", a.Port)

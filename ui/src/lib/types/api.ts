@@ -47,7 +47,23 @@ export interface Status {
    * BackupPasswordState is none, unconfirmed or confirmed ("" without a backup service).
    */
   backupPasswordState: string;
+  /**
+   * What the SSH snippets need (panel tunnel, database tunnel). SSHPort comes
+   * from sshd's configuration. ServerAddress is this server's own address;
+   * it is the one to SSH to only when ServerAddressPublic is true (behind NAT
+   * the server cannot know its public address, and the UI shows a placeholder).
+   */
+  sshPort: string;
+  sshUser: string;
+  panelPort: number /* int */;
+  serverAddress: string;
+  serverAddressPublic: boolean;
 }
+/**
+ * SSHHostPlaceholder stands where a snippet needs the server's address and the
+ * server cannot know it. The UI explains it next to every snippet.
+ */
+export const SSHHostPlaceholder = "<server-address>";
 
 //////////
 // source: apps.go
@@ -92,6 +108,41 @@ export interface EffectiveHeadersView {
   defaultsOff: boolean;
   headers: EffectiveHeader[];
 }
+/**
+ * DeployRequest: Ref "" deploys the app's branch head (git) or image.
+ */
+export interface DeployRequest {
+  ref: string;
+}
+/**
+ * RollbackRequest: To "" rolls back to the previous good release.
+ */
+export interface RollbackRequest {
+  to: string;
+}
+/**
+ * EnvRequest sets and removes environment variables in one step.
+ */
+export interface EnvRequest {
+  set: { [key: string]: string};
+  unset: string[];
+}
+/**
+ * AppRequest is the body of POST /api/apps and PUT /api/apps/{app}.
+ */
+export interface AppRequest {
+  name: string;
+  domains: spec.Domain[];
+  spec: spec.App;
+}
+/**
+ * KnownHostsResponse reports the pinned known_hosts file and GitHub's published
+ * fingerprints by key type (e.g. "SHA256_ED25519"), to compare by eye.
+ */
+export interface KnownHostsResponse {
+  file: string;
+  fingerprints: { [key: string]: string};
+}
 export interface Settings {
   hookHost: string;
 }
@@ -117,6 +168,31 @@ export interface CheckBackupRequest {
 }
 export interface FailureNotifyRequest {
   unit: string;
+}
+/**
+ * StatusResponse is the answer of actions that have nothing else to report.
+ */
+export interface StatusResponse {
+  status: string;
+}
+/**
+ * CheckBackupResponse carries what `restic check` printed.
+ */
+export interface CheckBackupResponse {
+  output: string;
+}
+/**
+ * KeysExportResponse carries the master key (hex) and how to store it.
+ */
+export interface KeysExportResponse {
+  key: string;
+  instructions: string;
+}
+/**
+ * PasswordStateResponse reports the restic password state after a change.
+ */
+export interface PasswordStateResponse {
+  passwordState: string;
 }
 /**
  * BackupPasswordResponse carries the restic password for its one display
@@ -169,6 +245,19 @@ export interface LinkDatabaseRequest {
 }
 export interface UnlinkDatabaseRequest {
   app: string;
+}
+/**
+ * LinkDatabaseResponse answers a link or unlink: the app is redeployed when it is live.
+ */
+export interface LinkDatabaseResponse {
+  database: string;
+  app: string;
+  env_names?: { [key: string]: string};
+  redeployQueued: boolean;
+}
+export interface RestoreDatabaseResponse {
+  status: string;
+  database: string;
 }
 export interface RestoreDatabaseRequest {
   snapshotId?: string;

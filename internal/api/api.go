@@ -16,6 +16,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/user"
 	"path"
 	"runtime"
 	"strconv"
@@ -30,6 +31,7 @@ import (
 	"github.com/r3p-dev/dermaga/internal/databases"
 	"github.com/r3p-dev/dermaga/internal/deploy"
 	"github.com/r3p-dev/dermaga/internal/doctor"
+	"github.com/r3p-dev/dermaga/internal/host"
 	"github.com/r3p-dev/dermaga/internal/name"
 	"github.com/r3p-dev/dermaga/internal/notify"
 	"github.com/r3p-dev/dermaga/internal/secrets"
@@ -248,6 +250,33 @@ type Status struct {
 	TOTPEnabled      bool      `json:"totpEnabled"`
 	// BackupPasswordState is none, unconfirmed or confirmed ("" without a backup service).
 	BackupPasswordState string `json:"backupPasswordState"`
+	// What the SSH snippets need (panel tunnel, database tunnel). SSHPort comes
+	// from sshd's configuration. ServerAddress is this server's own address;
+	// it is the one to SSH to only when ServerAddressPublic is true (behind NAT
+	// the server cannot know its public address, and the UI shows a placeholder).
+	SSHPort             string `json:"sshPort"`
+	SSHUser             string `json:"sshUser"`
+	PanelPort           int    `json:"panelPort"`
+	ServerAddress       string `json:"serverAddress"`
+	ServerAddressPublic bool   `json:"serverAddressPublic"`
+}
+
+// SSHHostPlaceholder stands where a snippet needs the server's address and the
+// server cannot know it. The UI explains it next to every snippet.
+const SSHHostPlaceholder = "<server-address>"
+
+// sshTarget is the host, port and user for SSH snippets. host is the
+// placeholder unless the server has a public address of its own.
+func sshTarget() (hostName, port, userName string) {
+	hostName = SSHHostPlaceholder
+	if addr, public := host.Address(); public {
+		hostName = addr
+	}
+	userName = "server"
+	if u, err := user.Current(); err == nil {
+		userName = u.Username
+	}
+	return hostName, host.SSHPort(), userName
 }
 
 // backupPasswordState is "" when the state can't be read.
@@ -280,10 +309,13 @@ func (s *Server) status(w http.ResponseWriter, r *http.Request) {
 		internalError(w, err)
 		return
 	}
+	_, sshPort, sshUser := sshTarget()
+	addr, public := host.Address()
 	writeJSON(w, http.StatusOK, Status{
 		Name: name.Name, Version: name.Version(), GoVersion: runtime.Version(), PID: os.Getpid(),
 		StartedAt: s.Started, RSSKB: rssKB(), AdminPasswordSet: pw, TOTPEnabled: totp,
 		BackupPasswordState: s.backupPasswordState(r.Context()),
+		SSHPort:             sshPort, SSHUser: sshUser, PanelPort: s.Port, ServerAddress: addr, ServerAddressPublic: public,
 	})
 }
 

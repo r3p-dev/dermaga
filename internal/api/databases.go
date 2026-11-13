@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/user"
 	"path/filepath"
 	"strings"
 	"time"
@@ -50,6 +49,19 @@ type LinkDatabaseRequest struct {
 
 type UnlinkDatabaseRequest struct {
 	App string `json:"app"`
+}
+
+// LinkDatabaseResponse answers a link or unlink: the app is redeployed when it is live.
+type LinkDatabaseResponse struct {
+	Database       string            `json:"database"`
+	App            string            `json:"app"`
+	EnvNames       map[string]string `json:"env_names,omitempty"`
+	RedeployQueued bool              `json:"redeployQueued"`
+}
+
+type RestoreDatabaseResponse struct {
+	Status   string `json:"status"`
+	Database string `json:"database"`
 }
 
 func (s *Server) databaseRoutes(mux *http.ServeMux, wrap func(http.HandlerFunc) http.Handler, actor string) {
@@ -199,13 +211,8 @@ func (s *Server) createDatabase(w http.ResponseWriter, r *http.Request, actor st
 
 	_ = audit.Log(s.DB, actor, "db.create", db.Name, fmt.Sprintf("engine=%s version=%s", db.Engine, db.Version))
 
-	hostName, _ := os.Hostname()
-	u, _ := user.Current()
-	userName := "server"
-	if u != nil {
-		userName = u.Username
-	}
-	snippet := databases.SSHTunnelSnippet(db, creds, hostName, "22", userName)
+	hostName, sshPort, userName := sshTarget()
+	snippet := databases.SSHTunnelSnippet(db, creds, hostName, sshPort, userName)
 
 	port := databases.Engines[db.Engine].DefaultPort
 	connURL := databases.ConnectionString(db, creds)
@@ -249,13 +256,8 @@ func (s *Server) getDatabase(w http.ResponseWriter, r *http.Request, _ string) {
 		connURL = databases.ConnectionString(db, creds)
 	}
 
-	hostName, _ := os.Hostname()
-	u, _ := user.Current()
-	userName := "server"
-	if u != nil {
-		userName = u.Username
-	}
-	snippet := databases.SSHTunnelSnippet(db, creds, hostName, "22", userName)
+	hostName, sshPort, userName := sshTarget()
+	snippet := databases.SSHTunnelSnippet(db, creds, hostName, sshPort, userName)
 
 	port := databases.Engines[db.Engine].DefaultPort
 	view := DatabaseView{
@@ -351,7 +353,7 @@ func (s *Server) restartDatabase(w http.ResponseWriter, r *http.Request, actor s
 		}
 	}
 	_ = audit.Log(s.DB, actor, "db.restart", db.Name, "")
-	writeJSON(w, http.StatusOK, map[string]string{"status": "restarted"})
+	writeJSON(w, http.StatusOK, StatusResponse{Status: "restarted"})
 }
 
 func (s *Server) linkDatabase(w http.ResponseWriter, r *http.Request, actor string) {
@@ -394,12 +396,7 @@ func (s *Server) linkDatabase(w http.ResponseWriter, r *http.Request, actor stri
 	}
 
 	_ = audit.Log(s.DB, actor, "db.link", name, fmt.Sprintf("app=%s redeploy=%v", a.Spec.Name, redeployQueued))
-	writeJSON(w, http.StatusOK, map[string]any{
-		"database":       name,
-		"app":            a.Spec.Name,
-		"env_names":      link.EnvNames,
-		"redeployQueued": redeployQueued,
-	})
+	writeJSON(w, http.StatusOK, LinkDatabaseResponse{Database: name, App: a.Spec.Name, EnvNames: link.EnvNames, RedeployQueued: redeployQueued})
 }
 
 func (s *Server) unlinkDatabase(w http.ResponseWriter, r *http.Request, actor string) {
@@ -441,11 +438,7 @@ func (s *Server) unlinkDatabase(w http.ResponseWriter, r *http.Request, actor st
 	}
 
 	_ = audit.Log(s.DB, actor, "db.unlink", name, fmt.Sprintf("app=%s redeploy=%v", a.Spec.Name, redeployQueued))
-	writeJSON(w, http.StatusOK, map[string]any{
-		"database":       name,
-		"app":            a.Spec.Name,
-		"redeployQueued": redeployQueued,
-	})
+	writeJSON(w, http.StatusOK, LinkDatabaseResponse{Database: name, App: a.Spec.Name, RedeployQueued: redeployQueued})
 }
 
 type RestoreDatabaseRequest struct {
@@ -500,10 +493,7 @@ func (s *Server) restoreDatabase(w http.ResponseWriter, r *http.Request, actor s
 	}
 
 	_ = audit.Log(s.DB, actor, "db.restore", name, fmt.Sprintf("snapshot=%s into=%s", req.SnapshotID, req.Into))
-	writeJSON(w, http.StatusOK, map[string]string{
-		"status":   "restored",
-		"database": name,
-	})
+	writeJSON(w, http.StatusOK, RestoreDatabaseResponse{Status: "restored", Database: name})
 }
 
 func (s *Server) testRestoreDatabase(w http.ResponseWriter, r *http.Request, actor string) {

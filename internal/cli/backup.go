@@ -153,12 +153,12 @@ func backupCheck(args []string) error {
 		req.ReadDataSubset = *subset
 	}
 
-	var res map[string]string
+	var res api.CheckBackupResponse
 	fmt.Println("Running restic repository integrity check...")
 	if err := callTimeout("POST", "/api/backup/check", 5*time.Minute, req, &res); err != nil {
 		return err
 	}
-	fmt.Println("Repository check passed: no errors found.")
+	fmt.Print(res.Output) // restic's own report, not a summary of ours
 	return nil
 }
 

@@ -215,7 +215,7 @@ func (s *Server) updateNotificationSettings(w http.ResponseWriter, r *http.Reque
 	}
 
 	_ = audit.Log(s.DB, actor, "settings.notifications", string(updated.Provider), updated.Target)
-	writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
+	writeJSON(w, http.StatusOK, StatusResponse{Status: "saved"})
 }
 
 func (s *Server) testNotification(w http.ResponseWriter, r *http.Request, _ string) {

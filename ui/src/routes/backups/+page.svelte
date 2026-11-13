@@ -183,13 +183,13 @@
 
 	async function handleCheckIntegrity() {
 		checkingIntegrity = true;
-		checkResult = 'Running restic check on remote repository...';
+		checkResult = 'Running restic check…';
 		checkModalOpen = true;
 		try {
-			await api.checkBackup();
-			checkResult =
-				'Repository integrity check: SUCCESS\nAll snapshots, pack files, and trees verified cleanly.\nZero index errors.';
-			toast.success('Backup repository integrity check passed');
+			const res = await api.checkBackup();
+			// restic's own output, as the server returned it
+			checkResult = res.output.trim() || 'restic check finished without output.';
+			toast.success('restic check finished without errors');
 		} catch (err: any) {
 			checkResult = `Integrity check failed:\n${err.message || 'Error occurred'}`;
 			toast.error('Integrity check failed');
@@ -201,7 +201,7 @@
 	async function handleExportKeys() {
 		try {
 			const res = await api.exportKeys();
-			exportedKey = res.masterKeyB64;
+			exportedKey = res.key;
 			exportInstructions = res.instructions;
 			keyExportOpen = true;
 		} catch (err: any) {
@@ -614,7 +614,7 @@
 			</p>
 		</div>
 		<div>
-			<span class="block font-semibold mb-1">Master Key (Base64)</span>
+			<span class="block font-semibold mb-1">Master Key (hex)</span>
 			<div class="relative">
 				<textarea
 					readonly

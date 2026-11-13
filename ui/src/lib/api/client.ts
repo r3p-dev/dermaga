@@ -6,6 +6,21 @@ import type {
 	LinkDatabaseRequest,
 	RunBackupRequest,
 	BackupPasswordResponse,
+	AppRequest,
+	DeployRequest,
+	RollbackRequest,
+	EnvRequest,
+	KnownHostsResponse,
+	StatusResponse,
+	CheckBackupRequest,
+	CheckBackupResponse,
+	KeysExportResponse,
+	RestoreSystemRequest,
+	RestoreDatabaseRequest,
+	RestoreDatabaseResponse,
+	UnlinkDatabaseRequest,
+	LinkDatabaseResponse,
+	RevealBackupPasswordRequest,
 	Settings as AppSettings,
 	GitHubSettings,
 	NotificationSettingsView,
@@ -113,21 +128,14 @@ export const api = {
 		return request<AppView>(`/api/apps/${encodeURIComponent(name)}`);
 	},
 
-	async createApp(req: {
-		name: string;
-		domains?: spec.Domain[];
-		spec: spec.App;
-	}): Promise<AppView> {
+	async createApp(req: AppRequest): Promise<AppView> {
 		return request<AppView>('/api/apps', {
 			method: 'POST',
 			body: JSON.stringify(req)
 		});
 	},
 
-	async updateApp(
-		name: string,
-		req: { name: string; domains?: spec.Domain[]; spec: spec.App }
-	): Promise<AppView> {
+	async updateApp(name: string, req: AppRequest): Promise<AppView> {
 		return request<AppView>(`/api/apps/${encodeURIComponent(name)}`, {
 			method: 'PUT',
 			body: JSON.stringify(req)
@@ -144,14 +152,14 @@ export const api = {
 	async deployApp(name: string, ref = ''): Promise<apps.Release> {
 		return request<apps.Release>(`/api/apps/${encodeURIComponent(name)}/deploy`, {
 			method: 'POST',
-			body: JSON.stringify({ ref })
+			body: JSON.stringify({ ref } satisfies DeployRequest)
 		});
 	},
 
 	async rollbackApp(name: string, to = ''): Promise<apps.Release> {
 		return request<apps.Release>(`/api/apps/${encodeURIComponent(name)}/rollback`, {
 			method: 'POST',
-			body: JSON.stringify({ to })
+			body: JSON.stringify({ to } satisfies RollbackRequest)
 		});
 	},
 
@@ -169,7 +177,7 @@ export const api = {
 	): Promise<void> {
 		return request<void>(`/api/apps/${encodeURIComponent(name)}/env`, {
 			method: 'PUT',
-			body: JSON.stringify({ set, unset })
+			body: JSON.stringify({ set, unset } satisfies EnvRequest)
 		});
 	},
 
@@ -177,8 +185,8 @@ export const api = {
 		return request<GitHubSettings>(`/api/apps/${encodeURIComponent(name)}/webhook`);
 	},
 
-	async syncKnownHosts(): Promise<{ file: string; fingerprints: string[] }> {
-		return request<{ file: string; fingerprints: string[] }>('/api/github/known-hosts', {
+	async syncKnownHosts(): Promise<KnownHostsResponse> {
+		return request<KnownHostsResponse>('/api/github/known-hosts', {
 			method: 'POST'
 		});
 	},
@@ -210,23 +218,27 @@ export const api = {
 		});
 	},
 
-	async restartDatabase(name: string): Promise<{ status: string }> {
-		return request<{ status: string }>(`/api/databases/${encodeURIComponent(name)}/restart`, {
+	async restartDatabase(name: string): Promise<StatusResponse> {
+		return request<StatusResponse>(`/api/databases/${encodeURIComponent(name)}/restart`, {
 			method: 'POST'
 		});
 	},
 
-	async linkDatabase(name: string, app: string, envNames?: Record<string, string>): Promise<any> {
-		return request<any>(`/api/databases/${encodeURIComponent(name)}/link`, {
+	async linkDatabase(
+		name: string,
+		app: string,
+		envNames?: Record<string, string>
+	): Promise<LinkDatabaseResponse> {
+		return request<LinkDatabaseResponse>(`/api/databases/${encodeURIComponent(name)}/link`, {
 			method: 'POST',
-			body: JSON.stringify({ app, env_names: envNames })
+			body: JSON.stringify({ app, env_names: envNames } satisfies LinkDatabaseRequest)
 		});
 	},
 
-	async unlinkDatabase(name: string, app: string): Promise<any> {
-		return request<any>(`/api/databases/${encodeURIComponent(name)}/unlink`, {
+	async unlinkDatabase(name: string, app: string): Promise<LinkDatabaseResponse> {
+		return request<LinkDatabaseResponse>(`/api/databases/${encodeURIComponent(name)}/unlink`, {
 			method: 'POST',
-			body: JSON.stringify({ app })
+			body: JSON.stringify({ app } satisfies UnlinkDatabaseRequest)
 		});
 	},
 
@@ -236,16 +248,17 @@ export const api = {
 		});
 	},
 
-	async testRestoreDatabase(name: string): Promise<any> {
-		return request<any>(`/api/databases/${encodeURIComponent(name)}/restore-test`, {
-			method: 'POST'
-		});
+	async testRestoreDatabase(name: string): Promise<backup.TestRestoreResult> {
+		return request<backup.TestRestoreResult>(
+			`/api/databases/${encodeURIComponent(name)}/restore-test`,
+			{ method: 'POST' }
+		);
 	},
 
-	async restoreDatabase(name: string, snapshotId?: string): Promise<any> {
-		return request<any>(`/api/databases/${encodeURIComponent(name)}/restore`, {
+	async restoreDatabase(name: string, snapshotId?: string): Promise<RestoreDatabaseResponse> {
+		return request<RestoreDatabaseResponse>(`/api/databases/${encodeURIComponent(name)}/restore`, {
 			method: 'POST',
-			body: JSON.stringify({ snapshotId, confirm: true })
+			body: JSON.stringify({ snapshotId, confirm: true } satisfies RestoreDatabaseRequest)
 		});
 	},
 
@@ -262,7 +275,7 @@ export const api = {
 	async revealBackupPassword(password: string, totp: string): Promise<BackupPasswordResponse> {
 		return request<BackupPasswordResponse>('/api/backup/password/reveal', {
 			method: 'POST',
-			body: JSON.stringify({ password, totp })
+			body: JSON.stringify({ password, totp } satisfies RevealBackupPasswordRequest)
 		});
 	},
 
@@ -285,14 +298,14 @@ export const api = {
 	async runBackup(target: string): Promise<backup.Snapshot> {
 		return request<backup.Snapshot>('/api/backup/run', {
 			method: 'POST',
-			body: JSON.stringify({ target })
+			body: JSON.stringify({ target } satisfies RunBackupRequest)
 		});
 	},
 
-	async checkBackup(readDataSubset = ''): Promise<any> {
-		return request<any>('/api/backup/check', {
+	async checkBackup(readDataSubset = ''): Promise<CheckBackupResponse> {
+		return request<CheckBackupResponse>('/api/backup/check', {
 			method: 'POST',
-			body: JSON.stringify({ readDataSubset })
+			body: JSON.stringify({ readDataSubset } satisfies CheckBackupRequest)
 		});
 	},
 
@@ -300,15 +313,15 @@ export const api = {
 		return request<backup.Snapshot>('/api/backup/system', { method: 'POST' });
 	},
 
-	async restoreSystem(snapshotId = ''): Promise<any> {
-		return request<any>('/api/backup/restore-system', {
+	async restoreSystem(snapshotId = ''): Promise<StatusResponse> {
+		return request<StatusResponse>('/api/backup/restore-system', {
 			method: 'POST',
-			body: JSON.stringify({ snapshotId, confirm: true })
+			body: JSON.stringify({ snapshotId, confirm: true } satisfies RestoreSystemRequest)
 		});
 	},
 
-	async exportKeys(): Promise<{ masterKeyB64: string; instructions: string }> {
-		return request<{ masterKeyB64: string; instructions: string }>('/api/keys/export');
+	async exportKeys(): Promise<KeysExportResponse> {
+		return request<KeysExportResponse>('/api/keys/export');
 	},
 
 	// Settings
