@@ -42,7 +42,7 @@ func commands() map[string]command {
 		"doctor":         {cmdDoctor, "check the host and the daemon [--json]"},
 		"apps":           {cmdApps, "list | show | create | edit | remove | webhook"},
 		"db":             {cmdDB, "list | show | create | link | unlink | shell | proxy | backup | restore"},
-		"backup":         {cmdBackup, "list | snapshots | run <target> | system | check | settings"},
+		"backup":         {cmdBackup, "list | snapshots | run <target> | system | check | settings | settings set"},
 		"restore-system": {cmdRestoreSystem, "restore-system [--snapshot ID] [-y|--yes]"},
 		"keys":           {cmdKeys, "export: export the master secret encryption key"},
 		"deploy":         {cmdDeploy, "deploy <app> [--ref SHA] [--no-follow]"},

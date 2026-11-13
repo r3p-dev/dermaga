@@ -32,7 +32,7 @@ func cmdBackup(args []string) error {
 		args = []string{"list"}
 	}
 	if args[0] == "-h" || args[0] == "--help" || args[0] == "help" {
-		fmt.Fprintf(os.Stdout, "usage: %s backup [list | snapshots [--tag T] | run <target> | system | check [--read-data] | settings [--reveal-password] | failure-notify <unit>]\n", name.Name)
+		fmt.Fprintf(os.Stdout, "usage: %s backup [list | snapshots [--tag T] | run <target> | system | check [--read-data] | settings [--reveal-password] [--json] | settings set … | failure-notify <unit>]\n", name.Name)
 		return flag.ErrHelp
 	}
 	switch args[0] {
@@ -49,7 +49,7 @@ func cmdBackup(args []string) error {
 	case "failure-notify":
 		return backupFailureNotify(args[1:])
 	}
-	fmt.Fprintf(os.Stderr, "usage: %s backup [list | snapshots [--tag T] | run <target> | system | check [--read-data] | settings [--reveal-password] | failure-notify <unit>]\n", name.Name)
+	fmt.Fprintf(os.Stderr, "usage: %s backup [list | snapshots [--tag T] | run <target> | system | check [--read-data] | settings [--reveal-password] [--json] | settings set … | failure-notify <unit>]\n", name.Name)
 	return errQuiet
 }
 
@@ -144,15 +144,28 @@ func backupCheck(args []string) error {
 }
 
 func backupSettings(args []string) error {
+	if len(args) > 0 && args[0] == "set" {
+		return backupSettingsSet(args[1:])
+	}
 	fs := flag.NewFlagSet("backup settings", flag.ContinueOnError)
 	reveal := fs.Bool("reveal-password", false, "reveal the restic repository password in cleartext")
+	asJSON := fs.Bool("json", false, "JSON output (without the restic password unless --reveal-password)")
 	if err := parse(fs, args); err != nil {
 		return err
 	}
+	return showBackupSettings(*reveal, *asJSON)
+}
 
+func showBackupSettings(reveal, asJSON bool) error {
 	var st backup.Settings
 	if err := call("GET", "/api/backup/settings", nil, &st); err != nil {
 		return err
+	}
+	if asJSON {
+		if !reveal {
+			st.Password = ""
+		}
+		return printJSON(st)
 	}
 
 	fmt.Printf("Repository: %s\n", st.Repository)
@@ -161,13 +174,89 @@ func backupSettings(args []string) error {
 		fmt.Printf("S3 Bucket:   %s\n", st.S3Bucket)
 		fmt.Printf("S3 Region:   %s\n", st.S3Region)
 		fmt.Printf("S3 Access:   %s\n", st.S3AccessKey)
+		fmt.Printf("S3 Secret:   %s\n", yesNo(st.S3SecretKey != "", "set", "(not set)"))
 	}
-	if *reveal && st.Password != "" {
+	if reveal && st.Password != "" {
 		fmt.Printf("Restic Pass: %s\n", st.Password)
 	} else if st.Password != "" {
 		fmt.Println("Restic Pass: •••••••• (pass --reveal-password to show)")
 	}
 	return nil
+}
+
+const backupSettingsSetUsage = "backup settings set [--repo R] [--s3-endpoint E] [--s3-bucket B] [--s3-region R] [--s3-access-key K] [--s3-secret-key] [--json]"
+
+func backupSettingsSet(args []string) error {
+	fs := flag.NewFlagSet("backup settings set", flag.ContinueOnError)
+	var in backup.Settings
+	fs.StringVar(&in.Repository, "repo", "", "restic repository: a local path or s3:https://host/bucket (derived from the S3 flags when omitted)")
+	fs.StringVar(&in.S3Endpoint, "s3-endpoint", "", "S3 endpoint host, e.g. s3.eu-central-003.backblazeb2.com")
+	fs.StringVar(&in.S3Bucket, "s3-bucket", "", "S3 bucket name")
+	fs.StringVar(&in.S3Region, "s3-region", "", "S3 region")
+	fs.StringVar(&in.S3AccessKey, "s3-access-key", "", "S3 access key ID (not secret)")
+	secret := fs.Bool("s3-secret-key", false, "set the S3 secret access key: prompted without echo, or one line from stdin; it is never a flag value")
+	asJSON := fs.Bool("json", false, "JSON output")
+	if err := parse(fs, args); err != nil {
+		return err
+	}
+	given := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { given[f.Name] = true })
+	delete(given, "json")
+	if len(given) == 0 || fs.NArg() > 0 {
+		fmt.Fprintf(os.Stderr, "usage: %s %s\n", name.Name, backupSettingsSetUsage)
+		return errQuiet
+	}
+
+	var cur backup.Settings
+	if err := call("GET", "/api/backup/settings", nil, &cur); err != nil {
+		return err
+	}
+	req := mergeBackupSettings(cur, in, given)
+	if *secret {
+		v, err := readSecret("S3 secret access key: ")
+		if err != nil {
+			return err
+		}
+		if v == "" {
+			return errors.New("empty S3 secret access key")
+		}
+		req.S3SecretKey = v
+	}
+	if err := call("PUT", "/api/backup/settings", req, nil); err != nil {
+		return err
+	}
+	if !*asJSON {
+		fmt.Println("✓ backup settings updated")
+	}
+	return showBackupSettings(false, *asJSON)
+}
+
+// mergeBackupSettings applies the given flags to the current settings. The
+// secrets are never echoed back: an empty password or secret key keeps the
+// stored one (the GET masks the key, and resending the mask would store it).
+// Changing the S3 endpoint or bucket without --repo lets the server derive
+// the repository from them again.
+func mergeBackupSettings(cur, in backup.Settings, given map[string]bool) backup.Settings {
+	req := cur
+	req.Password, req.S3SecretKey = "", ""
+	if given["repo"] {
+		req.Repository = in.Repository
+	} else if given["s3-endpoint"] || given["s3-bucket"] {
+		req.Repository = ""
+	}
+	if given["s3-endpoint"] {
+		req.S3Endpoint = in.S3Endpoint
+	}
+	if given["s3-bucket"] {
+		req.S3Bucket = in.S3Bucket
+	}
+	if given["s3-region"] {
+		req.S3Region = in.S3Region
+	}
+	if given["s3-access-key"] {
+		req.S3AccessKey = in.S3AccessKey
+	}
+	return req
 }
 
 func backupFailureNotify(args []string) error {
