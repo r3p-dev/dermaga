@@ -962,6 +962,10 @@ ${C_BOLD}Next steps to access your Dermaga instance:${C_RESET}
 5. (Recommended) Enable TOTP two-factor authentication:
    ${C_BOLD}ssh -p $SSH_PORT $USER_NAME@$ip "dermaga admin totp enable"${C_RESET}
 
+6. Set up the backup password (backups fail until you do), and store it offline:
+   open ${C_BOLD}Backups${C_RESET} in the dashboard and choose "Generate password", or run
+   ${C_BOLD}ssh -t -p $SSH_PORT $USER_NAME@$ip "dermaga backup password init"${C_RESET}
+
 Server ED25519 Fingerprint: ${C_BOLD}$fp${C_RESET}
 EOF
 }

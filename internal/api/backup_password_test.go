@@ -62,9 +62,28 @@ func TestBackupPasswordLifecycle(t *testing.T) {
 	if w := keep(cli("POST", "/api/backup/password/reveal", "")); w.Code != http.StatusNotFound {
 		t.Errorf("reveal without a password: %d, want 404", w.Code)
 	}
-	if w := keep(cli("POST", "/api/backup/run", `{"target":"system"}`)); w.Code < 400 || mock.lastReq == nil {
-		t.Errorf("backup without a password: %d, notified=%v; want a failure and a backup.failed notification", w.Code, mock.lastReq != nil)
+	// The failure says what to do, in the API error (printed by the CLI and so
+	// in the journal) and in the notification body, for manual and timer runs.
+	actionable := func(where, text string) {
+		t.Helper()
+		for _, want := range []string{"set up the backup password first", "Backups in the panel", "dermaga backup password init"} {
+			if !strings.Contains(text, want) {
+				t.Errorf("%s does not say %q: %s", where, want, text)
+			}
+		}
 	}
+	w0 := keep(cli("POST", "/api/backup/run", `{"target":"system"}`))
+	if w0.Code != http.StatusConflict || mock.lastReq == nil {
+		t.Fatalf("backup without a password: %d, notified=%v; want 409 and a backup.failed notification", w0.Code, mock.lastReq != nil)
+	}
+	actionable("the API error", w0.Body.String())
+	actionable("the notification for a manual run", mock.lastBody)
+	mock.lastReq, mock.lastBody = nil, ""
+	if w := keep(cli("POST", "/api/backup/run", `{"target":"system","scheduled":true}`)); w.Code != http.StatusConflict || mock.lastReq != nil {
+		t.Errorf("scheduled backup without a password: %d, notified=%v; want 409 and no direct notification", w.Code, mock.lastReq != nil)
+	}
+	keep(cli("POST", "/api/backup/failure-notify", `{"unit":"dg-backup-system.service"}`))
+	actionable("the notification for a timer run", mock.lastBody)
 	if !strings.Contains(logs.String(), "set up the backup password first") {
 		t.Errorf("the failure log does not name the missing password:\n%s", logs.String())
 	}

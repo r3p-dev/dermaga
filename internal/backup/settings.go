@@ -30,7 +30,9 @@ const (
 )
 
 // ErrNoPassword is returned by every restic operation while no password exists.
-var ErrNoPassword = errors.New("set up the backup password first: `dermaga backup password init`, or Backups in the panel")
+// The text is what the owner sees in the CLI, the journal and the notification,
+// so it says what to do.
+var ErrNoPassword = errors.New("set up the backup password first: open Backups in the panel and choose \"Generate password\", or run `dermaga backup password init`")
 
 // ErrPasswordExists is returned by GeneratePassword: a second password would
 // lock the existing repository.

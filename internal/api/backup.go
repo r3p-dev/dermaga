@@ -358,7 +358,11 @@ func (s *Server) failureNotify(w http.ResponseWriter, r *http.Request, _ string)
 		target = "unknown-unit"
 	}
 	_ = audit.Log(s.DB, "timer", "backup.failed", target, "systemd failure event triggered")
-	s.notifyBackupFailed(r.Context(), target, errors.New("the scheduled unit failed; see journalctl --user -u "+target))
+	cause := errors.New("the scheduled unit failed; see journalctl --user -u " + target)
+	if s.backupPasswordState(r.Context()) == backup.PasswordNone {
+		cause = backup.ErrNoPassword // the usual reason on a new server; say what to do
+	}
+	s.notifyBackupFailed(r.Context(), target, cause)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "recorded"})
 }
 

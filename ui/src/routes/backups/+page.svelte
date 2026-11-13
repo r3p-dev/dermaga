@@ -510,6 +510,9 @@
 						bind:value={totpInput}
 						class="w-full p-2 border rounded font-mono bg-white dark:bg-zinc-900"
 					/>
+					<p class="mt-1 text-zinc-500">
+						A code already used to log in is not accepted again: wait for the next code.
+					</p>
 				</div>
 			{/if}
 			<button

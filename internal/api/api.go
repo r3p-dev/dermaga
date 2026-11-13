@@ -404,6 +404,10 @@ func writeError(w http.ResponseWriter, code int, msg string) {
 
 func internalError(w http.ResponseWriter, err error) {
 	slog.Error("request failed", "err", err)
+	if errors.Is(err, backup.ErrNoPassword) { // actionable, not internal: the CLI and journal print it
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
 	writeError(w, http.StatusInternalServerError, "internal error")
 }
 

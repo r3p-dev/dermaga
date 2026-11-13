@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -16,11 +17,16 @@ import (
 )
 
 type mockNotifyClient struct {
-	lastReq *http.Request
+	lastReq  *http.Request
+	lastBody string
 }
 
 func (m *mockNotifyClient) Do(req *http.Request) (*http.Response, error) {
 	m.lastReq = req
+	if req.Body != nil {
+		b, _ := io.ReadAll(req.Body)
+		m.lastBody = string(b)
+	}
 	return &http.Response{
 		StatusCode: 200,
 		Body:       http.NoBody,
