@@ -12,11 +12,28 @@ permissions:
 jobs:
   check:
     name: make check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    # Debian 13 is the target host: its Podman (>= quadlet.MinPodman) makes the
+    # Quadlet dry-run test really run. The runner's own Podman is too old.
+    container:
+      image: debian@sha256:9c6e381421d0f48d1b8133e573f33c185ee16cbf505eda9c4a8a4791b25ea8a6 # 13 (trixie)
+    env:
+      DERMAGA_REQUIRE_QUADLET: '1' # TestDryRun fails instead of skipping
     steps:
+      # git before checkout (tygo-check needs a real clone), unzip for setup-bun,
+      # podman for /usr/libexec/podman/quadlet (a generator; no containers run).
+      - name: Install Host Packages
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends ca-certificates curl git make podman unzip
+          echo "podman: $(podman --version); quadlet: $(/usr/libexec/podman/quadlet -version)"
+
       # Same setup steps and pins as release.yml.
       - name: Checkout Code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Trust Workspace
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -36,3 +53,8 @@ jobs:
       - name: Verify Quality Gates
         run: |
           make check
+
+      - name: Show Quadlet Dry-Run Result
+        run: |
+          go test -count=1 -v -run 'TestDryRun$' ./internal/quadlet | tee /tmp/dryrun.log
+          grep -q -- '--- PASS: TestDryRun' /tmp/dryrun.log

@@ -16,6 +16,11 @@ import (
 // Bin is Debian's Quadlet generator.
 const Bin = "/usr/libexec/podman/quadlet"
 
+// MinPodman is the oldest Podman dermaga supports: the version Debian 13
+// ships. The newest Quadlet key dermaga writes, DefaultDependencies=, needs
+// 5.3.0 (StopTimeout= needs 5.0.0); older Quadlets reject the units.
+const MinPodman = "5.4.2"
+
 // DryRun validates files (name → content) the way Quadlet will see them once
 // installed: it stages a copy of dir's top-level files, overlays files, and
 // runs quadlet -dryrun -user on the copy (ARCHITECTURE D5). A rejected unit

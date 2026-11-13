@@ -2,7 +2,9 @@ package quadlet
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -220,11 +222,25 @@ func TestInjectionRejected(t *testing.T) {
 }
 
 // TestDryRun runs Quadlet on every golden unit set, next to a web.network
-// like the installer's. Skipped where Podman isn't installed.
+// like the installer's. Skipped where Podman isn't installed or is older than
+// MinPodman; with DERMAGA_REQUIRE_QUADLET=1 (CI) both are failures instead.
 func TestDryRun(t *testing.T) {
-	if _, err := os.Stat(Bin); err != nil {
-		t.Skip(Bin, "not installed")
+	skip := t.Skipf
+	if os.Getenv("DERMAGA_REQUIRE_QUADLET") == "1" {
+		skip = t.Fatalf
 	}
+	if _, err := os.Stat(Bin); err != nil {
+		skip("%s not installed; the dry-run needs Podman >= %s", Bin, MinPodman)
+	}
+	out, err := exec.Command(Bin, "-version").Output()
+	if err != nil {
+		t.Fatalf("%s -version: %v", Bin, err)
+	}
+	found := strings.TrimSpace(string(out))
+	if !versionAtLeast(found, MinPodman) {
+		skip("Quadlet %s is older than the minimum supported Podman %s", found, MinPodman)
+	}
+	t.Logf("Quadlet %s (minimum %s)", found, MinPodman)
 	dirs, err := os.ReadDir(filepath.Join("testdata", "units"))
 	if err != nil {
 		t.Fatal(err)
@@ -246,5 +262,32 @@ func TestDryRun(t *testing.T) {
 	bad := map[string][]byte{"dg-bad-00000000.container": []byte("[Container]\nImage=docker.io/library/busybox:1\nBogusKey=1\n")}
 	if err := DryRun(context.Background(), "", bad); err == nil || !strings.Contains(err.Error(), "BogusKey") {
 		t.Errorf("an unknown key must be rejected, got %v", err)
+	}
+}
+
+// versionAtLeast compares the leading major.minor.patch numbers of v and min.
+// A version it can't read counts as too old.
+func versionAtLeast(v, min string) bool {
+	var a, b [3]int
+	if n, _ := fmt.Sscanf(v, "%d.%d.%d", &a[0], &a[1], &a[2]); n != 3 {
+		return false
+	}
+	fmt.Sscanf(min, "%d.%d.%d", &b[0], &b[1], &b[2])
+	for i := range a {
+		if a[i] != b[i] {
+			return a[i] > b[i]
+		}
+	}
+	return true
+}
+
+func TestVersionAtLeast(t *testing.T) {
+	for v, want := range map[string]bool{
+		"5.4.2": true, "5.8.9": true, "6.0.0": true, "5.10.0": true, "5.4.2+ds1": true,
+		"5.4.1": false, "4.9.3": false, "5.3.9": false, "": false, "garbage": false,
+	} {
+		if got := versionAtLeast(v, MinPodman); got != want {
+			t.Errorf("versionAtLeast(%q, %q) = %v, want %v", v, MinPodman, got, want)
+		}
 	}
 }

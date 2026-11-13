@@ -69,13 +69,36 @@ the installer verifies. Tags are the newest within the major already in use; SHA
 lightweight tags, so the SHA is the commit). Go comes from `go.mod` (`go-version-file`). Both
 workflows use the same pins; `ci.yml` has `contents: read` only.
 
+Both workflows run on `ubuntu-24.04` (not `ubuntu-latest`). `ci.yml` runs its job inside a Debian 13
+container, pinned by digest, because the Quadlet dry-run test needs Podman >= 5.4.2 (see "Podman"
+below) and Ubuntu 24.04's Podman is 4.9.3. The job installs `ca-certificates curl git make podman
+unzip` from Debian's repository (not version-pinned: they follow Debian 13 like the target host) and
+sets `DERMAGA_REQUIRE_QUADLET=1`, which turns a skipped dry-run into a failure.
+
 | Action / runtime | Pin | Newer major exists |
 |---|---|---|
 | `actions/checkout` | `11d5960a326750d5838078e36cf38b85af677262` (v4.4.0) | v7.0.1 |
 | `actions/setup-go` | `40f1582b2485089dde7abd97c1529aa768e1baff` (v5.6.0) | v7.0.0 |
 | `oven-sh/setup-bun` | `0c5077e51419868618aeaa5fe8019c62421857d6` (v2.2.0) | — |
 | Bun (`bun-version`) | 1.4.2 | — |
+| Runner image | `ubuntu-24.04` | — |
+| `ci.yml` job container | `debian@sha256:9c6e381421d0f48d1b8133e573f33c185ee16cbf505eda9c4a8a4791b25ea8a6` (tag `13`, index digest read with `skopeo inspect` on 2026-11-12) | — |
 | `softprops/action-gh-release` | `3bb12739c298aeb8a4eeaf626c5b8d85266b0e65` (v2.6.2) | v3.0.4 |
+
+## Podman (host package, not bundled)
+
+Minimum supported version: **5.4.2**, the version Debian 13 ships (`podman 5.4.2+ds1-2+b2` on
+`dermaga-vm`, 2026-11-12). It is defined once in code as `quadlet.MinPodman`
+(`internal/quadlet/dryrun.go`). Older Quadlets reject keys dermaga writes; from Podman's
+`RELEASE_NOTES.md` (read 2026-11-12):
+
+| Key dermaga writes | Added in | Release note |
+|---|---|---|
+| `DefaultDependencies=` (`[Quadlet]`) | 5.3.0 | "Quadlets can now disable their implicit dependency on `network-online.target` via a new key, `DefaultDependencies`" |
+| `StopTimeout=`, `Notify=healthy` (`.container`) | 5.0.0 | "Quadlet now supports two new keys, `Entrypoint` and `StopTimeout`, in `.container` files" |
+| `PidsLimit=` | 4.7.0 | "Quadlet now supports setting the PidsLimit option in a container." |
+
+The installer and `doctor` do not check this yet (gap G42).
 
 ## Known advisories
 

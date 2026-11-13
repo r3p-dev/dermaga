@@ -373,6 +373,7 @@ Severity: **S** = security or data loss · **B** = broken feature · **M** = mis
 | G39 | H | VM runs `a8cf2fd-dirty`, not `HEAD` | §1 |
 | G40 | H | `LICENSE` is an empty, untracked file (0 bytes); v1 BRIEF §2 requires Apache-2.0 | `ls -la` in the repo root: `LICENSE` size 0; `git status`: `?? LICENSE`. Adding the Apache-2.0 text is your call (I won't invent a copyright line). **Deferred by owner; LICENSE removed for now** (2026-11-12): the owner removed the file on purpose; do not recreate it |
 | G41 | H | No CI on push/PR; `make check` only runs on release tags | `.github/workflows/release.yml:3-7` (`on: push: tags: 'v*.*.*'`) is the only workflow |
+| G42 | M | Installer and `doctor` do not check the minimum Podman version; units can fail on older hosts | `quadlet.MinPodman` (5.4.2) is only used by `TestDryRun`; first CI run on `ubuntu-24.04` (2026-11-12): `unsupported key 'StopTimeout' in group 'Container'`. Fix order: `doctor` row in CS6, installer abort in CS7 |
 
 ## 5. CLI ↔ UI parity (every command and flag)
 
@@ -452,8 +453,8 @@ Sizes: S ≤ 2 h · M 2–5 h · L > 5 h.
 | CS3 | G13, G15, G6, G14 | Mask the restic password in GET, no writes on GET; explicit "generate password" call that returns it once + required "stored offline" confirmation (API, UI, CLI); master key + password recovery text; fix `%n` escaping for `OnFailure=` with a golden test, notify on API/manual backup failure; `backup settings set` in the CLI | M |
 | CS4 | G11, G12, G2 | Route edits: render → validate → atomic write with a verify token router → Traefik verification → drop token (D7) or restore the previous file and the previous DB row (D8); server-side bcrypt for basic-auth passwords; `GET /api/apps/{app}/headers` (effective set); API tests incl. CRLF/control-character injection | M |
 | CS5 | G1 | App → Domains & Middleware tab and Settings tab (everything in v2 ARCHITECTURE §6 for both), server errors shown inline | L |
-| CS6 | G4 | `doctor`: Traefik health, DNS for every domain + hook host, restic reachability; one shared implementation for CLI and API; fix hints | M (design first) |
-| CS7 | G3, G9, G25, G27, G30 (installer), G26 per D-b | Installer: restic + git, mandatory checksum, pin GitHub host keys, SSH algorithm lists + `LogLevel VERBOSE`, busy-port check, exact Traefik tag, no `latest` default | M |
+| CS6 | G4, G42 (doctor row) | `doctor`: Traefik health, DNS for every domain + hook host, restic reachability; one shared implementation for CLI and API; fix hints | M (design first) |
+| CS7 | G3, G9, G25, G27, G30 (installer), G26 per D-b, G42 (installer check) | Installer: restic + git, mandatory checksum, pin GitHub host keys, SSH algorithm lists + `LogLevel VERBOSE`, busy-port check, exact Traefik tag, no `latest` default | M |
 | CS8 | G5, G29 | Wizard: create → deploy key step → inspect (Containerfile/Dockerfile, first `EXPOSE`) → confirm/edit → first deploy; image-app path | M (design first) |
 | CS9 | G17 | Real `restore-system`: master-key import, DB restored offline (not under the running daemon), databases restored from their latest snapshots, apps redeployed from their last good commits; UI + CLI | L (design first) |
 | CS10 | G16, G18, G21, G37 | Weekly check timer; backup history with failures/duration/error; UI DB restore, restore-system, backup run, check subset; DB schedule/retention edit; volume backup opt-in with warning | L |
