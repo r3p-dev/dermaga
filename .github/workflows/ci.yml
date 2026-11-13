@@ -5,6 +5,7 @@ on:
     branches:
       - '**'
   pull_request:
+  workflow_call: # release.yml runs this same job as its quality gate
 
 permissions:
   contents: read

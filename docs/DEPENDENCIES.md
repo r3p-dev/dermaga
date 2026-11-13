@@ -72,8 +72,14 @@ workflows use the same pins; `ci.yml` has `contents: read` only.
 Both workflows run on `ubuntu-24.04` (not `ubuntu-latest`). `ci.yml` runs its job inside a Debian 13
 container, pinned by digest, because the Quadlet dry-run test needs Podman >= 5.4.2 (see "Podman"
 below) and Ubuntu 24.04's Podman is 4.9.3. The job installs `ca-certificates curl git make podman
-unzip` from Debian's repository (not version-pinned: they follow Debian 13 like the target host) and
-sets `DERMAGA_REQUIRE_QUADLET=1`, which turns a skipped dry-run into a failure.
+unzip` from Debian's repository and sets `DERMAGA_REQUIRE_QUADLET=1`, which turns a skipped dry-run
+into a failure. Those apt packages are deliberately not version-pinned (accepted 2026-11-13): they
+follow Debian 13 point releases like the target host, and the job prints the Podman and Quadlet
+versions it got.
+
+`release.yml` calls `ci.yml` as a reusable workflow (`check` job) and its `release` job `needs:` it,
+so the release gate is the same container job. Building and publishing stay on the plain
+`ubuntu-24.04` runner: they need no Podman.
 
 | Action / runtime | Pin | Newer major exists |
 |---|---|---|
