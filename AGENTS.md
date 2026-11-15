@@ -97,9 +97,9 @@ Write the report to me **in Indonesian**, short and concrete:
   tags. Never invent a value and never assume it happened.
 - **The UI shows only what the server returned.** No placeholder results, no hard-coded success
   text, no guessed hosts or ports. A feature that exists only in the API is not done.
-- Never call real outside services from tests (GitHub, Let's Encrypt). On the VM: Let's Encrypt
-  staging or self-signed certificates; a real GitHub App only when the milestone says so, created by
-  me, on a test repo I give you.
+- Never call real outside services from tests (GitHub, Let's Encrypt). On the VM: Pebble (local ACME
+  test server) for certificates; a real GitHub App only when the milestone says so, created by me, on a
+  test repo I give you. Staging and production certificates stay only for the real VPS at the end.
 - **No production systems**: never connect to `server` (my production VPS) or run anything on it.
 
 ## 6. Versioning

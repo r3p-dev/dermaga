@@ -28,8 +28,9 @@ databases and backups arrive in v1.1).
   panel; affected apps show that they can no longer deploy.
 - **GHA-8** Pushes arrive through **one webhook for the whole server** at the canonical static path
   `/hooks/github-app` on the hook domain (`SETUP-2`). Signed with HMAC `X-Hub-Signature-256` (verified
-  in constant time). Rejects every method except POST, caps request body at 1 MiB, answers unknown
-  events with 2xx and ignores them. The panel shows whether the last delivery arrived and when.
+  in constant time). Rejects every method except POST, bounded read (`http.MaxBytesReader`) capping
+  request body at 25 MiB (matching GitHub's maximum payload size), answers unknown events with 2xx and
+  ignores them. The panel shows whether the last delivery arrived and when.
 
 ## 2. New app wizard (`WIZ`)
 

@@ -52,7 +52,10 @@ after this.
 2. **GitHub App spike first** (it decides whether the panel can stay private): the manifest flow with
    `redirect_url` and `setup_url` on `http://localhost:7070`, the code conversion, the installation
    redirect, one repo-scoped installation token, a clone with the token passed through environment git
-   config, and how push deliveries can reach the VM behind NAT. I do the GitHub clicks. If localhost
+   config, and how push deliveries can reach the VM behind NAT. Record what happens when the App is
+   created before the hook domain is set; decision: the hook domain is required before the manifest
+   flow can be initiated (ensuring the App is created with its real webhook URL from the start and
+   avoiding an inactive webhook or a subsequent update API call). I do the GitHub clicks. If localhost
    redirects don't work, stop and report options before anything else.
 3. Spikes on `dermaga-vm`, each with raw output:
    1. Traefik (rootless, pasta, network `web`) reaching a Unix socket through a relay container on
@@ -64,11 +67,13 @@ after this.
       the "one invalid file freezes updates" behavior, and a token router on an internal entry point
       to verify a switch.
    4. Traefik ACME with socket-activated :80/:443: which challenge works, where certificates are
-      stored, and how dermaga can read certificate status without exposing Traefik's API (staging).
+      stored, and how dermaga can read certificate status without exposing Traefik's API (Pebble).
    5. Quadlet: `Notify=healthy` behavior and stop handling, dry-run validation, which limit keys
       Debian 13's Podman accepts, `DefaultDependencies=false` at boot, restart with backoff.
-   6. `podman build` with build-time variables: how to pass them so they never appear in logs or image
-      history.
+   6. `podman build` with build-time variables: measure what `--build-arg` leaves in `podman history` /
+      `podman image inspect` (with and without use in `RUN`), confirm values never appear in dermaga's
+      build logs (SEC-9 masking still applies to logs), and estimate the cost of supporting `--secret` +
+      `RUN --mount=type=secret`.
    7. A binary with `modernc.org/sqlite` and an embedded SvelteKit build: size and idle RSS.
    8. SSH local forwarding to `127.0.0.1:7070` with `vps-setup.sh`'s sshd config; stream-local
       forwarding refused.
@@ -76,9 +81,11 @@ after this.
    and installation tokens, SvelteKit/Svelte 5 and Tailwind v4. Note anything that affects the design,
    and confirm each tool is maintained.
 5. Write `docs/ARCHITECTURE.md` §2–§7 (including the state machines as tables) and `docs/SETUP.md`
-   (dev machine, the test VM and its snapshots, the test GitHub App, teardown). Complete this plan
-   (acceptance criteria and hours per milestone). List any decision in `docs/ARCHITECTURE.md` §1 you
-   believe must change, and why.
+   (dev machine, the test VM and its snapshots, the test GitHub App, teardown, and real GitHub webhook
+   deliveries to the VM via smee.io / `gosmee` with dev webhook URL overridden by a dev-only flag/env
+   not present in the UI or release builds; signed-payload replay remains the method for automated
+   tests). Complete this plan (acceptance criteria and hours per milestone). List any decision in
+   `docs/ARCHITECTURE.md` §1 you believe must change, and why.
 
 ## M1 (0.1.0): Foundation: daemon, login, panel shell
 
@@ -127,7 +134,7 @@ Draft acceptance criteria:
 
 Draft acceptance criteria:
 
-- SETUP-1–SETUP-3, LAP-3, ADM-4–ADM-5, SEC-8, SEC-10, TLS-5 (hook domain certificate, staging).
+- SETUP-1–SETUP-3, LAP-3, ADM-4–ADM-5, SEC-8, SEC-10, TLS-5 (hook domain certificate, Pebble).
 - From a fresh install: `ssh dermaga` + browser → `/setup` → panel, without any command typed on the
   server; token reuse, expiry and use after setup refused; a password change ends other sessions; TOTP
   changes require re-auth.
@@ -142,7 +149,7 @@ Draft acceptance criteria:
 - GHA-1–GHA-8, SEC-9, SEC-11–SEC-14.
 - With a real GitHub account (I click): App created from the panel, installed on a test repo, the repo
   visible in the panel; removing the repo on GitHub is reflected.
-- Webhook tests: bad signature 401 before parsing, > 1 MiB 413, unknown repo 202 ignored, duplicate
+- Webhook tests: bad signature 401 before parsing, > 25 MiB 413, unknown repo 202 ignored, duplicate
   delivery deduped, rate limit; a real delivery reaches the daemon and shows as "last delivery" in the
   panel.
 - The App's key and tokens never appear in `ps`, logs, files or the database in plaintext (greps
@@ -156,8 +163,8 @@ switch yet: one release), build and runtime logs, cancel.
 Draft acceptance criteria:
 
 - WIZ-1–WIZ-6, APP-1, APP-5–APP-7, APP-9, DEP-3, DEP-5–DEP-9, LOG-1–LOG-2, UI-1–UI-7.
-- Portfolio created through the wizard and live (staging or self-signed certificate); a build-time
-  variable reaches the build and doesn't appear in logs or image history; a runtime variable reaches
+- Portfolio created through the wizard and live (Pebble certificate); a build-time
+  variable reaches the build and doesn't appear in build logs; a runtime variable reaches
   the container.
 - A failing first deploy leaves nothing; a running build cancelled from the panel leaves nothing; a
   repo without a Containerfile shows the guidance.
@@ -181,7 +188,7 @@ Draft acceptance criteria:
 - Every control exercised in the browser; a header change shows in `curl -sI` within seconds;
   portfolio's headers match `vps-setup.sh`'s, compression on; a route edit Traefik can't load restores
   the old file and DB row and shows the error; global defaults affect only apps without overrides.
-- Certificate status shown for a domain with correct DNS (staging certificate active), wrong DNS
+- Certificate status shown for a domain with correct DNS (Pebble certificate active), wrong DNS
   (waiting, with the record to create) and a failed challenge (reason shown).
 
 ## M9 (0.9.0): Server care: app status, disk, dashboard, doctor
