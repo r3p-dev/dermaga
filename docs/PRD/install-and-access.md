@@ -100,7 +100,9 @@ The installer gives at least every guarantee `vps-setup.sh` gives, and weakens n
   domain: reserved dedicated host (`hooks.example.com`, `APP-2`), the exact DNS record to create
   compared against the detected/configured server IP (A and AAAA records; an AAAA pointing elsewhere is
   flagged as it breaks ACME; optional nonce self-check via Traefik that warns but never blocks on
-  failure), with why GitHub needs it.
+  failure), with why GitHub needs it. The hook domain must be set before connecting GitHub, but DNS
+  verification is informative and does not block setup or connecting GitHub; deliveries begin arriving
+  once DNS and certificates are in place.
 - **SETUP-3** `dermaga panel` on the server prints the laptop command and the link again, issuing a
   new token if the old one expired and no admin exists yet.
 

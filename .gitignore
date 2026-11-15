@@ -1,0 +1,13 @@
+# Binaries
+spike-server
+*.exe
+
+# Keys, secrets and local logs
+*.key
+*.pem
+*.log
+.credentials.json
+.dev_key.pem
+.webhook_secret
+.app.pem
+.env*

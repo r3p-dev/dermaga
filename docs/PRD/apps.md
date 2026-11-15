@@ -11,8 +11,12 @@ databases and backups arrive in v1.1).
 - **GHA-1** **Settings → GitHub → Connect GitHub** creates one private GitHub App for this server with
   GitHub's manifest flow. Every redirect lands on `http://localhost:7070` in the user's browser; the
   panel is never exposed for it. Includes a `state` parameter against CSRF. Exchanges the `code` via
-  `POST /app-manifests/{code}/conversions` immediately upon receipt (**verify in M0**). The panel
-  explains each GitHub screen before the user sees it.
+  `POST /app-manifests/{code}/conversions` immediately upon receipt. Immediately after conversion, the
+  panel generates a cryptographically secure 32-byte webhook secret and configures the App's webhook URL
+  and secret via `PATCH /app/hook/config` using the App JWT (`content_type: "json"`). (GitHub App
+  manifest `hook_attributes` only accepts `url` and `active`, not a pre-defined secret; `PATCH /app/hook/config`
+  is GitHub's official API to set and rotate the webhook secret). The panel explains each GitHub screen
+  before the user sees it.
 - **GHA-2** Minimum permissions: Contents read, Metadata read. Events: push, plus the installation
   events.
 - **GHA-3** After creating the App, the user installs it on their account or organisation and picks the
@@ -28,9 +32,10 @@ databases and backups arrive in v1.1).
   panel; affected apps show that they can no longer deploy.
 - **GHA-8** Pushes arrive through **one webhook for the whole server** at the canonical static path
   `/hooks/github-app` on the hook domain (`SETUP-2`). Signed with HMAC `X-Hub-Signature-256` (verified
-  in constant time). Rejects every method except POST, bounded read (`http.MaxBytesReader`) capping
-  request body at 25 MiB (matching GitHub's maximum payload size), answers unknown events with 2xx and
-  ignores them. The panel shows whether the last delivery arrived and when.
+  in constant time against the secret configured via `PATCH /app/hook/config`, `GHA-1`). Rejects every
+  method except POST, bounded read (`http.MaxBytesReader`) capping request body at 25 MiB (matching
+  GitHub's maximum payload size), answers unknown events with 2xx and ignores them. The panel shows
+  whether the last delivery arrived and when.
 
 ## 2. New app wizard (`WIZ`)
 

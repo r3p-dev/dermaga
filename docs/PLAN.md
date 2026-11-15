@@ -53,10 +53,11 @@ after this.
    `redirect_url` and `setup_url` on `http://localhost:7070`, the code conversion, the installation
    redirect, one repo-scoped installation token, a clone with the token passed through environment git
    config, and how push deliveries can reach the VM behind NAT. Record what happens when the App is
-   created before the hook domain is set; decision: the hook domain is required before the manifest
-   flow can be initiated (ensuring the App is created with its real webhook URL from the start and
-   avoiding an inactive webhook or a subsequent update API call). I do the GitHub clicks. If localhost
-   redirects don't work, stop and report options before anything else.
+   created before the hook domain is set; decision: the hook domain must be set before the manifest
+   flow can be initiated, though its DNS does not need to be verified yet (ensuring the App is created
+   with its real webhook URL from the start without blocking setup on DNS propagation; deliveries begin
+   arriving once DNS and certificates are in place). I do the GitHub clicks. If localhost redirects
+   don't work, stop and report options before anything else.
 3. Spikes on `dermaga-vm`, each with raw output:
    1. Traefik (rootless, pasta, network `web`) reaching a Unix socket through a relay container on
       `web`, with the socket's directory mounted so a daemon restart doesn't break it; no new host
