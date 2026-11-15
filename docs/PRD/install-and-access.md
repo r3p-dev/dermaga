@@ -33,7 +33,10 @@ One command, from a GitHub release asset:
   this key?" (one key) or a numbered choice (several; default = the current one). No key → explains
   how to create one **on the laptop** and accepts a pasted public key, validated, until valid or
   aborted.
-- **INST-6** Asks for the SSH port (default 4222). No question about GitHub.
+- **INST-6** Asks for the SSH port (default 4222). Detects the server's public IP from the default-route
+  interface (global IPv4 and IPv6) without calling third-party services (`NFR-8`); if private (RFC 1918,
+  100.64.0.0/10) or if no public IPv4 is detected, it explains the situation and prompts the user for the
+  public IP. Stored in settings and editable in Settings. No question about GitHub.
 - **INST-7** Shows a short plan of what it will change before changing anything.
 - **INST-8** Refuses to continue when something already listens on :80 or :443, and says what.
 - **INST-9** Installs Podman, Traefik, git and curl; downloads the dermaga binary for the
@@ -57,8 +60,9 @@ The installer gives at least every guarantee `vps-setup.sh` gives, and weakens n
 - **HOST-4** fail2ban for sshd plus recidive.
 - **HOST-5** sysctl hardening, unattended security upgrades, zram swap, synchronised clock.
 - **HOST-6** Rootless Podman with Quadlet under the systemd user manager; Traefik v3 with socket
-  activation for :80/:443 (tcp, and udp for HTTP/3), file provider only; no container gets the
-  Podman socket.
+  activation for :80/:443 (tcp, and udp for HTTP/3, **verify in M0**; if UDP socket activation is
+  unsupported by Traefik, HTTP/3 is disabled and Traefik serves TCP 80/443 via socket activation only),
+  file provider only; no container gets the Podman socket.
 - **HOST-7** Recommends `SUDO_NOPASSWD=no` for `server` and explains why.
 
 ## 4. Lockout guard and laptop access (`LOCK`, `LAP`)
@@ -87,10 +91,16 @@ The installer gives at least every guarantee `vps-setup.sh` gives, and weakens n
 ## 5. First-run setup (`SETUP`)
 
 - **SETUP-1** While no admin password exists, the panel is in **setup mode**: every page except
-  `/setup` redirects there. `/setup` requires the single-use token from the installer's link.
+  `/setup` redirects there. `/setup` requires the single-use token from the installer's link. Visiting
+  `/setup` without a token shows a form to paste the token and clear guidance: "Open the link from the
+  installer, or run `dermaga panel` on the server for a fresh link." (not a dead-end error page). The
+  token is compared in constant time, attempts are rate-limited, and it expires after 24 h.
 - **SETUP-2** Steps: admin password with a strength meter → TOTP enrolment with a QR code and a
   verification code (skippable, with a persistent warning in the panel and in `doctor`, `DOC-2`) → hook
-  domain: the exact DNS record to create, checked from the server, with why GitHub needs it.
+  domain: reserved dedicated host (`hooks.example.com`, `APP-2`), the exact DNS record to create
+  compared against the detected/configured server IP (A and AAAA records; an AAAA pointing elsewhere is
+  flagged as it breaks ACME; optional nonce self-check via Traefik that warns but never blocks on
+  failure), with why GitHub needs it.
 - **SETUP-3** `dermaga panel` on the server prints the laptop command and the link again, issuing a
   new token if the old one expired and no admin exists yet.
 

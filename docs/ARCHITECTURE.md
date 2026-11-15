@@ -18,15 +18,15 @@ decisions change).
 | Web UI             | **SvelteKit** with `adapter-static` (SPA), **Svelte 5 runes**, **Tailwind CSS v4**, TypeScript strict, built with **Bun** (`bun.lock` committed), embedded in the binary. No Node or Bun at runtime. API types generated from Go structs (tygo). The panel is the only user interface. |
 | Host               | **Debian 13 only.** One Linux user `server` owns everything. dermaga runs as a **systemd user service** with lingering; it refuses to run as root. |
 | Containers         | **Rootless Podman with Quadlet** under the systemd user manager. No Docker, no Compose, no Podman API socket in any container. Every generated unit set is validated with Quadlet's dry run before it is installed. Apps are stateless: no volumes in v1. |
-| Reverse proxy      | **Traefik v3** in a container, socket-activated on :80/:443 (tcp, and udp for HTTP/3) by user-manager sockets, **file provider only**. dermaga writes every dynamic file from typed structs (as JSON, which Traefik accepts in `.yml`). Default middleware reproduces `vps-setup.sh`'s headers, rate limit and compression; middleware chains are per router. |
-| HTTPS              | **Traefik's ACME** with Let's Encrypt issues and renews certificates; dermaga only configures the resolver and reads the result to show certificate status (`TLS-3`). Certificate storage owned by `server`, 0600. Development uses Let's Encrypt staging or self-signed certificates. **(verify in M0: challenge type with socket activation)** |
+| Reverse proxy      | **Traefik v3** in a container, socket-activated on :80/:443 (tcp, and udp for HTTP/3, **verify in M0**; if UDP socket activation is unsupported, HTTP/3 is disabled and Traefik serves TCP 80/443 via socket activation only) by user-manager sockets, **file provider only**. dermaga writes every dynamic file from typed structs (as JSON, which Traefik accepts in `.yml`). Default middleware reproduces `vps-setup.sh`'s headers, rate limit and compression; middleware chains are per router. |
+| HTTPS              | **Traefik's ACME** with Let's Encrypt issues and renews certificates; dermaga only configures the resolver and reads the result to show certificate status (`TLS-3`). Certificate storage at `~/.local/share/dermaga/traefik/acme.json` owned by `server`, 0600. Development uses Pebble (local ACME test server) on `dermaga-vm` behind NAT; staging/production on real hosts. **(verify in M0: challenge type with socket activation)** |
 | Panel access       | The panel listens on **`127.0.0.1:7070` only, in every state** (including install and setup), reached through SSH local forwarding. No public panel, no inbound listener for GitHub. |
-| Server commands    | The three commands of `SRV-1` talk to the daemon over a **Unix socket (0600)**; its file mode is the authentication. |
-| State              | **SQLite** (`modernc.org/sqlite`, no cgo), one database file (0600), numbered SQL migrations. Until v1.0.0, schema changes may **edit the original migration** (the dev database is reset); from v1.0.0 on, new migrations only. Settings live in SQLite; there is no config file to edit. |
-| Secrets            | Encrypted at rest with **AES-256-GCM** under a master key file (0600), bound to their column. Env files for Podman are plaintext 0600 (stated honestly in the docs). |
+| Server commands    | The three commands of `SRV-1` talk to the daemon over a **Unix socket (0600)**; its file mode is the authentication. If the daemon is inactive, recovery commands (`dermaga admin set-password` and `dermaga admin totp disable`) fall back to direct SQLite access via the shared store package (WAL + `busy_timeout`), revoking all active sessions. |
+| State              | **SQLite** (`modernc.org/sqlite`, no cgo), one database file at `~/.local/share/dermaga/dermaga.db` (0600), numbered SQL migrations. Until v1.0.0, schema changes may **edit the original migration** (the dev database is reset); from v1.0.0 on, new migrations only. Settings live in SQLite; there is no config file to edit. |
+| Secrets            | Encrypted at rest with **AES-256-GCM** under a master key file at `~/.config/dermaga/master.key` (0600), bound to their column. Env files for Podman are plaintext 0600 (stated honestly in the docs). |
 | GitHub             | **GitHub App only.** Created by the manifest flow from the panel with redirects to `localhost:7070` in the browser **(verify in M0)**; per-fetch installation tokens scoped to one repo, passed to git through environment config only; the App JWT on `crypto/rsa`; a handful of REST endpoints on `net/http`. |
-| Webhooks           | One server-wide endpoint, served on a **Unix socket** and reached by Traefik through a tiny relay container on network `web` that forwards bytes and parses nothing. No new host TCP port. All validation in the daemon. **(verify in M0)** |
-| Deploys            | One global build queue. Bare mirrors and `git archive` exports; `podman build` with limits; build-time variables passed as build arguments/secrets, never baked into logs. **Blue-green only.** Health checks run from the rootless network namespace **(verify in M0)**. Every route change is **verified through Traefik** (a temporary per-switch token router on an internal entry point) and restored on failure. Images of the last 5 releases kept. |
+| Webhooks           | One server-wide endpoint, served on a **Unix socket** (`$XDG_RUNTIME_DIR/dermaga/hooks.sock`) and reached by Traefik through a tiny relay container on network `web` that forwards bytes and parses nothing. Reached via canonical path `/hooks/github-app` on the reserved hook domain. No new host TCP port. All validation in the daemon: HMAC `X-Hub-Signature-256` constant-time compare, reject non-POST, 1 MiB body cap, unknown events 2xx ignored. **(verify in M0)** |
+| Deploys            | One global build queue. Bare mirrors and `git archive` exports in cache; `podman build` with limits; build-time variables passed as `--build-arg`, with clear notice that values can be embedded in image history (secrets must not be set as build variables; `--secret` mount is a candidate, **verify in M0**). **Blue-green only.** Health checks run from the rootless network namespace (5 s stability window if health check is "none") **(verify in M0)**. Every route change is **verified through Traefik** (a temporary per-switch token router on an internal entry point) and restored on failure. Images and runtime configuration snapshots of the last 5 releases kept for rollback. |
 | Installer          | **Bash**, interactive, from a GitHub release asset; checksum-verified binary download. |
 | Updates            | In the panel on request: checksum-verified download, atomic replace, automatic restore of the previous version if the new one fails to start. |
 | Language           | UI, server command output, code, comments, docs and commit messages English. |
@@ -41,8 +41,8 @@ Exposure
   every moment, including install and first-run setup.
 - **SEC-3** DNS-rebinding protection: requests whose `Host` is not `127.0.0.1:<port>` or
   `localhost:<port>` are rejected; mutating requests need a matching `Origin`.
-- **SEC-4** The only public entry points are Traefik on 80/443 and the hook path on the hook domain. No
-  new host TCP port; no published container ports.
+- **SEC-4** The only public entry points are Traefik on 80/443 and the canonical `/hooks/github-app`
+  path on the hook domain. No new host TCP port; no published container ports.
 - **SEC-5** No container, including Traefik, gets the Podman API socket.
 - **SEC-6** Network access never replaces the panel login.
 
@@ -108,7 +108,29 @@ _Go packages and UI structure: one line per package with its job._
 
 ## 4. Data and files
 
-_SQLite schema, the files and directories dermaga owns, and their permissions._
+### 4.1 Directory layout and permissions
+
+dermaga strictly follows the XDG base directory specification for user `server`. All created
+directories are mode `0700`, and sensitive files are mode `0600`.
+
+| Path | Purpose | Persistence | Permissions |
+| ---- | ------- | ----------- | ----------- |
+| `~/.local/share/dermaga/dermaga.db` | Primary SQLite database (WAL mode) | Persistent | 0600 file |
+| `~/.config/dermaga/master.key` | Master encryption key (AES-256-GCM), kept separate from DB | Persistent | 0600 file |
+| `~/.cache/dermaga/mirrors/<app>.git` | Bare Git mirrors for builds | Rebuildable (cache) | 0700 dir |
+| `~/.cache/dermaga/builds/<app>/<deploy-id>` | Ephemeral build contexts (`git archive` export) | Temporary (cleaned post-build and at startup) | 0700 dir |
+| `$XDG_RUNTIME_DIR/dermaga/` | Runtime directory (`hooks.sock`, `daemon.sock`); managed by systemd user unit via `RuntimeDirectory=dermaga` | Ephemeral (tmpfs) | 0700 dir, 0600 sockets |
+| `~/.local/share/dermaga/traefik/dynamic/` | Generated Traefik dynamic configurations (`.yml` holding JSON) | Managed files | 0700 dir, 0600 files |
+| `~/.local/share/dermaga/traefik/acme.json` | ACME certificates stored by Traefik | Persistent | 0600 file |
+
+Mounting note: Traefik mounts `~/.local/share/dermaga/traefik/dynamic/` as a directory mount into
+`/etc/traefik/dynamic/` (never bind-mounting individual files, which breaks inotify on atomic renames).
+All dynamic configuration updates write to a temporary file in the same directory, `fsync`, and
+atomically `rename` into place.
+
+### 4.2 SQLite schema
+
+_Detailed table definitions and migrations written in M0 step 5._
 
 ## 5. Flows
 

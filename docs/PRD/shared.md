@@ -28,8 +28,15 @@ Rules every area depends on.
   documented in the panel and the README: `dermaga panel` (prints the laptop command and a first-run
   link, `SETUP-3`), `dermaga admin set-password` and `dermaga admin totp disable` (recovery,
   `ADM-6`). There is no other user-facing CLI.
-- **SRV-2** These commands talk to the daemon over a local socket, print plain English, and exit
-  non-zero on failure.
+- **SRV-2** These commands communicate with the daemon over a local Unix socket (0600), print plain
+  English, and exit non-zero on failure.
+  - For recovery (`dermaga admin set-password` and `dermaga admin totp disable`): if the daemon
+    cannot be reached, they fall back to accessing SQLite directly through the shared store package
+    (WAL + `busy_timeout`), revoking all active sessions. Only user `server` can run this as the
+    database file is 0600.
+  - For `dermaga panel`: requires the daemon. If the daemon is inactive, it prints the service status,
+    the last few log lines, and the exact command to start it (`systemctl --user start dermaga`), or
+    offers to start it after confirmation.
 
 ## 3. Audit log (`AUD`)
 

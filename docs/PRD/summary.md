@@ -113,7 +113,7 @@ Tested end to end on a fresh Debian 13 VM.
   the recreate strategy; building without a Containerfile; Tailscale as an extra way to the panel;
   per-app networks.
 
-**Out of scope for v1.0.0**: everything above, plus a user-facing CLI; multi-user, teams, SSO; more
+**Out of scope for v1.0.0**: everything above, plus Git submodules and Git LFS (detected in the wizard with a warning, `WIZ-3`); a user-facing CLI; multi-user, teams, SSO; more
 than one server; Docker Compose; Kubernetes; preview environments; non-GitHub Git providers; hosts
 other than Debian 13; any public admin panel; a dermaga client on the laptop; telemetry or automatic
 update checks; a UI language other than English.

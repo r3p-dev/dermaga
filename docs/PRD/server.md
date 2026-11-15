@@ -29,8 +29,13 @@ dermaga keeps the server healthy on its own and tells the user in the panel when
   It never removes the live or a rollback-able image.
 - **DISK-2** Logs have limits: container and daemon logs (journald), build logs (last 20 deployments
   per app), Traefik access log rotated.
-- **DISK-3** Disk usage above 85 % shows a warning on the dashboard with what uses the space; above
-  95 % new builds are refused with a clear message, while running apps keep serving.
+- **DISK-3** Disk usage above 85 % shows a warning on the dashboard with what uses the space, measured
+  on the filesystem holding Podman storage across five categories (each with size and reclaimable
+  estimate): (1) Podman images, containers and build cache (`podman system df`); (2) old releases beyond
+  retention; (3) Git mirrors and leftover build workspaces; (4) build logs and the dermaga database;
+  (5) other space outside dermaga (total used minus known categories). Cleanup actions are explicit and
+  safe (never deleting live or rollback releases). Above 95 % disk usage, new builds are refused with a
+  clear message, while running apps keep serving.
 
 ## 4. Doctor (`DOC`)
 
