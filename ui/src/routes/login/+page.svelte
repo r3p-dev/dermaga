@@ -48,7 +48,7 @@
 		<div class="mb-6 text-center">
 			<img src="/logo.svg" alt="dermaga logo" class="w-12 h-12 mx-auto mb-3 object-contain" />
 			<h1 class="text-xl font-semibold tracking-tight">Admin Login</h1>
-			<p class="text-xs text-stone-500 mt-1">Enter your password to unlock the dermaga panel</p>
+			<p class="text-xs text-stone-500 dark:text-stone-400 mt-1">Enter your password to unlock the dermaga panel</p>
 		</div>
 
 		{#if error}
@@ -68,7 +68,7 @@
 					bind:value={password}
 					placeholder="••••••••••••"
 					required
-					class="w-full px-3 py-2 text-sm rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-950 focus:outline-none focus:ring-2 focus:ring-brand-ring focus:border-transparent transition"
+					class="w-full px-3 py-2 text-sm rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-brand-ring focus:border-transparent transition"
 				/>
 			</div>
 
@@ -87,8 +87,8 @@
 		</form>
 
 		<div class="mt-6 pt-6 border-t border-stone-100 dark:border-stone-800 text-center">
-			<p class="text-xs text-stone-500">
-				Forgotten password? Run <code class="text-xs font-mono bg-stone-100 dark:bg-stone-800 px-1 py-0.5 rounded">dermaga admin set-password</code> on the server (SRV-1).
+			<p class="text-xs text-stone-500 dark:text-stone-400">
+				Forgotten password? Run <code class="text-xs font-mono bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 px-1 py-0.5 rounded">dermaga admin set-password</code> on the server (SRV-1).
 			</p>
 		</div>
 	</div>

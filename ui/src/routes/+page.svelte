@@ -52,11 +52,11 @@
 	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone-200 dark:border-stone-800">
 		<div>
 			<h1 class="text-2xl font-bold tracking-tight">Server Overview</h1>
-			<p class="text-xs text-stone-500 mt-1">Host health, daemon status, and system metrics</p>
+			<p class="text-xs text-stone-500 dark:text-stone-400 mt-1">Host health, daemon status, and system metrics</p>
 		</div>
 
 		{#if status}
-			<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 w-fit">
+			<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 w-fit">
 				<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
 				Daemon Active ({status.version})
 			</div>
@@ -77,41 +77,41 @@
 		<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 			<!-- Daemon Health -->
 			<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-5 shadow-sm">
-				<span class="text-xs font-medium text-stone-500 block mb-1">Daemon Status</span>
+				<span class="text-xs font-medium text-stone-500 dark:text-stone-400 block mb-1">Daemon Status</span>
 				<div class="flex items-baseline gap-2">
-					<span class="text-xl font-bold text-emerald-600 dark:text-emerald-400">Running</span>
+					<span class="text-xl font-bold text-emerald-700 dark:text-emerald-400">Running</span>
 				</div>
-				<span class="text-xs text-stone-400 mt-2 block">Uptime: {formatUptime(status.uptime_sec)}</span>
+				<span class="text-xs text-stone-500 dark:text-stone-400 mt-2 block">Uptime: {formatUptime(status.uptime_sec)}</span>
 			</div>
 
 			<!-- Memory Footprint -->
 			<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-5 shadow-sm">
-				<span class="text-xs font-medium text-stone-500 block mb-1">Daemon Footprint (NFR-2)</span>
+				<span class="text-xs font-medium text-stone-500 dark:text-stone-400 block mb-1">Daemon Footprint (NFR-2)</span>
 				<div class="flex items-baseline gap-2">
 					<span class="text-xl font-bold">{formatBytes(status.daemon_rss)}</span>
-					<span class="text-xs text-stone-500">RSS</span>
+					<span class="text-xs text-stone-500 dark:text-stone-400">RSS</span>
 				</div>
-				<span class="text-xs text-stone-400 mt-2 block">Target &lt; 30 MB idle</span>
+				<span class="text-xs text-stone-500 dark:text-stone-400 mt-2 block">Target &lt; 30 MB idle</span>
 			</div>
 
 			<!-- Database & State -->
 			<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-5 shadow-sm">
-				<span class="text-xs font-medium text-stone-500 block mb-1">SQLite Database</span>
+				<span class="text-xs font-medium text-stone-500 dark:text-stone-400 block mb-1">SQLite Database</span>
 				<div class="flex items-baseline gap-2">
 					<span class="text-xl font-bold text-brand-text">Schema v{status.schema_version}</span>
 				</div>
-				<span class="text-xs {status.database_ok ? 'text-emerald-500' : 'text-red-500'} mt-2 block">
+				<span class="text-xs {status.database_ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'} mt-2 block">
 					{status.database_ok ? 'Database Healthy' : 'Database Error'}
 				</span>
 			</div>
 
 			<!-- Build Info -->
 			<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-5 shadow-sm">
-				<span class="text-xs font-medium text-stone-500 block mb-1">Binary Version</span>
+				<span class="text-xs font-medium text-stone-500 dark:text-stone-400 block mb-1">Binary Version</span>
 				<div class="flex items-baseline gap-2">
 					<span class="text-xl font-bold font-mono">{status.version}</span>
 				</div>
-				<span class="text-xs text-stone-400 mt-2 block truncate">Commit: {status.commit}</span>
+				<span class="text-xs text-stone-500 dark:text-stone-400 mt-2 block truncate">Commit: {status.commit}</span>
 			</div>
 		</div>
 	{/if}

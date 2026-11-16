@@ -115,17 +115,17 @@
 	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone-200 dark:border-stone-800">
 		<div>
 			<h1 class="text-2xl font-bold tracking-tight">Audit Log</h1>
-			<p class="text-xs text-stone-500 mt-1">Immutable record of mutating actions and security events (AUD-1, AUD-2)</p>
+			<p class="text-xs text-stone-500 dark:text-stone-400 mt-1">Immutable record of mutating actions and security events (AUD-1, AUD-2)</p>
 		</div>
 
 		<div class="flex flex-wrap items-center gap-3">
 			<div class="flex items-center gap-2">
-				<label for="origin-filter" class="text-xs font-medium text-stone-500">Origin:</label>
+				<label for="origin-filter" class="text-xs font-medium text-stone-600 dark:text-stone-400">Origin:</label>
 				<select
 					id="origin-filter"
 					value={selectedOrigin}
 					onchange={handleOriginChange}
-					class="text-xs py-1.5 px-2.5 rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-ring"
+					class="text-xs py-1.5 px-2.5 rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-1 focus:ring-brand-ring"
 				>
 					<option value="">All Origins</option>
 					<option value="panel">panel</option>
@@ -136,24 +136,24 @@
 			</div>
 
 			<div class="flex items-center gap-2">
-				<label for="app-filter" class="text-xs font-medium text-stone-500">App:</label>
+				<label for="app-filter" class="text-xs font-medium text-stone-600 dark:text-stone-400">App:</label>
 				<input
 					id="app-filter"
 					type="text"
 					placeholder="Filter by app..."
 					value={selectedApp}
 					oninput={handleAppInput}
-					class="text-xs py-1.5 px-2.5 rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-ring w-32"
+					class="text-xs py-1.5 px-2.5 rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-1 focus:ring-brand-ring w-32"
 				/>
 			</div>
 
 			<div class="flex items-center gap-2">
-				<label for="time-filter" class="text-xs font-medium text-stone-500">Time:</label>
+				<label for="time-filter" class="text-xs font-medium text-stone-600 dark:text-stone-400">Time:</label>
 				<select
 					id="time-filter"
 					value={selectedTime}
 					onchange={handleTimeChange}
-					class="text-xs py-1.5 px-2.5 rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-ring"
+					class="text-xs py-1.5 px-2.5 rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-1 focus:ring-brand-ring"
 				>
 					<option value="">All Time</option>
 					<option value="1h">Last hour</option>
@@ -175,7 +175,7 @@
 			{/each}
 		</div>
 	{:else if logs.length === 0}
-		<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-8 text-center text-stone-500">
+		<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-8 text-center text-stone-500 dark:text-stone-400">
 			<p class="text-sm font-medium">No audit log entries found</p>
 			{#if selectedOrigin}
 				<p class="text-xs mt-1">Try clearing the origin filter.</p>
@@ -183,10 +183,11 @@
 		</div>
 	{:else}
 		<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden shadow-sm">
-			<div class="overflow-x-auto">
+			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+			<div class="overflow-x-auto focus:outline-none focus:ring-1 focus:ring-brand-ring" tabindex="0" role="region" aria-label="Audit log table">
 				<table class="w-full text-left text-xs border-collapse">
 					<thead>
-						<tr class="border-b border-stone-200 dark:border-stone-800 bg-stone-50/50 dark:bg-stone-950/50 text-stone-500">
+						<tr class="border-b border-stone-200 dark:border-stone-800 bg-stone-50/50 dark:bg-stone-950/50 text-stone-600 dark:text-stone-400">
 							<th class="py-3 px-4 font-medium">Time</th>
 							<th class="py-3 px-4 font-medium">Origin</th>
 							<th class="py-3 px-4 font-medium">Event</th>
@@ -198,7 +199,7 @@
 						{#each logs as log (log.id)}
 							{@const badge = getOriginBadge(log.origin)}
 							<tr class="hover:bg-stone-50/50 dark:hover:bg-stone-800/30 transition">
-								<td class="py-3 px-4 text-stone-400 whitespace-nowrap">
+								<td class="py-3 px-4 text-stone-500 dark:text-stone-400 whitespace-nowrap">
 									{formatDate(log.created_at)}
 								</td>
 								<td class="py-3 px-4 whitespace-nowrap">
@@ -209,7 +210,7 @@
 								<td class="py-3 px-4 font-semibold text-stone-800 dark:text-stone-200 whitespace-nowrap">
 									{log.event}
 								</td>
-								<td class="py-3 px-4 text-stone-500 whitespace-nowrap">
+								<td class="py-3 px-4 text-stone-600 dark:text-stone-400 whitespace-nowrap">
 									{log.actor}
 								</td>
 								<td class="py-3 px-4 text-stone-600 dark:text-stone-300 font-sans max-w-md truncate">
