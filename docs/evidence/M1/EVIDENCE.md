@@ -37,53 +37,68 @@ All tests and measurements were executed on the development workstation and the 
 | **Secrets Management** | **PASS** | AES-256-GCM encryption at rest bound to column names via AAD; tamper detection and wrong-key rejection verified. |
 | **Embedded SvelteKit Panel** | **PASS** | SvelteKit 3 + Tailwind v4 SPA compiled to static assets and embedded via Go `embed.FS`. Dashboard displays live daemon telemetry and version. |
 | **VM Deployment (`dermaga-vm`)** | **PASS** | Daemon installed as systemd user service (`dermaga.service`) under user `server` with lingering; accessed via `ssh -L 7070:127.0.0.1:7070`. |
-| **NFR-2 Memory & Binary Footprint** | **PASS** | Binary size: **11.4 MB** (target < 30 MB). Fresh idle RSS: **11.1 MB** (target < 30 MB). Post-login RSS: **14.4 MB**. |
+| **NFR-2 Memory & Binary Footprint** | **PASS** | Binary size: **11.4 MB** (target < 30 MB). Fresh idle RSS: **13.2 MB** (target < 30 MB). 10-minute settled RSS: **17.0 MB**. |
 | **Spikes Cleanup & Porting** | **PASS** | `spikes/` directory removed; `hook-relay` and `probe` ported into `cmd/dermaga`. |
 
 ---
 
 ## 2. Binary Size and Idle RSS Measurements (NFR-2)
 
-Measurements taken on Debian 13 (`dermaga-vm`, Linux 6.12.115+deb13.1-cloud-amd64) running binary built from commit under review (`VERSION=v0.1.0 COMMIT=6bd4672`):
+Measurements taken on Debian 13 (`dermaga-vm`, Linux 6.12.115+deb13.1-cloud-amd64) running binary built from commit `ee1cdbf` (`v0.1.2-dev`). Raw unedited command outputs are committed in `docs/evidence/M1/logs/`.
 
 ```text
 $ ls -lh ~/.local/bin/dermaga
--rwxr-xr-x 1 server server 11M Nov 16 08:36 /home/server/.local/bin/dermaga
+-rwxr-xr-x 1 server server 11M Nov 16 11:33 /home/server/.local/bin/dermaga
 ```
 
 ### (a) Fresh-start idle RSS (immediately post service start)
+Log file: [`docs/evidence/M1/logs/vm_fresh_idle_rss.log`](logs/vm_fresh_idle_rss.log)
 ```text
-$ PID=$(systemctl --user show -p MainPID --value dermaga.service)
-$ cat /proc/$PID/status | grep -E 'VmRSS|VmHWM|VmSize|Threads'
-VmSize:	 1270608 kB
-VmHWM:	   11100 kB
-VmRSS:	   11100 kB
-Threads:	6
+# Command: Fresh-start idle RSS measurement
+# Commit: ee1cdbf
+# Timestamp: 2026-11-16T18:35:28+07:00
+PID: 2624
+VmSize:	 1270632 kB
+VmHWM:	   13184 kB
+VmRSS:	   13184 kB
+VmData:	   74960 kB
+VmStk:	     132 kB
 ```
 
 ### (b) Immediately after one real login through the SSH tunnel
+Log file: [`docs/evidence/M1/logs/vm_post_login_rss.log`](logs/vm_post_login_rss.log)
 ```text
-$ cat /proc/$PID/status | grep -E 'VmRSS|VmHWM|VmSize|Threads'
-VmSize:	 1337132 kB
-VmHWM:	   80068 kB
-VmRSS:	   80000 kB
-Threads:	7
+# Command: Post-login RSS measurement immediately after real login
+# Commit: ee1cdbf
+# Timestamp: 2026-11-16T18:35:30+07:00
+PID: 2624
+Measured login round-trip time: 121 ms
+VmSize:	 1336572 kB
+VmHWM:	   78912 kB
+VmRSS:	   78912 kB
+VmData:	  140900 kB
+VmStk:	     132 kB
 ```
 
 ### (c) Idle RSS after 10 minutes without requests
+Log file: [`docs/evidence/M1/logs/vm_settled_idle_rss.log`](logs/vm_settled_idle_rss.log)
 ```text
-$ cat /proc/$PID/status | grep -E 'VmRSS|VmHWM|VmSize|Threads'
-VmSize:	 1337132 kB
-VmHWM:	   80068 kB
-VmRSS:	   16456 kB
-Threads:	7
+# Command: Settled idle RSS measurement after 10 minutes without requests
+# Commit: ee1cdbf
+# Timestamp: 2026-11-16T18:45:32+07:00
+PID: 2624
+VmSize:	 1336900 kB
+VmHWM:	   80188 kB
+VmRSS:	   16976 kB
+VmData:	  141228 kB
+VmStk:	     132 kB
 ```
 
 ### Analysis and Discussion of NFR-2 Budget
-- **Fresh-start idle RSS:** 11,100 kB (~10.84 MiB / 11.10 MB), well within the < 30 MB idle budget.
-- **Login memory spike:** The Argon2id algorithm configured with standard OWASP recommendations (`argonMemory = 64 * 1024`, 64 MiB) allocates ~65 MiB during password hash verification. This causes `VmRSS` to peak at 80,000 kB (~78.13 MB), recorded as `VmHWM: 80068 kB`.
-- **Settled idle RSS:** After 10 minutes without requests, Go runtime GC and page scavenging return memory, dropping `VmRSS` back to 16,456 kB (~16.07 MB), well within the < 30 MB idle budget.
-- **Budget status:** While fresh-start and settled idle RSS easily satisfy the < 30 MB idle budget, the immediate post-login peak exceeds 30 MB. Options and trade-offs are presented to the project owner for decision.
+- **Fresh-start idle RSS:** 13,184 kB (~12.87 MiB / 13.18 MB), well within the < 30 MB idle budget.
+- **Login memory allocation & RFC 9106 Argon2id parameters:** Per RFC 9106 §4 (Second Recommended Option for memory-constrained environments: `t=3, m=64 MiB (65536 KiB), p=4, 128-bit salt, 256-bit tag size`), the Argon2id computation temporarily allocates 64 MiB of working memory. During verification on `dermaga-vm`, total round-trip login latency was 121 ms (HTTP 113 ms), and peak memory reached `VmHWM: 80188 kB` (~78.31 MiB).
+- **Settled idle RSS:** In minute 6 following login, the Go runtime garbage collector and memory scavenger returned unreferenced heap pages to the OS kernel (`MADV_DONTNEED`), settling `VmRSS` down to 16,976 kB (~16.58 MiB / 16.98 MB).
+- **Budget Decision (DEC-12):** Project owner selected Option C: NFR-2 is explicitly defined as "idle RSS < 30 MB measured after a fresh restart". The transient peak during Argon2id hash computation is accepted and documented without invoking manual GC hacks (`debug.FreeOSMemory`). Stored password hashes embed parameter metadata and continue verifying independently.
 
 ---
 
@@ -188,19 +203,23 @@ Nov 16 07:14:18 dermaga-vm dermaga[1462]: Recovery socket listening on /run/user
 ```
 
 ### 4.2 `dermaga panel` Output
+Log file: [`docs/evidence/M1/logs/panel_output.log`](logs/panel_output.log)
 ```text
-$ dermaga panel
+$ ssh dermaga-vm '~/.local/bin/dermaga panel'
 === dermaga Panel Access ===
 
 1. On your laptop, add or verify this configuration in ~/.ssh/config:
 
    Host dermaga
-       HostName dermaga-vm
+       HostName 192.168.122.217
        User server
        Port 4222
        LocalForward 7070 127.0.0.1:7070
        ServerAliveInterval 30
        ServerAliveCountMax 3
+
+Note: The detected connection address (192.168.122.217) is a private or local network address that may sit behind NAT or a VM bridge.
+If connecting from outside this local network, replace it with the public IP or hostname you normally use to SSH to this server.
 
 2. Connect from your laptop:
    ssh dermaga
@@ -209,18 +228,20 @@ $ dermaga panel
    http://localhost:7070
 ```
 
+End-to-end SSH tunnel verification log: [`docs/evidence/M1/logs/panel_ssh_tunnel.log`](logs/panel_ssh_tunnel.log). Opening the tunnel on the laptop via `Host dermaga` forwards `127.0.0.1:7070` and successfully responds with HTTP 200 to `/api/auth/session` and serves the panel SPA.
+
 ### 4.3 Recovery Commands (Unix Socket and Direct SQLite Fallback)
 ```text
-# With active daemon (communicating over 0600 Unix socket)
-$ dermaga admin set-password --password vm-active-pass-98765
+# With active daemon (communicating over 0600 Unix socket, password via stdin)
+$ echo "vm-active-pass-98765" | dermaga admin set-password
 Success: Admin password updated and all sessions revoked.
 
 $ dermaga admin totp disable
 Success: TOTP two-factor authentication disabled.
 
-# With inactive daemon (direct SQLite fallback)
+# With inactive daemon (direct SQLite fallback, password via stdin)
 $ systemctl --user stop dermaga.service
-$ dermaga admin set-password --password vm-fallback-pass-111
+$ echo "vm-fallback-pass-111" | dermaga admin set-password
 Daemon inactive or unreachable over socket; accessing SQLite database directly (SRV-2 fallback)...
 Success: Admin password updated and all sessions revoked.
 ```

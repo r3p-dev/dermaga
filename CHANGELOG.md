@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-11-16
+
+### Added
+- Added comprehensive unit tests in `cmd/dermaga/main_test.go` covering CLI recovery commands, non-TTY and TTY input paths, short and empty password rejections, and dynamic SSH connection detection.
+- Added automated measurement script `test/vm/measure_nfr2.sh` to measure fresh-start idle RSS, post-login peak RSS, and 10-minute settled idle RSS on `dermaga-vm`.
+- Documented architectural decision `DEC-12` in `docs/ARCHITECTURE.md` establishing Option C for NFR-2 idle RSS budget and RFC 9106 Option 2 Argon2id parameters.
+
+### Changed
+- Updated Argon2id parameters to RFC 9106 §4 Second Recommended Option (`t=3, m=64 MiB, p=4`, 128-bit salt, 256-bit tag size) in `internal/auth/auth.go`.
+- Pinned `actions/checkout` in GitHub Actions CI workflow to `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1` (`v7.0.1`), eliminating Node.js 20 deprecation warnings.
+- Removed `--password` flag from `dermaga admin set-password` in favor of interactive prompt with hidden input and confirmation on TTY, or single-line stdin on non-TTY.
+- Updated `dermaga panel` to dynamically derive SSH connection details (`$SSH_CONNECTION`, daemon configuration, or port 22 fallback) and detect private/loopback/CGNAT addresses.
+- Updated non-release version fallback default to `"dev"` when built without `-ldflags` (`main.Version`).
+
+### Fixed
+- Included and verified `cmd/dermaga/main_test.go` across clean builds and tests.
+- Updated `test/vm/seed.sh` to pipe demo password to stdin and store it in `~/.config/dermaga/demo_password` (mode 0600) without exposing password strings in script logs.
+
 ## [0.1.1] - 2026-11-16
 
 ### Fixed

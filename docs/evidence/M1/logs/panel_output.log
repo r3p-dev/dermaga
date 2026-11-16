@@ -1,0 +1,24 @@
+# Command: ssh dermaga-vm '~/.local/bin/dermaga panel'
+# Commit: ee1cdbf
+# Timestamp: 2026-11-16T18:34:33+07:00
+=== dermaga Panel Access ===
+
+1. On your laptop, add or verify this configuration in ~/.ssh/config:
+
+   Host dermaga
+       HostName 192.168.122.217
+       User server
+       Port 4222
+       LocalForward 7070 127.0.0.1:7070
+       ServerAliveInterval 30
+       ServerAliveCountMax 3
+
+Note: The detected connection address (192.168.122.217) is a private or local network address that may sit behind NAT or a VM bridge.
+If connecting from outside this local network, replace it with the public IP or hostname you normally use to SSH to this server.
+
+2. Connect from your laptop:
+   ssh dermaga
+
+3. Open the panel in your browser:
+   http://localhost:7070
+

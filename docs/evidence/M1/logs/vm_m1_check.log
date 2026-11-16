@@ -1,0 +1,19 @@
+# Command: bash test/vm/m1_check.sh
+# Commit: ee1cdbf
+# Timestamp: 2026-11-16T18:33:52+07:00
+Timestamp: 2026-11-16T18:33:52+07:00
+Hostname:  fedora
+Commit:    ee1cdbf
+=== Running M1 VM verification on dermaga-vm ===
+Remote Hostname: dermaga-vm
+Remote Date:     2026-11-16T11:33:52+00:00
+--- Checking systemd user service ---
+PASS: dermaga.service is active
+--- Checking daemon Unix socket ---
+PASS: Unix socket responded: {"success":true,"message":"dermaga daemon is active (uptime: 7s, schema: v1)"}
+--- Checking HTTP loopback /api/auth/session ---
+PASS: HTTP loopback responded: {"authenticated":false,"expires_at":"0001-01-01T00:00:00Z","setup_required":false}
+--- Checking process memory footprint ---
+Current VmRSS: 14508 kB
+PASS: VmRSS 14508 kB is within < 30 MB idle budget
+=== All M1 VM verification checks passed ===

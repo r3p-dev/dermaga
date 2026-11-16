@@ -1,0 +1,33 @@
+# Command: Open SSH tunnel via 'ssh -N -L 7070:127.0.0.1:7070 dermaga' and curl panel endpoint
+# Commit: ee1cdbf
+# Timestamp: 2026-11-16T18:34:41+07:00
+--- Testing SSH tunnel with Host dermaga config ---
+SSH Tunnel PID: 366299
+Checking local listening port 7070:
+tcp   LISTEN 0      128                             127.0.0.1:7070       0.0.0.0:*    users:(("ssh",pid=366299,fd=5))        
+tcp   LISTEN 0      128                                 [::1]:7070          [::]:*    users:(("ssh",pid=366299,fd=4))        
+Querying /api/auth/session through tunnel:
+HTTP/1.1 200 OK
+Content-Type: application/json
+Date: Mon, 16 Nov 2026 11:34:43 GMT
+Content-Length: 83
+
+{"authenticated":false,"expires_at":"0001-01-01T00:00:00Z","setup_required":false}
+
+Querying / through tunnel:
+HTTP/1.1 200 OK
+Accept-Ranges: bytes
+Content-Length: 1616
+Content-Type: text/html; charset=utf-8
+Date: Mon, 16 Nov 2026 11:34:43 GMT
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="/favicon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="/_app/immutable/entry/start.D2xBPuqZ.js" rel="modulepreload">
+		<link href="/_app/immutable/entry/payload.DSmR2FwN.js" rel="modulepreload">
+		<link href="/_app/immutable/chunks/DclECHGd.js" rel="modulepreload">
+SSH Tunnel closed.

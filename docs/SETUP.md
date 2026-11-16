@@ -201,7 +201,11 @@ ssh -N -L 7070:127.0.0.1:7070 dermaga-vm
 If operator credentials or 2FA state need to be reset via the server shell:
 ```bash
 # Set or reset admin password (revokes all active sessions)
-ssh dermaga-vm "~/.local/bin/dermaga admin set-password --password <secret>"
+# On a TTY, prompts interactively with hidden input and confirmation:
+ssh -t dermaga-vm "~/.local/bin/dermaga admin set-password"
+
+# Or non-interactively via piped stdin:
+echo "secret-pass" | ssh dermaga-vm "~/.local/bin/dermaga admin set-password"
 
 # Disable TOTP two-factor authentication
 ssh dermaga-vm "~/.local/bin/dermaga admin totp disable"

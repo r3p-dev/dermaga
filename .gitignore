@@ -14,6 +14,7 @@ ui/node_modules/
 *.key
 *.pem
 *.log
+!docs/evidence/**/*.log
 *.db
 *.db-wal
 *.db-shm
