@@ -19,6 +19,7 @@ type Host interface {
 	Stat(path string) (os.FileInfo, error)
 	Remove(path string) error
 	MkdirAll(path string, perm os.FileMode) error
+	ReadDir(path string) ([]os.DirEntry, error)
 }
 
 // RealHost implements Host using real OS system calls.
@@ -114,4 +115,9 @@ func (h *RealHost) Remove(path string) error {
 // MkdirAll creates a directory named path, along with any necessary parents.
 func (h *RealHost) MkdirAll(path string, perm os.FileMode) error {
 	return os.MkdirAll(path, perm)
+}
+
+// ReadDir reads the named directory, returning all its directory entries sorted by filename.
+func (h *RealHost) ReadDir(path string) ([]os.DirEntry, error) {
+	return os.ReadDir(path)
 }

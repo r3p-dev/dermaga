@@ -3,6 +3,8 @@ package host
 import (
 	"context"
 	"os"
+	"path/filepath"
+	"sort"
 	"sync"
 	"time"
 )
@@ -95,6 +97,46 @@ func (f *FakeHost) Remove(path string) error {
 func (f *FakeHost) MkdirAll(path string, perm os.FileMode) error {
 	return nil
 }
+
+// ReadDir returns all directory entries in memory under the given path.
+func (f *FakeHost) ReadDir(path string) ([]os.DirEntry, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	cleanDir := filepath.Clean(path)
+	seen := make(map[string]bool)
+	var entries []os.DirEntry
+
+	for p, data := range f.Files {
+		dir := filepath.Clean(filepath.Dir(p))
+		if dir == cleanDir {
+			base := filepath.Base(p)
+			if !seen[base] {
+				seen[base] = true
+				mode := f.FileModes[p]
+				entries = append(entries, &fakeDirEntry{
+					name: base,
+					info: &fakeFileInfo{name: base, size: int64(len(data)), mode: mode},
+				})
+			}
+		}
+	}
+
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name() < entries[j].Name()
+	})
+	return entries, nil
+}
+
+type fakeDirEntry struct {
+	name string
+	info os.FileInfo
+}
+
+func (e *fakeDirEntry) Name() string               { return e.name }
+func (e *fakeDirEntry) IsDir() bool                { return false }
+func (e *fakeDirEntry) Type() os.FileMode          { return e.info.Mode().Type() }
+func (e *fakeDirEntry) Info() (os.FileInfo, error) { return e.info, nil }
 
 type fakeFileInfo struct {
 	name string

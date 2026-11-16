@@ -8,11 +8,13 @@ import (
 
 // DefaultPaths returns standard XDG paths for dermaga files.
 type Paths struct {
-	DBPath     string
-	KeyPath    string
-	SocketDir  string
-	DaemonSock string
-	HookSock   string
+	DBPath            string
+	KeyPath           string
+	SocketDir         string
+	DaemonSock        string
+	HookSock          string
+	QuadletDir        string
+	TraefikDynamicDir string
 }
 
 // ResolvePaths resolves all standard directories according to XDG specifications.
@@ -43,10 +45,12 @@ func ResolvePaths() Paths {
 	socketDir := filepath.Join(runtimeDir, "dermaga")
 
 	return Paths{
-		DBPath:     filepath.Join(dataHome, "dermaga", "dermaga.db"),
-		KeyPath:    filepath.Join(configHome, "dermaga", "master.key"),
-		SocketDir:  socketDir,
-		DaemonSock: filepath.Join(socketDir, "daemon.sock"),
-		HookSock:   filepath.Join(socketDir, "hooks.sock"),
+		DBPath:            filepath.Join(dataHome, "dermaga", "dermaga.db"),
+		KeyPath:           filepath.Join(configHome, "dermaga", "master.key"),
+		SocketDir:         socketDir,
+		DaemonSock:        filepath.Join(socketDir, "daemon.sock"),
+		HookSock:          filepath.Join(socketDir, "hooks.sock"),
+		QuadletDir:        filepath.Join(configHome, "containers", "systemd"),
+		TraefikDynamicDir: filepath.Join(dataHome, "dermaga", "traefik", "dynamic"),
 	}
 }
