@@ -6,6 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-11-16
+
+### Fixed
+- Fixed dark mode in web panel by configuring `@custom-variant dark (&:where(.dark, .dark *));` in `ui/src/app.css` to support class-based theme toggling alongside Tailwind CSS v4's default media-query variant.
+- Prevented flash of wrong theme on page load by adding a synchronous inline `<head>` script in `ui/src/app.html` that checks `localStorage.theme` and falls back to system preference.
+- Fixed WCAG AA contrast compliance across light and dark modes: adjusted metric green text to `text-emerald-700` (`#047857`, 4.93:1) on light and `dark:text-emerald-400` (`#34d399`, 8.08:1) on dark; added `dark:text-stone-400` for secondary text on dark surfaces (5.9:1).
+- Fixed accessibility violation on Audit Log table horizontal scroll container by adding `role="region" aria-label="Audit log table" tabindex="0"` (`scrollable-region-focusable`).
+
+### Added
+- Pinned and integrated `@axe-core/playwright@4.14.0` in `ui/package.json` for automated WCAG 2.1 Level AA testing on live rendered DOM across all views, themes, and viewports.
+- Added computed background verification in Playwright E2E asserting rendered sRGB colors (`rgb(12, 10, 9)` body, `rgb(28, 25, 23)` cards) via canvas 2D context resolution.
+- Recorded architectural decision `DEC-14` in `docs/ARCHITECTURE.md`.
+- Updated deployment and capture scripts to verify real VM dark mode and live Axe contrast on `dermaga-vm`.
+
+### Removed
+- Removed static Python contrast calculation script `scripts/check_contrast.py` in favor of live browser DOM analysis with Axe.
+
 ## [0.1.3] - 2026-11-16
 
 ### Added

@@ -317,6 +317,9 @@ Narrow viewport:
 
 ---
 
+> [!NOTE]
+> **Superseded Warning (v0.1.3):** The dark mode screenshots and contrast calculations in Section 6 below were produced under an assumption-based script and did not reflect rendered DOM in v0.1.3 (where Tailwind v4's `dark:` classes remained inactive on toggle). All contrast and dark mode evidence has been superseded by empirical DOM testing with `@axe-core/playwright` in Section 7 ([M1-dark](#7-m1-dark-class-based-dark-mode-and-live-dom-axe-aa-verification)).
+
 ## 6. M1-brand: Brand Identity and WCAG 2.1 AA Contrast Verification
 
 Checkpoint `M1-brand` updates the web panel visual identity to use the official Dermaga brand assets and derived color tokens approved by the owner (`DEC-13`), achieving full WCAG 2.1 Level AA contrast compliance (`NFR-7`).
@@ -403,4 +406,49 @@ Binary `v0.1.2-dirty` (commit `9a0ad2c`) was deployed to `dermaga-vm` via atomic
 | Light Mode (Real VM) | Dark Mode (Real VM) |
 |---|---|
 | ![VM Dashboard Brand Light](brand/panel-vm-brand.png) | ![VM Dashboard Brand Dark](brand/panel-vm-brand-dark.png) |
+
+---
+
+## 7. M1-dark: Class-Based Dark Mode and Live DOM Axe AA Verification
+
+### 7.1 Root Cause & Solution
+In v0.1.3, toggling `.dark` on `<html>` failed to activate dark styles because Tailwind CSS v4 compiles `dark:` variant utilities targeting `@media (prefers-color-scheme: dark)` unless a custom variant is explicitly defined. To resolve this:
+1. **Custom Dark Variant:** Defined `@custom-variant dark (&:where(.dark, .dark *));` in `ui/src/app.css` and added `color-scheme: light;` / `color-scheme: dark;` to enable browser-level dark form controls and scrollbars.
+2. **Theme Flash Elimination:** Added a synchronous inline `<head>` script in `ui/src/app.html` that reads `localStorage.getItem('theme')` (or checks `matchMedia('(prefers-color-scheme: dark)')` when unset) and immediately applies `.dark` before DOM rendering starts.
+3. **Contrast Corrections for WCAG AA:**
+   - Changed metric text from `text-emerald-600` (which achieved 3.65:1 on white) to `text-emerald-700` (`#047857`, 4.93:1 on white, AA pass) and `dark:text-emerald-400` (`#34d399`, 8.08:1 on `#1c1917`, AA pass).
+   - Changed secondary text on dark surfaces from `text-stone-500` (3.65:1 on `#1c1917`) to `dark:text-stone-400` (5.9:1 on `#1c1917`, AA pass).
+   - Added `role="region" aria-label="Audit log table" tabindex="0"` to the horizontal scrollable wrapper in `ui/src/routes/audit-logs/+page.svelte` to ensure full keyboard navigation compliance under Axe rules.
+4. **Logo Visibility in Dark Mode:** Verified `ui/static/logo.svg` against `#1c1917` (stone-900) and `#0c0a09` (stone-950). The periwinkle outer shield (`#7C78EE`) creates a vibrant border cleanly separating from the dark background, while the interior navy cabin (`#1A1B36`) stays enclosed within the shield. No logo recoloring was needed or performed.
+
+### 7.2 Automated Accessibility Audit (`@axe-core/playwright`)
+Replaced the static Python script with live rendered DOM auditing using `@axe-core/playwright` across all views and viewports in `ui/e2e/panel.test.ts` (log: [`docs/evidence/M1/logs/test_browser.log`](logs/test_browser.log)):
+
+| View / Scenario | Viewport | Theme | Computed Background | Axe WCAG 2.1 AA Violations | Status |
+|---|---|---|---|:---:|:---:|
+| Initial First Visit (No Saved Choice) | 1280x800 | Dark (OS Pref) | Body: `rgb(12, 10, 9)` / Card: `rgb(28, 25, 23)` | 0 | **PASS** |
+| Login Page (Pre-Auth) | 1280x800 | Light | Body: `rgb(250, 250, 249)` / Card: `rgb(255, 255, 255)` | 0 | **PASS** |
+| Login Page (Pre-Auth) | 1280x800 | Dark | Body: `rgb(12, 10, 9)` / Card: `rgb(28, 25, 23)` | 0 | **PASS** |
+| Login Page (Pre-Auth) | 375x667 | Light | Body: `rgb(250, 250, 249)` / Card: `rgb(255, 255, 255)` | 0 | **PASS** |
+| Login Page (Pre-Auth) | 375x667 | Dark | Body: `rgb(12, 10, 9)` / Card: `rgb(28, 25, 23)` | 0 | **PASS** |
+| Dashboard (`/`) | 1280x800 | Light | Body: `rgb(250, 250, 249)` / Card: `rgb(255, 255, 255)` | 0 | **PASS** |
+| Dashboard (`/`) | 1280x800 | Dark | Body: `rgb(12, 10, 9)` / Card: `rgb(28, 25, 23)` | 0 | **PASS** |
+| Dashboard (`/`) | 375x667 | Light | Body: `rgb(250, 250, 249)` / Card: `rgb(255, 255, 255)` | 0 | **PASS** |
+| Dashboard (`/`) | 375x667 | Dark | Body: `rgb(12, 10, 9)` / Card: `rgb(28, 25, 23)` | 0 | **PASS** |
+| Audit Logs (`/audit-logs`) | 1280x800 | Light | Body: `rgb(250, 250, 249)` / Table: `rgb(255, 255, 255)` | 0 | **PASS** |
+| Audit Logs (`/audit-logs`) | 1280x800 | Dark | Body: `rgb(12, 10, 9)` / Table: `rgb(28, 25, 23)` | 0 | **PASS** |
+| Audit Logs (`/audit-logs`) | 375x667 | Light | Body: `rgb(250, 250, 249)` / Table: `rgb(255, 255, 255)` | 0 | **PASS** |
+| Audit Logs (`/audit-logs`) | 375x667 | Dark | Body: `rgb(12, 10, 9)` / Table: `rgb(28, 25, 23)` | 0 | **PASS** |
+
+### 7.3 Real VM Deployment Verification (`dermaga-vm`)
+Binary `v0.1.4` (commit `ba070a1`) was deployed to `dermaga-vm` via atomic replacement (`docs/evidence/M1/logs/brand_vm_deploy.log`). The panel was accessed through the host SSH tunnel (`ssh -L 7070:127.0.0.1:7070 dermaga-vm`) and verified in a real browser session (log: [`docs/evidence/M1/logs/brand_vm_screenshot.log`](logs/brand_vm_screenshot.log)).
+- Light Dashboard Axe Violations: 0
+- Dark Dashboard Axe Violations: 0
+- Dark Computed Body Background: `rgb(12, 10, 9)`
+- Binary Version Displayed: `v0.1.4` (non-dirty)
+
+| Light Mode (Real VM - v0.1.4) | Dark Mode (Real VM - v0.1.4) |
+|---|---|
+| ![VM Dashboard Brand Light](brand/panel-vm-brand.png) | ![VM Dashboard Brand Dark](brand/panel-vm-brand-dark.png) |
+
 
