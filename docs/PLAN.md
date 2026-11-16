@@ -133,6 +133,13 @@ Acceptance criteria:
   during the whole install never shows 7070; (f) laptop command pasted twice in bash and in fish → one
   block; (g) re-run is a no-op; (h) reboot → the daemon and Traefik are back.
 
+Open items / decisions for M3:
+- **LAP-1 laptop command identity matching**: The `LAP-1` laptop command should get the login public key's
+  fingerprint embedded by the installer, look for a matching `~/.ssh/*.pub` on the laptop, and write
+  `IdentityFile` (with `IdentitiesOnly yes`) only for a real match; with no match it writes no `IdentityFile`
+  and tells the user. The logic runs inside `sh -c '...'` so it pastes in bash, zsh and fish.
+  (Does not conflict with PRD `LAP-1`; refines the exact `Host dermaga` block content to prevent multi-key SSH failures).
+
 ## M4 (0.4.0): First-run setup and panel access
 
 Acceptance criteria:
