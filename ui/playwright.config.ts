@@ -9,7 +9,7 @@ export default defineConfig({
   },
   webServer: {
     command:
-      "sh -c 'mkdir -p /tmp/dermaga-e2e/data /tmp/dermaga-e2e/config /tmp/dermaga-e2e/run && ../bin/dermaga admin set-password --password correct-password-123 && ../bin/dermaga daemon'",
+      "sh -c 'mkdir -p /tmp/dermaga-e2e/data /tmp/dermaga-e2e/config /tmp/dermaga-e2e/run && echo correct-password-123 | ../bin/dermaga admin set-password && ../bin/dermaga daemon'",
     url: "http://127.0.0.1:7070",
     reuseExistingServer: false,
     env: {

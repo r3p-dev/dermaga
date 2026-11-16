@@ -32,7 +32,7 @@ test: ui
 	go test -v ./...
 
 # Run browser tests
-test-browser:
+test-browser: build
 	cd ui && bunx playwright test
 
 # 5. Format and Lint checks
