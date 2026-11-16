@@ -128,3 +128,91 @@ To reset the test environment cleanly after spikes or milestone verification:
    ```
 3. **GitHub App Cleanup (Optional):**
    If a test GitHub App is no longer needed, delete it from GitHub under **Account Settings → Developer settings → GitHub Apps → [App Name] → Advanced → Delete GitHub App**.
+
+---
+
+## 6. Milestone M1 Setup & Operations
+
+### 6.1 Building Binaries
+Build the host binary and release binaries from the workspace root:
+```bash
+# Build static binary for current host architecture
+make build
+
+# Build static release binaries for both amd64 and arm64
+make build-all
+```
+Binaries are placed in `bin/` (`bin/dermaga`, `bin/dermaga-linux-amd64`, `bin/dermaga-linux-arm64`).
+
+### 6.2 Installing the Systemd User Service on `dermaga-vm`
+1. Ensure required user directories exist:
+   ```bash
+   ssh dermaga-vm "mkdir -p ~/.local/bin ~/.config/systemd/user ~/.local/share/dermaga"
+   ```
+2. Copy the binary to `~/.local/bin/dermaga`:
+   ```bash
+   scp bin/dermaga-linux-amd64 dermaga-vm:~/.local/bin/dermaga
+   ssh dermaga-vm "chmod +x ~/.local/bin/dermaga"
+   ```
+3. Create the systemd user service definition (`~/.config/systemd/user/dermaga.service`):
+   ```ini
+   [Unit]
+   Description=Dermaga Host Agent
+   After=network.target
+
+   [Service]
+   Type=simple
+   ExecStart=%h/.local/bin/dermaga daemon
+   Restart=always
+   RestartSec=3s
+   Environment=XDG_DATA_HOME=%h/.local/share
+   Environment=XDG_CONFIG_HOME=%h/.config
+
+   [Install]
+   WantedBy=default.target
+   ```
+4. Enable and start the service:
+   ```bash
+   ssh dermaga-vm "systemctl --user daemon-reload && systemctl --user enable --now dermaga.service"
+   ```
+
+### 6.3 Atomic Binary Replacement (Avoiding "Text File Busy")
+Linux kernels return `ETXTBSY` ("Text file busy") if `scp` attempts to write directly into an actively running binary executable. To update the running daemon safely without downtime:
+```bash
+# 1. Copy new binary to a temporary filename
+scp bin/dermaga-linux-amd64 dermaga-vm:~/.local/bin/dermaga.new
+
+# 2. Make executable, atomically replace via rename, and restart service
+ssh dermaga-vm "chmod +x ~/.local/bin/dermaga.new && mv ~/.local/bin/dermaga.new ~/.local/bin/dermaga && systemctl --user restart dermaga.service"
+```
+The atomic `rename(2)` syscall updates the directory entry without mutating the open inode that the running daemon holds, and `systemctl --user restart` cleanly re-execs the new binary.
+
+### 6.4 Operator Access & SSH Tunneling
+The web panel listens exclusively on `127.0.0.1:7070` on the server (`SEC-2`). Access it securely from the workstation:
+```bash
+# Open an SSH port-forwarding tunnel
+ssh -N -L 7070:127.0.0.1:7070 dermaga-vm
+
+# In your browser, navigate to:
+# http://127.0.0.1:7070
+```
+
+### 6.5 Recovery Commands
+If operator credentials or 2FA state need to be reset via the server shell:
+```bash
+# Set or reset admin password (revokes all active sessions)
+ssh dermaga-vm "~/.local/bin/dermaga admin set-password --password <secret>"
+
+# Disable TOTP two-factor authentication
+ssh dermaga-vm "~/.local/bin/dermaga admin totp disable"
+
+# Verify daemon status and view connection instructions
+ssh dermaga-vm "~/.local/bin/dermaga panel"
+```
+
+### 6.6 M1 Teardown
+To completely tear down the M1 installation and remove all runtime state on `dermaga-vm`:
+```bash
+ssh dermaga-vm "systemctl --user stop dermaga.service && systemctl --user disable dermaga.service && rm -f ~/.config/systemd/user/dermaga.service && systemctl --user daemon-reload && rm -rf ~/.local/share/dermaga ~/.local/bin/dermaga"
+```
+
