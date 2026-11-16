@@ -17,7 +17,7 @@ backups come in v1.1.
 | --- | ------- | ------------------------------------------------ | ----------- | ----- |
 | M0  | –       | Spikes and plan                                  | completed   | 28    |
 | M1  | 0.1.0   | Foundation: daemon, login, panel shell           | completed   | 36    |
-| M2  | 0.2.0   | Generators and reconciliation                    | not started | 28    |
+| M2  | 0.2.0   | Generators and reconciliation                    | completed   | 28    |
 | M3  | 0.3.0   | Installer, hardening, lockout guard              | not started | 24    |
 | M4  | 0.4.0   | First-run setup and panel access                 | not started | 20    |
 | M5  | 0.5.0   | Connect GitHub                                   | not started | 28    |
