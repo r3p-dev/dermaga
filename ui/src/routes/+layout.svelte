@@ -43,17 +43,28 @@
 	}
 
 	onMount(() => {
-		const savedTheme = localStorage.getItem('theme');
-		if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-			isDark = true;
-			document.documentElement.classList.add('dark');
-		}
+		isDark = document.documentElement.classList.contains('dark');
+
+		const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+		const handleMediaChange = (e: MediaQueryListEvent) => {
+			if (!localStorage.getItem('theme')) {
+				isDark = e.matches;
+				if (e.matches) {
+					document.documentElement.classList.add('dark');
+				} else {
+					document.documentElement.classList.remove('dark');
+				}
+			}
+		};
+		mediaQuery.addEventListener('change', handleMediaChange);
 
 		refreshSession();
+
+		return () => mediaQuery.removeEventListener('change', handleMediaChange);
 	});
 </script>
 
-<div class="min-h-screen flex flex-col font-sans">
+<div class="min-h-screen flex flex-col font-sans bg-stone-50 dark:bg-stone-950 text-stone-900 dark:text-stone-100">
 	<header class="border-b border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 sticky top-0 z-40">
 		<div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
 			<div class="flex items-center gap-6">
@@ -130,7 +141,7 @@
 
 	<main class="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6">
 		{#if loading}
-			<div class="flex items-center justify-center h-64 text-stone-500 text-sm">
+			<div class="flex items-center justify-center h-64 text-stone-500 dark:text-stone-400 text-sm">
 				Loading dermaga...
 			</div>
 		{:else}
@@ -138,7 +149,7 @@
 		{/if}
 	</main>
 
-	<footer class="border-t border-stone-200 dark:border-stone-800 py-4 text-center text-xs text-stone-500">
+	<footer class="border-t border-stone-200 dark:border-stone-800 py-4 text-center text-xs text-stone-500 dark:text-stone-400">
 		dermaga &bull; stateless rootless deployment platform
 	</footer>
 </div>

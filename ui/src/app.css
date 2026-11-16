@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --color-brand-primary: var(--brand-primary);
   --color-brand-hover: var(--brand-hover);
@@ -15,7 +17,7 @@
 }
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
   /* Brand Theme Tokens (Light Mode) derived from logo */
   --brand-primary: #5b58a8;
@@ -32,6 +34,8 @@
 }
 
 .dark {
+  color-scheme: dark;
+
   /* Brand Theme Tokens (Dark Mode) derived from logo */
   --brand-primary: #7c78ee;
   --brand-hover: #8d8af1;

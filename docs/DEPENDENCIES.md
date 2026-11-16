@@ -65,6 +65,8 @@ JSON), a TOML library (no config file), a TOTP library (RFC 6238 on `crypto/hmac
 | `tailwindcss`, `@tailwindcss/vite`                                                          | Styling                    |
 | `typescript`, `svelte-check`                                                                | Strict type checks         |
 | `prettier`, `prettier-plugin-svelte`                                                        | Formatting                 |
+| `@playwright/test`                                                                         | End-to-end browser testing |
+| `@axe-core/playwright`                                                                     | Automated WCAG 2.1 AA accessibility and contrast auditing on live DOM |
 
 **To propose when needed** (with a comparison, before adding): a browser test tool (M1), a lint setup
 that reports deprecated APIs in the UI (M1), a QR code renderer for TOTP enrolment (M4; first check
