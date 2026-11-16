@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	// Argon2id parameters
-	argonTime    = 1
+	// Argon2id parameters per RFC 9106 §4 (Second Recommended Option: t=3, m=64 MiB, p=4)
+	argonTime    = 3
 	argonMemory  = 64 * 1024 // 64 MB
 	argonThreads = 4
 	argonKeyLen  = 32
