@@ -160,22 +160,24 @@ flowchart TD
 
 ## 3. Components
 
-Dermaga is organized into focused Go packages and an embedded SvelteKit 3 Single-Page Application:
+Dermaga is organized strictly per `docs/CONVENTIONS.md` into `cmd/dermaga`, `internal/<package>`, and an embedded SvelteKit 3 Single-Page Application:
 
-### Backend (Go)
-- `cmd/dermaga`: Main CLI entrypoint containing the long-running daemon, recovery CLI commands (`admin set-password`, `admin totp disable`), and system health check (`doctor`).
-- `cmd/hook-relay`: Ultra-lightweight static Go forwarder packaged inside the hook relay container, forwarding TCP requests to the host Unix domain socket.
-- `cmd/probe`: Internal network probe helper executed inside the rootless network namespace to verify container readiness before route cutovers.
-- `pkg/store`: SQLite persistence layer using pure Go `modernc.org/sqlite` (WAL mode, `busy_timeout`), managing migrations, settings, apps, deployments, and audit logs.
-- `pkg/crypto`: AES-256-GCM authenticated encryption at rest bound to column names, master key initialization, and constant-time HMAC-SHA256 verification (`SEC-11`).
-- `pkg/github`: GitHub App authentication (RS256 JWT minting via `crypto/rsa`), manifest flow handling, repo-scoped installation access tokens, and webhook parsing.
-- `pkg/builder`: Build queue manager, bare Git mirror caching (`~/.cache/dermaga/mirrors`), `podman build` runner with resource limits, and streaming SEC-9 secret masking.
-- `pkg/quadlet`: Quadlet `.container`, `.network`, and `.volume` generator enforcing `[Quadlet] DefaultDependencies=false` and resource limits mapping (`PodmanArgs=--memory=... --cpus=...`).
-- `pkg/traefik`: Traefik dynamic routing configuration generator (JSON-in-`.yml`), atomic file rename publisher, and `acme.json` certificate state reader.
-- `pkg/reconciler`: Systemd user service supervisor, Quadlet dry-run validator, blue-green deployment orchestrator, and automatic rollback coordinator.
-- `pkg/server`: HTTP server bound strictly to `127.0.0.1:7070` providing the REST API, session management, TOTP 2FA, rate limiting, and serving the embedded UI.
+### Entrypoint & Subcommands (`cmd/dermaga`)
+- `cmd/dermaga`: Main CLI entrypoint for the single static binary (`CGO_ENABLED=0`). Runs the long-running daemon (`dermaga daemon`), server recovery commands (`dermaga admin set-password`, `dermaga admin totp disable`), operator status helper (`dermaga panel`), health check diagnostic (`dermaga doctor`), and small rootless helpers executed elsewhere (`dermaga hook-relay` inside the hook relay container, `dermaga probe` inside the rootless network namespace).
 
-### Frontend (SvelteKit 3 / Svelte 5 / Tailwind v4)
+### Internal Packages (`internal/`)
+- `internal/host`: Host boundary interface and execution layer (`CONVENTIONS.md` §0.5). Executes all host commands via `exec.CommandContext` with argument slices and timeouts, strictly without shell interpolation (`SEC-16`), and performs atomic file writes (`fsync`, tempfile rename, directory `fsync`). Replaced with a fake host in unit and integration tests.
+- `internal/name`: Single source of truth for the project name and all derived resource identifiers and prefixes (`dg-`, `app-`), guaranteeing consistent naming across Quadlet files, systemd services, container names, networks, and Traefik routers (`CONVENTIONS.md` §2). Never hard-coded elsewhere.
+- `internal/store`: SQLite persistence layer using pure Go `modernc.org/sqlite` (WAL mode, `busy_timeout`), managing migrations, settings, apps, deployments, sessions, and audit logs.
+- `internal/crypto`: AES-256-GCM authenticated encryption at rest bound to column names, master key initialization, and constant-time HMAC-SHA256 verification (`SEC-11`).
+- `internal/github`: GitHub App authentication (RS256 JWT minting via `crypto/rsa`), manifest flow handling, repo-scoped installation access tokens, and webhook parsing.
+- `internal/builder`: Build queue manager (`DEP-5`), bare Git mirror caching (`~/.cache/dermaga/mirrors`), `podman build` runner with resource limits, and streaming SEC-9 secret masking.
+- `internal/quadlet`: Quadlet `.container` and `.network` generator enforcing `[Quadlet] DefaultDependencies=false` and resource limits mapping (`PodmanArgs=--memory=... --cpus=...`).
+- `internal/traefik`: Traefik dynamic routing configuration generator (JSON-in-`.yml`), atomic file rename publisher, and `acme.json` certificate state reader.
+- `internal/reconciler`: Systemd user service supervisor, Quadlet dry-run validator, blue-green deployment orchestrator, and automatic rollback coordinator (`DEP-10`).
+- `internal/server`: HTTP server bound strictly to `127.0.0.1:7070` providing the REST API, session management, TOTP 2FA, rate limiting, and serving the embedded UI.
+
+### Frontend (`ui/`)
 - `ui/src/routes/`: SvelteKit 3 application routes (Overview, Deployments, Logs, Environment, Domains, Headers, Settings, Doctor).
 - `ui/src/lib/`: Reusable UI components built with Svelte 5 runes (`$state`, `$derived`, `$props`) and snippets (`{#snippet ...}`).
 - `ui/src/app.css`: Tailwind CSS v4 CSS-first styling using `@import "tailwindcss";` without legacy configuration files.
@@ -203,7 +205,7 @@ Mounting note: Traefik mounts `~/.local/share/dermaga/traefik/dynamic/` as a dir
 
 ### 4.2 SQLite schema
 
-The database schema uses integer primary keys, strict foreign key constraints, UTC ISO 8601 timestamps, and encrypted text columns for secrets.
+The database schema uses text primary keys formatted as ULIDs (or SHA-256 hashes for session tokens, and autoincrement integers for audit logs and migrations), strict foreign key constraints, UTC ISO 8601 timestamps, and encrypted text columns for secrets.
 
 ```sql
 -- Migration 0001_init.sql
@@ -214,44 +216,56 @@ CREATE TABLE schema_migrations (
 );
 
 CREATE TABLE settings (
-    key TEXT PRIMARY KEY,
+    key TEXT PRIMARY KEY,                      -- e.g. "hook_domain", "github_app_id", "admin_totp_enabled"
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
 CREATE TABLE apps (
-    id TEXT PRIMARY KEY,                       -- e.g. "app_01j7..."
-    name TEXT NOT NULL UNIQUE,                 -- e.g. "web-landing"
+    id TEXT PRIMARY KEY,                       -- e.g. "app_01j7..." (ULID)
+    name TEXT NOT NULL UNIQUE,                 -- e.g. "web-landing" (SEC-17 validated)
     repo_owner TEXT NOT NULL,                  -- e.g. "org-name"
     repo_name TEXT NOT NULL,                   -- e.g. "web-landing"
     branch TEXT NOT NULL DEFAULT 'main',
-    primary_domain TEXT NOT NULL UNIQUE,
-    port INTEGER NOT NULL DEFAULT 8080,
-    health_path TEXT NOT NULL DEFAULT '/health',
-    env_encrypted TEXT NOT NULL DEFAULT '',    -- AES-256-GCM encrypted JSON
+    containerfile_path TEXT NOT NULL DEFAULT 'Containerfile', -- APP-7
+    build_context TEXT NOT NULL DEFAULT '.',   -- APP-7
+    command TEXT,                              -- Optional custom start command; NULL uses image CMD
+    port INTEGER NOT NULL,                     -- Required, no guessed default (WIZ-3, APP-5)
+    health_type TEXT NOT NULL CHECK (health_type IN ('http', 'cmd', 'none')), -- APP-5 (no guessed default)
+    health_path TEXT,                          -- HTTP request path when health_type = 'http'
+    health_cmd TEXT,                           -- Container command when health_type = 'cmd'
+    health_timeout_sec INTEGER NOT NULL DEFAULT 30, -- APP-5
+    env_encrypted TEXT NOT NULL DEFAULT '',    -- Runtime env vars (APP-1, AES-256-GCM encrypted JSON)
+    build_env_encrypted TEXT NOT NULL DEFAULT '', -- Build-time env vars (APP-1, AES-256-GCM encrypted JSON, passed via --build-arg)
+    auto_deploy INTEGER NOT NULL DEFAULT 1,    -- APP-8
     active_release_id TEXT,                    -- FK to deployments.id
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
 CREATE TABLE domains (
-    id TEXT PRIMARY KEY,
+    id TEXT PRIMARY KEY,                       -- e.g. "dom_01j7..." (ULID)
     app_id TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
-    domain TEXT NOT NULL UNIQUE,
-    is_primary INTEGER NOT NULL DEFAULT 0,
-    redirect_to TEXT,                          -- Optional target for 301 redirects
+    domain TEXT NOT NULL UNIQUE,               -- Hostname (cannot equal reserved hook domain, APP-2)
+    is_primary INTEGER NOT NULL DEFAULT 0,     -- Exactly one primary domain per app
+    redirect_to TEXT,                          -- Optional target for 301 redirects (e.g. redirect alias -> primary, or www <-> apex)
+    path_prefix TEXT,                          -- Optional path prefix (APP-2)
+    strip_prefix INTEGER NOT NULL DEFAULT 0,   -- Whether to strip path_prefix before forwarding to app
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 
 CREATE TABLE deployments (
-    id TEXT PRIMARY KEY,                       -- e.g. "dep_01j7..."
+    id TEXT PRIMARY KEY,                       -- e.g. "dep_01j7..." (ULID)
     app_id TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
     release_number INTEGER NOT NULL,
-    status TEXT NOT NULL,                      -- queued, building, starting, probing, switching, active, failed, cancelled
+    status TEXT NOT NULL CHECK (status IN (
+        'queued', 'building', 'starting', 'probing', 'switching',
+        'active', 'inactive', 'failed', 'cancelled', 'superseded'
+    )),                                        -- DEP-5, DEP-6, DEP-9
     trigger TEXT NOT NULL,                     -- push, manual, rollback
     commit_hash TEXT NOT NULL,
     commit_message TEXT NOT NULL,
-    env_snapshot_encrypted TEXT NOT NULL,      -- Encrypted runtime config snapshot
+    env_snapshot_encrypted TEXT NOT NULL,      -- Encrypted JSON runtime config snapshot: runtime env, port, health check, command (DEP-4)
     build_logs TEXT NOT NULL DEFAULT '',
     started_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     finished_at TEXT,
@@ -259,7 +273,7 @@ CREATE TABLE deployments (
 );
 
 CREATE TABLE sessions (
-    id TEXT PRIMARY KEY,                       -- Session token hash
+    id TEXT PRIMARY KEY,                       -- SHA-256 hash of session token (SEC-7)
     user_id TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
@@ -267,9 +281,12 @@ CREATE TABLE sessions (
 
 CREATE TABLE audit_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    event TEXT NOT NULL,                       -- login, deploy, env_change, rollback, etc.
-    actor TEXT NOT NULL,
-    details TEXT NOT NULL,                     -- JSON payload (secrets redacted)
+    origin TEXT NOT NULL CHECK (origin IN ('panel', 'webhook', 'server_command', 'daemon')), -- AUD-1
+    app_id TEXT REFERENCES apps(id) ON DELETE SET NULL, -- Filterable by app; NULL for global events (AUD-2)
+    event TEXT NOT NULL,                       -- login, deploy, env_change, rollback, restart, secret_reveal, update, etc.
+    actor TEXT NOT NULL,                       -- Admin username, webhook delivery ID, or system
+    description TEXT NOT NULL,                 -- Short human-readable summary (AUD-1)
+    details TEXT NOT NULL DEFAULT '{}',         -- Structured JSON payload (secrets redacted)
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
 ```
@@ -355,18 +372,19 @@ All state transitions are explicit, strictly validated, and modified in exactly 
 | State | Event / Trigger | Next State | Action / Side Effect |
 |---|---|---|---|
 | `queued` | Deployment created | `cloning` | Enqueued in single global build queue |
+| `queued` | Newer trigger arrives for same app | `superseded` | Replaced in queue by latest commit (`DEP-5`); live release untouched |
 | `cloning` | Fetch git repository | `building` | Uses repo-scoped installation token via `GIT_CONFIG_*` |
 | `cloning` | Git fetch fails / auth error | `failed` | Masks token; logs error; stops queue item |
 | `building` | Run `podman build` | `starting` | Enforces resource limits; streams logs with SEC-9 masking |
 | `building` | Build fails / timeout (15m) | `failed` | Prunes build context; records failure log |
 | `starting` | Quadlet dry-run & start unit | `probing` | Generates Quadlet file with `DefaultDependencies=false` |
 | `starting` | Dry-run fails / startup crash | `failed` | Removes Quadlet file; stops service |
-| `probing` | Run internal HTTP netns probe | `switching` | Executes `cmd/probe` in rootless pasta netns |
+| `probing` | Run internal HTTP netns probe | `switching` | Executes internal netns probe (`dermaga probe`) in rootless pasta netns |
 | `probing` | Probe fails / timeout (5m) | `failed` | Stops candidate container; retains previous release |
 | `switching` | Atomic Traefik router update | `active` | Verifies router token; switches public traffic; drains old |
 | `switching` | Router verification fails | `failed` | Restores previous Traefik config atomically |
 | `active` | Replaced by newer deployment | `inactive` | Retained as past release (last 5 kept for rollback) |
-| `queued`/`cloning`/`building` | Operator clicks "Cancel" | `cancelled` | Terminates process group; cleans build context |
+| `queued`/`cloning`/`building` | Operator clicks "Cancel" | `cancelled` | Terminates process group; cleans build context (`DEP-6`) |
 
 ### 6.2 App Runtime Status (`RUN-1`)
 | State | Event / Trigger | Next State | Action / Side Effect |

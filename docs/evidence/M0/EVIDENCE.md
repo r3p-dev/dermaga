@@ -774,12 +774,12 @@ Per `PLAN.md` M0 Step 4, evaluated upstream documentation, maintenance cadence, 
 
 ### 3. Podman & Quadlet
 
-- **Upstream Version:** Podman `v6.2.0` (Latest stable release stream). Podman 6.0 GA was released on **June 16, 2026**.
+- **Upstream Version:** Podman `v6.2.0` (Latest stable release stream). Podman 6.0 GA was released on **June 24, 2026**.
 - **Debian 13 Baseline:** Podman `5.4.2` (Released April 2, 2025; packaged in Debian testing/trixie alongside systemd 257).
 - **Pinned Version for Dermaga:** Debian 13 packaged Podman `5.4.2`.
 - **Upstream Breaking Changes in Podman 6.0:**
   1. *Mandatory Toolchain Upgrades:* Requires Netavark / Aardvark `v2.0.0+`, Buildah `v1.44.0+`, and Skopeo `v1.23+`.
-  2. *Legacy Removals:* `slirp4netns` is completely removed (Pasta is now the sole default rootless stack); CNI networking is removed; `iptables` support is dropped in favor of `nftables`; `cgroups v1` support is dropped (Cgroups v2 strictly required); BoltDB is dropped in favor of SQLite.
+  2. *Legacy Removals:* `slirp4netns` is completely removed (Pasta is now the sole default rootless stack); CNI networking is removed; `iptables` support is dropped in favor of `nftables`; `cgroups v1` support is dropped (Cgroups v2 strictly required); BoltDB is dropped in favor of SQLite; Go import path transitioned to `go.podman.io/podman/v6`.
   3. *Quadlet Updates:* Structural service generation updates, including directory layout rules to avoid cleanup bugs, and new `.volume` options (`UID=`, `GID=`, `Options=`).
 - **Forward-Compatibility Risk:**
   - Debian 13 ships Podman 5.4.2, so Podman 6 changes do not impact v1.0.0.
@@ -835,7 +835,7 @@ Per `PLAN.md` M0 Step 4, evaluated upstream documentation, maintenance cadence, 
 | **SvelteKit** | `3.2.0` (2026-11-10; GA 2026-10-01) | `@sveltejs/kit@3.2.0`, `@sveltejs/adapter-static@4.0.1` | Actively maintained | Greenfield choice: config in `vite.config.ts`, `#lib` imports, Vite 8; verified 381 ms build with Bun | [svelte.dev](https://svelte.dev/docs/kit/migrating-to-sveltekit-3) |
 | **Svelte 5** | `5.57.3` (2026-10-26; GA 2024-10-19) | `svelte@5.57.3` | Actively maintained | Runes (`$state`, `$derived`, `$props`); snippets replace `<slot />` | [svelte.dev](https://svelte.dev/docs/svelte/overview) |
 | **Tailwind CSS** | `v4.3.5` (2026-11-06; GA 2025-01-22) | `tailwindcss@4.3.5`, `@tailwindcss/vite@4.3.5` | Actively maintained | CSS-first `@import "tailwindcss";`; Oxide engine via `@tailwindcss/vite`; no PostCSS/tailwind.config | [tailwindcss.com](https://tailwindcss.com/docs/v4-beta) |
-| **Podman / Quadlet** | `v6.2.0` (Podman 6.0 GA 2026-06-16) | Debian 13 packaged `5.4.2` (2025-04-02) | Actively maintained | Limits via `PodmanArgs=--memory=...`; `[Quadlet] DefaultDependencies=false` eliminates 90s delay; Podman 6 is forward-compat risk | [podman.io](https://docs.podman.io/en/v5.4.2/) |
+| **Podman / Quadlet** | `v6.2.0` (Podman 6.0 GA 2026-06-24) | Debian 13 packaged `5.4.2` (2025-04-02) | Actively maintained | Limits via `PodmanArgs=--memory=...`; `[Quadlet] DefaultDependencies=false` eliminates 90s delay; Podman 6 is forward-compat risk | [podman.io](https://docs.podman.io/en/v5.4.2/) |
 | **Traefik v3** | `v3.7.19` (2026-10) | `docker.io/library/traefik@sha256:44b61e76a...` | Actively maintained | Socket activation TCP 80, TCP 443, UDP 443 (HTTP/3); ACME via Pebble; file provider only (no `podman.sock`) | [traefik.io](https://doc.traefik.io/traefik/v3.7/) |
 | **GitHub REST API** | Version `2026-03-10` (2026-03-10) | `X-GitHub-Api-Version: 2026-03-10` | Actively maintained | Manifest flow with localhost redirect; repo-scoped tokens via HTTP Basic auth in `GIT_CONFIG_*` | [docs.github.com](https://docs.github.com/en/rest) |
 

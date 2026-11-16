@@ -78,6 +78,7 @@ To reboot `dermaga-vm` cleanly and allow QEMU to execute `<on_reboot>restart</on
    ssh dermaga-vm "sudo -n reboot"
    ```
    *Mechanism:* Systemd activates `reboot.target`. The guest Linux kernel calls `kernel_restart()`, signalling a true reboot event to QEMU. QEMU detects the reboot and restarts the VM automatically in ~4 seconds.
+   *(Rule: automated agents must ask the project owner first and receive explicit permission before executing any command requiring sudo, including guest reboots).*
 2. **Alternative (Guest Agent):**
    If `qemu-guest-agent` is installed on the guest, libvirt can reboot cleanly via:
    ```bash
@@ -116,7 +117,7 @@ To reset the test environment cleanly after spikes or milestone verification:
    killall gosmee 2>/dev/null || true
    ```
 2. **Revert VM to Clean Baseline:**
-   Revert `dermaga-vm` to the verified `vps-setup` snapshot:
+   Revert `dermaga-vm` to the verified `vps-setup` snapshot *(Rule: automated agents must ask the project owner first before reverting or modifying snapshots)*:
    ```bash
    virsh --connect qemu:///system snapshot-revert dermaga-vm vps-setup
    virsh --connect qemu:///system start dermaga-vm

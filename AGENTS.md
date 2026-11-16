@@ -101,6 +101,7 @@ Write the report to me **in Indonesian**, short and concrete:
   test server) for certificates; a real GitHub App only when the milestone says so, created by me, on a
   test repo I give you. Staging and production certificates stay only for the real VPS at the end.
 - **No production systems**: never connect to `server` (my production VPS) or run anything on it.
+- **Test repositories only**: never push test commits or trigger test deliveries against repositories with production CD (e.g. `portfolio`). Use `r3p-dev/dermaga-test-app`.
 
 ## 6. Versioning
 
@@ -141,6 +142,7 @@ Write the report to me **in Indonesian**, short and concrete:
 
 - All VM work runs on **`dermaga-vm`** (`ssh dermaga-vm`: user `server`, port 4222, passwordless
   sudo), a local libvirt VM. **`server` in my SSH config is my production VPS. Never connect to it.**
+  *(Rule: never invoke `sudo` without asking me first and receiving explicit confirmation, even on `dermaga-vm`).*
 - libvirt snapshots: `fresh` (bare Debian 13 cloud image, only cloud-init's user `debian`) and
   `vps-setup` (after `vps-setup.sh init`). For `dermaga-vm` only:
   - allowed without asking: `virsh --connect qemu:///system start|shutdown|reboot|snapshot-list
@@ -170,3 +172,40 @@ Read these when a milestone needs them; never assume what they contain.
 3. **`https://github.com/r3p-dev/portfolio`**: the first real app. Discover its build, port,
    health check and runtime from the repo.
 4. **Kapturae**: the second real app. Ask me for its repo URL when a milestone needs it.
+
+## 10. Operational & verification rules (learned from M0)
+
+Future milestones and agents must follow these concrete working rules:
+
+1. **Pass/fail criteria:** Mark `PASS` only for functionality actually exercised and verified on the
+   host or VM with an exit code of 0 and verified expected output. Label decisions and documentation
+   updates as "done" or "decision recorded", never "PASS".
+2. **Control test rule:** Before concluding an external tool or protocol "doesn't support" a capability
+   (e.g. Traefik socket activation or HTTP/3), check known working reference implementations (such as
+   `vps-setup.sh`) and execute an isolated control test. Never write unverified negative conclusions
+   into design or architecture documents.
+3. **Blocked / workaround rule:** When blocked, stop and ask the owner. Never resort to invasive
+   workarounds, such as reading process memory, probing unowned sockets, bypassing permissions, or
+   scraping secrets from unexpected locations.
+4. **Sudo rule:** Never execute commands with `sudo` without asking the owner first and receiving
+   explicit approval, including on `dermaga-vm`.
+5. **Spike and test script hygiene:** Every spike or test script must execute non-interactively: enforce
+   explicit timeouts on every network call (`--connect-timeout`, `--max-time`) and wait loop; never call
+   `sudo` non-interactively (use `ss -tuln` without process inspection instead of `sudo ss -tulpn`).
+6. **Reporting rule:** Every milestone report must explicitly list all significant actions taken,
+   especially any workarounds attempted or applied, and anything modified with root privileges.
+7. **Secrets rule:** All secrets must be generated cryptographically randomly, stored with permissions
+   `0600` in gitignored paths, and never printed in chat, logs, or evidence records. On webhook HMAC
+   verification failure (`SEC-11`), log only the delivery ID, event, source, and "signature mismatch" —
+   never log the expected signature, received signature, secret, or payload, preventing logs from
+   acting as a signature oracle.
+8. **State tracking rule:** When modifying existing systemd units, configuration files, or Quadlet
+   templates during tests or spikes, record the original baseline and restore the diff upon completion,
+   or explicitly state that a snapshot revert is required before proceeding.
+9. **Test repos rule:** Never push test commits to repositories with live production continuous
+   deployment (such as `r3p-dev/portfolio`). Always use the dedicated test repository
+   (`r3p-dev/dermaga-test-app`).
+10. **Evidence location:** Store proof for each milestone in `docs/evidence/M{N}/EVIDENCE.md` (e.g. M0
+    evidence in `docs/evidence/M0/EVIDENCE.md`), keeping all associated logs, test scripts, and
+    screenshots in the same milestone folder.
+
