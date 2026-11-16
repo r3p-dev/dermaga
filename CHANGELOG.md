@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-17
+
+### Added
+- **Quadlet generators** (`internal/quadlet`): typed generator producing systemd `.container` and `.network` units with deterministic key ordering, memory and CPU limits, stop timeout, health checks, environment files, and container networking (`APP-5`, `APP-7`, `DEP-5`, `DEP-6`).
+- **Traefik generators** (`internal/traefik`): typed generator producing Traefik v3 static (`traefik.yml`), global dynamic (`00-global.yml`), and per-app dynamic (`app-<name>.yml`, `app-<name>-verify.yml`) YAML configurations. Implements the full middleware model (redirects, basic auth, IP allowlist, body limit, headers, compress, strip prefix, rate limit), ACME certificate resolver, and verify router token isolation (`APP-2`–`APP-4`, `APP-10`, `APP-11`, `TLS-1`, `TLS-4`).
+- **Startup reconciliation** (`internal/reconciler`, `DEP-10`): daemon startup hook and `dermaga reconcile` CLI subcommand. Removes orphaned container units and Traefik configs, re-renders missing units and configs for active releases, starts stopped live units, cleans up leftover verify routers, and preserves foreign unmanaged files.
+- **Store models and methods** (`internal/store/apps.go`): CRUD operations and queries for applications, domains, deployments, and active app records with nullable timestamp scanning.
+- **Automated VM test suites**:
+  - `test/vm/test_quadlet_dryrun.sh`: dry-run validation of generated Quadlet units against Podman 5's `podman-user-generator` and `systemd-analyze --user verify` on `dermaga-vm`, including negative controls with malformed syntax.
+  - `test/vm/test_traefik_configs.sh`: dynamic validation using a throwaway Traefik container pinned to `docker.io/library/traefik:v3.7@sha256:44b61e76a251fe586d17d881fc900452d0a7b4a4b08c97ce6eac86d45b4c8b9d` on non-colliding ports (`18080`, `18443`, `18088`), asserting API router/middleware status and behavioral curl responses (host routing, strip prefix, 301 redirects, basic auth 401/200, IP allowlist 403, body size 200/413, security headers, verify router isolation), with negative controls.
+  - `test/vm/test_reconciliation.sh`: scenario test on `dermaga-vm` verifying real orphan removal, missing file re-rendering, stopped unit activation, leftover verify router cleanup, foreign file preservation, and database access failure negative control.
+- **Architectural decisions**: recorded `DEC-15` (systemd unit syntax injection escaping and validation) and `DEC-16` (startup reconciliation mechanics and file boundaries) in `docs/ARCHITECTURE.md`.
+
+### Changed
+- Hardened Quadlet INI rendering against systemd unit syntax injection: escapes `%` to `%%` in free-text fields (such as `HealthCmd`) to prevent specifier expansion, and strictly rejects trailing backslashes `\` across all keys to prevent line continuation. Rejects newlines, carriage returns, and null bytes across all fields (`SEC-16`–`SEC-19`).
+- Pinned reference security headers for `TestDefaultHeadersMatchVPSSetup` directly from `vps-setup.sh` (commit `8fe4cb1aa647a7d7c44710a72bc85000e4d80ef6`) in `internal/traefik/testdata/vps-setup-headers.golden` (`REL-8`).
+
+
 ## [0.1.4] - 2026-11-16
 
 ### Fixed
