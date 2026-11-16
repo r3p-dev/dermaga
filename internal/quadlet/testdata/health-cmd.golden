@@ -1,0 +1,27 @@
+[Unit]
+Description=dermaga app backend-api release 5
+
+[Container]
+ContainerName=app-backend-api-r5
+Image=localhost/backend-api:r5
+Network=web
+PidsLimit=128
+NoNewPrivileges=true
+DropCapability=ALL
+StopTimeout=10
+HealthCmd=curl -fsS http://localhost:8080/health || exit 1
+Notify=healthy
+
+[Quadlet]
+DefaultDependencies=false
+
+[Service]
+Restart=on-failure
+RestartSec=1s
+RestartSteps=3
+RestartMaxDelaySec=8s
+TimeoutStartSec=45
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

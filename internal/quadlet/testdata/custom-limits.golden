@@ -1,0 +1,26 @@
+[Unit]
+Description=dermaga app shop release 2
+
+[Container]
+ContainerName=app-shop-r2
+Image=ghcr.io/org/shop:sha256-abcdef
+Network=web
+PodmanArgs=--memory=1g --cpus=2.0
+PidsLimit=256
+NoNewPrivileges=true
+DropCapability=ALL
+StopTimeout=10
+
+[Quadlet]
+DefaultDependencies=false
+
+[Service]
+Restart=on-failure
+RestartSec=1s
+RestartSteps=3
+RestartMaxDelaySec=8s
+TimeoutStartSec=30
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

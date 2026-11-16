@@ -1,0 +1,5 @@
+[Network]
+NetworkName=web
+
+[Quadlet]
+DefaultDependencies=false
