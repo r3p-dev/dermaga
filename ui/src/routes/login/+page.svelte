@@ -1,0 +1,97 @@
+<script lang="ts">
+	import { login, getSession } from '#lib/api.js';
+	import { onMount } from 'svelte';
+
+	let password = $state('');
+	let loading = $state(false);
+	let error = $state<string | null>(null);
+
+	onMount(async () => {
+		try {
+			const s = await getSession();
+			if (s.authenticated) {
+				window.location.href = '/';
+			}
+		} catch (err) {
+			console.error(err);
+		}
+	});
+
+	async function handleSubmit(e: SubmitEvent) {
+		e.preventDefault();
+		if (!password) return;
+
+		loading = true;
+		error = null;
+
+		try {
+			const res = await login({ password });
+			if (res.success) {
+				window.location.href = '/';
+			} else {
+				error = res.error || 'Authentication failed';
+			}
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'Network error';
+		} finally {
+			loading = false;
+		}
+	}
+</script>
+
+<svelte:head>
+	<title>Login &bull; dermaga</title>
+</svelte:head>
+
+<div class="max-w-md mx-auto mt-12 md:mt-20">
+	<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-6 md:p-8 shadow-sm">
+		<div class="mb-6 text-center">
+			<div class="w-10 h-10 rounded-lg bg-teal-600 text-white font-bold text-lg flex items-center justify-center mx-auto mb-3">
+				D
+			</div>
+			<h1 class="text-xl font-semibold tracking-tight">Admin Login</h1>
+			<p class="text-xs text-stone-500 mt-1">Enter your password to unlock the dermaga panel</p>
+		</div>
+
+		{#if error}
+			<div role="alert" class="mb-5 p-3 rounded-md bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-xs font-medium">
+				{error}
+			</div>
+		{/if}
+
+		<form onsubmit={handleSubmit} class="space-y-4">
+			<div>
+				<label for="admin-password" class="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1.5">
+					Admin Password
+				</label>
+				<input
+					id="admin-password"
+					type="password"
+					bind:value={password}
+					placeholder="••••••••••••"
+					required
+					class="w-full px-3 py-2 text-sm rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-950 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
+				/>
+			</div>
+
+			<button
+				type="submit"
+				disabled={loading || !password}
+				class="w-full py-2 px-4 rounded-md bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-medium text-sm transition shadow-sm flex items-center justify-center gap-2"
+			>
+				{#if loading}
+					<span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+					Verifying...
+				{:else}
+					Sign In
+				{/if}
+			</button>
+		</form>
+
+		<div class="mt-6 pt-6 border-t border-stone-100 dark:border-stone-800 text-center">
+			<p class="text-xs text-stone-500">
+				Forgotten password? Run <code class="text-xs font-mono bg-stone-100 dark:bg-stone-800 px-1 py-0.5 rounded">dermaga admin set-password</code> on the server (SRV-1).
+			</p>
+		</div>
+	</div>
+</div>
