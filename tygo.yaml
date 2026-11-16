@@ -1,0 +1,3 @@
+packages:
+  - path: "dermaga/internal/server"
+    output_path: "ui/src/lib/types/api.ts"

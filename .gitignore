@@ -1,13 +1,29 @@
-# Binaries
-spike-server
+# Binaries and build outputs
+bin/
+dist/
+build/
+dermaga
 *.exe
 
-# Keys, secrets and local logs
+# SvelteKit UI
+ui/build/
+ui/.svelte-kit/
+ui/node_modules/
+
+# Keys, secrets, databases and local logs
 *.key
 *.pem
 *.log
+*.db
+*.db-wal
+*.db-shm
 .credentials.json
 .dev_key.pem
 .webhook_secret
 .app.pem
 .env*
+
+# Test output
+coverage.out
+ui/test-results/
+ui/playwright-report/

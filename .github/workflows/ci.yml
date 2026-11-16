@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    name: Check & Build
+    runs-on: ubuntu-latest
+    container:
+      image: docker.io/library/debian:trixie-slim@sha256:8f4bbd067c293673f4e1f7c22e431525b6ec85c8845115ccbe6ef04a29a00827
+
+    steps:
+      - name: Install system dependencies
+        run: |
+          apt-get update && apt-get install -y --no-install-recommends \
+            ca-certificates \
+            curl \
+            git \
+            make \
+            unzip
+
+      - name: Install Go
+        run: |
+          curl -fsSL https://go.dev/dl/go1.24.0.linux-amd64.tar.gz | tar -C /usr/local -xz
+          echo "/usr/local/go/bin" >> $GITHUB_PATH
+
+      - name: Install Bun
+        run: |
+          curl -fsSL https://bun.sh/install | bash
+          echo "$HOME/.bun/bin" >> $GITHUB_PATH
+
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Run make check
+        run: |
+          export PATH="/usr/local/go/bin:$HOME/.bun/bin:$PATH"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          make check
+
+      - name: Verify static binaries produced
+        run: |
+          ls -lh bin/dermaga-linux-amd64
+          ls -lh bin/dermaga-linux-arm64
+          file bin/dermaga-linux-amd64
+          file bin/dermaga-linux-arm64
