@@ -41,8 +41,9 @@ dermaga keeps the server healthy on its own and tells the user in the panel when
 
 - **DOC-1** One check in the panel (Settings → Health), every failed check with a fix hint: lingering;
   subuids/subgids; sockets; Podman version ≥ the minimum dermaga supports; Traefik running and its
-  file provider loaded without errors; `network-online.target` reached at boot; DNS of every domain and
-  of the hook domain; GitHub reachable and the App's key valid; clock synchronised; disk usage.
+  file provider loaded without errors; `network-online.target` reaches active state in < 5 s (warning
+  if it doesn't); DNS of every domain and of the hook domain; GitHub reachable and the App's key
+  valid; clock synchronised; disk usage.
 - **DOC-2** Warnings (not failures): TOTP not enabled; a certificate failing to renew.
 
 ## 5. Updating dermaga (`UPD`)

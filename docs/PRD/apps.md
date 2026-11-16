@@ -65,10 +65,10 @@ Settings · Danger zone**.
   at **build time**, or both (frameworks such as Astro, SvelteKit and Vite read `PUBLIC_*` / `VITE_*`
   variables during the build). Values hidden by default (`UI-5`). Changes take effect on the next
   deploy, and the panel says so and offers to redeploy. Note: build-time variables are passed as
-  `--build-arg` and can end up embedded in the image and client bundles; secrets must not be set as
-  build-time variables. A release stores an encrypted snapshot of its runtime configuration (env, port,
-  health check, command); rolling back uses that release's snapshot without modifying the panel's
-  current environment config.
+  `--build-arg` and can end up embedded in the image and client bundles (build secrets via `--secret`
+  mounts are deferred to v1.1); secrets must not be set as build-time variables. A release stores an
+  encrypted snapshot of its runtime configuration (env, port, health check, command); rolling back uses
+  that release's snapshot without modifying the panel's current environment config.
 - **APP-2 Domains**: primary domain, aliases, redirect aliases → primary (301), `www` ↔ apex redirect,
   optional path prefix with prefix stripping. A host belongs to at most one app. The hook domain
   (`SETUP-2`) is a reserved dedicated host and cannot be assigned to any app. The Traefik router for

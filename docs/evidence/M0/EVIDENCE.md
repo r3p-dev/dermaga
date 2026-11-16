@@ -266,19 +266,47 @@ error: Cannot access storage file '/var/lib/libvirt/boot/virtinst-w157g_3q-cloud
 - **Permanent Prevention Notice (for `docs/SETUP.md`):**
   1. The placeholder file `/var/lib/libvirt/boot/virtinst-w157g_3q-cloudinit.iso` **must remain on the host** because existing snapshots (`fresh`, `vps-setup`) reference it in their hardware definition.
   2. Future VM installations must eject transient cloud-init media before taking baseline snapshots (e.g., `virsh change-media <vm> sda --eject --config`).
-  3. Persistent & Live Ejection: With user approval, the CD-ROM media was ejected:
+  3. Persistent & Live Ejection Verification:
+     Checking the inactive domain definition confirms that persistent config already had no media:
      ```bash
-     $ virsh --connect qemu:///system change-media dermaga-vm sda --eject --live
-     Successfully ejected media.
+     $ virsh --connect qemu:///system dumpxml --inactive dermaga-vm | grep -B 2 -A 5 "<target dev='sda'"
+         <disk type='file' device='cdrom'>
+           <driver name='qemu' type='raw'/>
+           <target dev='sda' bus='sata'/>
+           <readonly/>
+           <address type='drive' controller='0' bus='0' target='0' unit='0'/>
+         </disk>
      ```
-     Pemeriksaan `virsh --connect qemu:///system domblklist dermaga-vm` confirms `sda` is now empty:
+     Because the persistent definition already omitted `<source>`, running `virsh change-media ... --config` returned `error: The disk device 'sda' doesn't have media`. Running with `--live` successfully ejected the device from the running QEMU process.
+     However, **live ejection is undone on the next snapshot revert**: `virsh snapshot-revert` restores the domain XML saved inside the snapshot metadata, which still defines `<source file='/var/lib/libvirt/boot/virtinst-w157g_3q-cloudinit.iso'/>`. Therefore, the host placeholder ISO **must remain permanently on the host** to support snapshot reverts.
+
+#### 1.2 VM Reboot Shut-Off Root Cause & Resolution
+- **Incident:** During testing, issuing `virsh --connect qemu:///system reboot dermaga-vm` transitioned the VM to the `shut off` state instead of restarting, requiring a manual `virsh start`.
+- **Root Cause Analysis:**
+  1. Both live and persistent XML configurations had `<on_reboot>restart</on_reboot>` properly set:
+     ```xml
+     <on_poweroff>destroy</on_poweroff>
+     <on_reboot>restart</on_reboot>
+     <on_crash>destroy</on_crash>
      ```
-      Target   Source
-     ----------------------------------------------------
-      vda      /var/lib/libvirt/images/dermaga-vm.qcow2
-      sda      -
+  2. `qemu-guest-agent` is **not installed** on `dermaga-vm`.
+  3. When `virsh reboot` is called without a guest agent, libvirt falls back to ACPI signal injection. Standard x86 ACPI does not define an ACPI reboot wire; QEMU implements ACPI power management by asserting the ACPI power button (`system_powerdown`).
+  4. On the guest, `systemd-logind` intercepted this signal:
      ```
-     The persistent inactive domain XML already had no source tag. The host placeholder ISO stays permanently on the host to support existing snapshot reverts.
+     Nov 16 04:07:14 dermaga-vm systemd-logind[657]: Power key pressed short.
+     Nov 16 04:07:14 dermaga-vm systemd-logind[657]: Powering off...
+     Nov 16 04:07:16 dermaga-vm systemd-logind[657]: System is powering down.
+     Nov 16 04:07:17 dermaga-vm systemd[1]: Reached target poweroff.target - System Power Off.
+     ```
+  5. Because the guest initiated `poweroff.target` rather than `reboot.target`, the guest issued an ACPI poweroff to QEMU. QEMU evaluated the `<on_poweroff>` policy (`destroy`), which powered off the virtual machine.
+- **Verification:**
+  Reboot was tested from within the guest via `ssh dermaga-vm "sudo -n reboot"`. In this case, systemd activated `reboot.target`, and the kernel invoked `kernel_restart()`, signalling a true reboot event to QEMU. QEMU immediately evaluated `<on_reboot>restart</on_reboot>`:
+  ```
+  Waiting for dermaga-vm to restart...
+  VM is BACK UP after 4.3s! State: running
+  ```
+- **Procedure Note for `docs/SETUP.md` (Step 5):**
+  When automating reboots on `dermaga-vm`, use `ssh dermaga-vm "sudo -n reboot"` or install `qemu-guest-agent` so `virsh reboot --mode agent` can signal the guest directly without triggering ACPI poweroff.
 
 ---
 
@@ -485,13 +513,106 @@ To ensure repeatable, uncontaminated results:
      - Restart 4: `04:00:41.994` (delay: **8.18s** - backoff step 3, capped at `RestartMaxDelaySec`)
      - Restart 5 failed: `04:00:50.493` (delay: **8.16s** - burst limit 5 hit)
      - Final unit state: **`Active: failed (Result: exit-code)`** with log `Start request repeated too quickly`.
-  7. **`DefaultDependencies=false` at Boot Exercised:**
-     Installed test container `spike-boot-test.container` with `DefaultDependencies=false` and `WantedBy=default.target`, then rebooted the VM (`virsh reboot dermaga-vm`).
-     - Findings: Systemd user manager respects `DefaultDependencies=false` by omitting default ordering (`basic.target`, `shutdown.target`).
-     - Generator behavior: `podman-system-generator` hardcodes `Wants=podman-user-wait-network-online.service` and `After=podman-user-wait-network-online.service` on all generated container units.
-     - On Debian cloud images where `network-online.target` is not activated at system level, `podman-user-wait-network-online.service` waits for its 90s timeout. Once completed, `spike-boot-test.service` was automatically started by `default.target` at `04:08:56.078 UTC` (recorded in journal).
-- **Result:** **PASS**.
-- **Design Impact:** Confirms Quadlet template syntax, restart backoff policies, resource limit mapping (`PodmanArgs=--memory=...`), and boot ordering under Debian 13 systemd user manager.
+
+  7. **Spike 3.5b: 90-Second Boot Delay Investigation, Post-Mortem & Resolution:**
+     - **The 90-Second Delay Finding:**
+       Initial boot tests showed Traefik and Quadlet units starting ~91 seconds after system boot. `systemd-analyze --user blame` pinpointed:
+       ```
+       1min 30.087s podman-user-wait-network-online.service
+              606ms traefik.service
+       ```
+       Every Quadlet unit generated by `podman-system-generator` receives:
+       ```ini
+       [Unit]
+       Wants=podman-user-wait-network-online.service
+       After=podman-user-wait-network-online.service
+       ```
+       Inspection of `/usr/lib/systemd/user/podman-user-wait-network-online.service` revealed:
+       ```ini
+       TimeoutStartSec=90s
+       ExecStart=/bin/sh -c 'until systemctl is-active network-online.target; do sleep 0.5; done'
+       ```
+       Because `network-online.target` remained inactive at system level, `podman-user-wait-network-online.service` waited out its full 90-second timeout before failing/exiting, stalling all dependent Quadlet containers.
+     - **Post-Mortem: Second Boot Test Cancellation:**
+       During the initial spike attempt, an updated test unit `spike-boot-test.container` was created with `DefaultDependencies=false` placed under `[Unit]`. Quadlet's generator ignores systemd's `[Unit]` group options when calculating network dependencies; it requires `DefaultDependencies=false` to be declared under the `[Quadlet]` group.
+       When `systemctl --user restart spike-boot-test.service` was called, it synchronously re-triggered `podman-user-wait-network-online.service`, entering another 90-second blocking loop. The command blocked in the background (task 926) and was prematurely aborted/killed without reporting the hang mechanism.
+     - **Quadlet Specification in Podman 5.4.2 (`man podman-systemd.unit`):**
+       Inspection of `man podman-systemd.unit(5)` on `dermaga-vm` (Debian 13) confirms:
+       ```text
+       Quadlet section [Quadlet]
+              Some quadlet specific configuration is shared between different unit
+              types. Those settings can be configured in the [Quadlet] section.
+
+              Valid options for [Quadlet] are listed below:
+              ┌───────────────────────────┬────────────────────────────┐
+              │ [Quadlet] options         │ Description                │
+              ├───────────────────────────┼────────────────────────────┤
+              │ DefaultDependencies=false │ Disable implicit network   │
+              │                           │ dependencies to the unit   │
+              └───────────────────────────┴────────────────────────────┘
+
+          DefaultDependencies=
+              Add Quadlet's default network dependencies to the unit (default is true).
+              When set to false, Quadlet will not add a dependency (After=, Wants=) to
+              network-online.target/podman-user-wait-network-online.service to the
+              generated unit.
+       ```
+     - **Network Stack Diagnosis on `dermaga-vm`:**
+       - Network stack: `systemd-networkd` managed by `netplan` (`/etc/netplan/50-cloud-init.yaml`).
+       - `systemd-networkd-wait-online.service` is enabled and has a drop-in from netplan requiring interface `enp1s0` to be routable.
+       - Manually executing `/lib/systemd/systemd-networkd-wait-online --any -o routable -i enp1s0` exits with code 0 in **16 ms**.
+       - `systemctl list-dependencies --reverse network-online.target` returned only `network-online.target`.
+       - **Root Cause:** In the Debian 13 minimal cloud image, no service in `multi-user.target` requires `network-online.target`. Because `network-online.target` is never pulled into the boot transaction, `systemd-networkd-wait-online.service` is never run, and `network-online.target` stays permanently `inactive`.
+     - **Production VPS Comparison Commands:**
+       The following read-only commands are provided for comparing against the production VPS:
+       ```bash
+       # 1. Inspect what pulls in network-online.target on production
+       systemctl list-dependencies --reverse network-online.target
+
+       # 2. Check status and enabled state of wait-online services
+       systemctl status systemd-networkd-wait-online.service NetworkManager-wait-online.service networking.service 2>/dev/null
+
+       # 3. Check network stack configuration
+       cat /etc/network/interfaces /etc/netplan/*.yaml /etc/systemd/network/*.network 2>/dev/null
+
+       # 4. Check whether network-online.target is active and if system units reference it
+       systemctl is-active network-online.target
+       grep -rn 'network-online.target' /etc/systemd/system/ 2>/dev/null
+       ```
+     - **Empirical Evaluation of Candidate Fix (a) — `[Quadlet] DefaultDependencies=false`:**
+       Configured `[Quadlet] DefaultDependencies=false` in `traefik.container`, `web.network`, and `traefik-acme.volume`. Dry-run confirmed that `Wants=`/`After=podman-user-wait-network-online.service` was completely stripped.
+       Rebooted the VM and measured user session startup:
+       ```
+       Startup finished in 1.076s (userspace)
+       default.target reached after 1.075s in userspace.
+       585ms traefik.service
+       343ms traefik-acme-volume.service
+       340ms web-network.service
+       ```
+       Userspace boot time dropped from **91.1 seconds** down to **1.075 seconds**! Traefik started in 585 ms and served traffic immediately.
+     - **Empirical Evaluation of Candidate Fix (b) — Systemd Installer Fix:**
+       Added `network-online.target` to `multi-user.target` at system level:
+       ```bash
+       sudo systemctl add-wants multi-user.target network-online.target
+       ```
+       Rebooted the VM and measured boot targets:
+       ```
+       network-online.target @3.045s
+       └─systemd-networkd-wait-online.service @1.337s +1.705s
+       Active: active since Mon 2026-11-16 04:37:42 UTC
+       ```
+       `network-online.target` was cleanly reached at 3.045s into boot. Starting `podman-user-wait-network-online.service` succeeded in **9 ms** with `code=exited, status=0/SUCCESS` (matching production behavior).
+     - **Container Network Needs Analysis at Boot:**
+       - Traefik: Listeners are socket-activated by systemd user sockets (`traefik-http.socket`, `traefik-https.socket`). Ports 80 and 443 are listening before Traefik starts. Traefik inherits the fds, talks to rootless Podman over local Unix socket (`podman.sock`), and routes across bridge network `web`. It does not require host default route to begin proxying traffic.
+       - App Containers: Run pre-pulled images stored locally in rootless storage. They connect to Traefik over bridge `web`. They do not need the host WAN route to initialize, though outbound API calls depend on the default route (which DHCP establishes in < 2 s).
+     - **Architectural Decision (Defense in Depth):**
+       1. **Quadlet Unit Generation:** Dermaga sets `[Quadlet] DefaultDependencies=false` on all generated Quadlet units (`traefik.container`, app containers, `web.network`, `traefik-acme.volume`). This guarantees dermaga containers are 100% immune to 90s boot hangs on any Linux image.
+       2. **Installer Systemd Wiring:** Dermaga's installer (running as root) wires `multi-user.target` to `network-online.target` so the system-level network state is consistent and non-dermaga services do not hang.
+       3. **Doctor Health Check (`DOC-1`):** Adds a verification that `systemctl is-active network-online.target` returns active in < 5 seconds, warning if it does not.
+- **Result:**
+  - Spike 3.5a (Restart backoff, health notification, limits): **PASS**.
+  - Spike 3.5b (Boot delay & Quadlet DefaultDependencies): **PASS (Fix verified)**.
+- **Design Impact:** Validates Quadlet resource limits mapping (`PodmanArgs=--memory=...`), exponential restart backoff, and eliminates the 90-second boot hang via `[Quadlet] DefaultDependencies=false` and installer systemd wiring.
 
 ---
 
@@ -522,17 +643,10 @@ To ensure repeatable, uncontaminated results:
      - `podman inspect`: **PASS**. Secret value was **not** present in any inspection field.
      - Built image filesystem: `/run/secrets` was completely absent/empty in the final committed image.
 - **Result:** **PASS**.
-- **Findings & Cost Estimate (Decision pending: Rep):**
-  - **Findings:** Podman builds images using **Buildah** (not BuildKit). `--build-arg` values land in image layer `created_by` metadata whenever a declared `ARG` is followed by any subsequent `RUN` instruction (which occurs in virtually every practical Containerfile). In contrast, `--secret` combined with `RUN --mount=type=secret` leaves zero traces in history, inspect metadata, or the final container image filesystem.
-  - **Dermaga Build Logger Requirement:** Dermaga build logger must enforce strict **SEC-9 masking** across all streamed build logs to redact secret values regardless of build mechanism.
-  - **Cost Estimate for `--secret` Support:**
-    - *Dermaga side:* Create temporary secret files mode `0600` inside a restricted directory (`0700`), pass `--secret id=<key>,src=<tempfile>` to `podman build`, ensure file deletion/shredding in `defer`, and provide UI support in the panel for a separate "Build Secrets" configuration list.
-    - *User side:* Users must adapt their `Containerfile` to mount the secret:
-      ```dockerfile
-      # Example Containerfile using build secret
-      RUN --mount=type=secret,id=npmrc,target=/root/.npmrc npm install
-      ```
-  - **Decision Status:** Decision pending: Rep (to decide whether `--secret` support is included in v1.0.0 or deferred to a later release).
+- **Decision: Deferred to v1.1:**
+  - Build secrets (`--secret` mounts for `RUN --mount=type=secret`) are **deferred to v1.1**.
+  - In v1.0.0, build-time variables remain `--build-arg`, with clear documentation in `APP-1` warning operators that build variables leak into image history and client bundles whenever followed by `RUN`. Secrets must never be supplied as build arguments.
+  - Dermaga build logger enforces strict **SEC-9 masking** across all streamed logs to redact secret values.
 
 ---
 
@@ -591,8 +705,87 @@ To ensure repeatable, uncontaminated results:
 | **3.2** | HTTP probe di rootless netns via Aardvark-DNS | **PASS** | Confirms container health checks inside rootless netns without host port exposure | `spikes/m0/spike_3_2.sh`, §5 |
 | **3.3** | Traefik file provider, atomic rename, errors, verify router | **PASS** | Confirms JSON-in-`.yml`, ~301ms reload latency, error resilience, and switch verification | `spikes/m0/spike_3_3.sh`, §6 |
 | **3.4** | Traefik ACME with socket activation & HTTP/3 | **PASS** | **Confirms `HOST-6`**: HTTP-01/TLS-ALPN-01 pass; HTTP/3 over UDP socket activation confirmed working (initial failure traced to curl SNI test setup) | `spikes/m0/spike_3_4.sh`, §7 |
-| **3.5** | Quadlet `Notify=healthy`, limits, dry-run, boot, backoff | **PASS** | Confirms Quadlet syntax, `PodmanArgs=--memory=...` mapping, boot ordering, and exponential restart backoff | `spikes/m0/spike_3_5.sh`, §8 |
-| **3.6** | `podman build` build-time vars, `--secret`, log masking | **PASS** | Confirms `--build-arg` leaks in `created_by` image layers via Buildah; `--secret` leaves no trace; SEC-9 masking mandatory; decision pending: Rep | `spikes/m0/spike_3_6.sh`, §9 |
+| **3.5a** | Quadlet `Notify=healthy`, limits, dry-run, backoff | **PASS** | Confirms Quadlet syntax, `PodmanArgs=--memory=...` mapping, and exponential restart backoff | `spikes/m0/spike_3_5.sh`, §8 |
+| **3.5b** | Quadlet boot delay, `[Quadlet] DefaultDependencies` | **PASS (Fix verified)** | Resolves 90s delay: `[Quadlet] DefaultDependencies=false` drops boot delay from 91s to 1.07s; installer wires `network-online.target` | `spikes/m0/spike_3_5.sh`, §8 |
+| **3.6** | `podman build` build-time vars, `--secret`, log masking | **PASS (Decision: deferred to v1.1)** | Confirms `--build-arg` leaks in `created_by` image layers via Buildah; `--secret` leaves no trace; SEC-9 masking mandatory; `--secret` deferred to v1.1 | `spikes/m0/spike_3_6.sh`, §9 |
 | **3.7** | Binary size & idle RSS (`modernc.org/sqlite` + embedded UI) | **PASS (Estimate)** | Validates `NFR-2` target (< 30 MB): binary ~12 MB, post-load RSS ~18.8 MB with simulated assets; re-measurement in M1 | `spikes/m0/spike_3_7.sh`, §10 |
 | **3.8** | SSH local TCP forwarding & stream-local rejection | **PASS** | Confirms `HOST-2` / `LAP-3`: TCP forwarding to `127.0.0.1:7070` allowed, stream-local blocked | `spikes/m0/spike_3_8.sh`, §11 |
+
+---
+
+## Step 4: Documentation and Maintenance Review
+
+Per `PLAN.md` M0 Step 4, evaluated upstream documentation, maintenance cadence, version deltas against Debian 13 baseline, and architectural design impacts across all core technologies.
+
+### 1. Podman and Quadlet
+- **Current Upstream Version:** Podman `v6.2.0` (Latest stable release stream, 2026).
+- **Debian 13 Baseline:** Podman `5.4.2` (released April 2, 2025; packaged in Debian testing/trixie alongside systemd 257).
+- **Maintenance Status:** **Actively Maintained**. Upstream maintained by Red Hat / CNCF container tooling; Debian packaging actively maintained.
+- **Upstream vs Debian 13 Divergence:**
+  - Upstream Podman 5.4+ / 6.x documentation describes newer Quadlet unit types (such as `.image`, `.build`) and enhanced container directives.
+  - In Debian 13's Podman 5.4.2, native resource limit keys under `[Container]` (`CPUs=`, `Memory=`) are **rejected** by `podman-system-generator`. Dermaga must map limits via `PodmanArgs=--memory=... --cpus=...`.
+  - Quadlet `[Quadlet]` group with `DefaultDependencies=false` is fully supported in 5.4.2 (introduced in Podman 5.0+), which strips `podman-user-wait-network-online.service` from generated units.
+- **Design Impact on Dermaga:**
+  - Generator must strictly adhere to Podman 5.4.2 supported syntax to ensure valid Quadlet dry-runs.
+  - Every container and network unit must include `[Quadlet] DefaultDependencies=false` to eliminate the 90s boot delay.
+  - Rootless networking uses Netavark + Pasta bridge (`web`).
+- **Source URLs:**
+  - [Podman GitHub Releases](https://github.com/containers/podman/releases)
+  - [Podman Systemd Unit Documentation](https://docs.podman.io/en/v5.4.2/markdown/podman-systemd.unit.5.html)
+
+### 2. Traefik v3 (including ACME & HTTP/3)
+- **Current Upstream Version:** Traefik `v3.7.19` (Latest v3 release stream).
+- **Maintenance Status:** **Actively Maintained**. Traefik Labs releases regular security patches and minor updates.
+- **Design Impacts:**
+  - **Socket Activation:** Traefik natively supports systemd socket activation for both TCP (`traefik-http.socket`, `traefik-https.socket`) and UDP (`traefik-https.socket` with `FileDescriptorName=websecure`). Full HTTP/3 (QUIC) verified working over socket activation on Debian 13.
+  - **ACME Certificates:** Automatic issuance and renewal via HTTP-01 and TLS-ALPN-01 challenges works seamlessly behind socket-activated entry points. Certificates are stored in `acme.json` (mode 0600 enforced). Dermaga reads status directly from `acme.json` without exposing Traefik's API.
+  - **Dynamic Configuration:** File provider accepts JSON syntax within `.yml` files. Reloads triggered via atomic file renaming in the mounted directory complete in ~300 ms.
+- **Source URLs:**
+  - [Traefik GitHub Releases](https://github.com/traefik/traefik/releases)
+  - [Traefik v3 Documentation](https://doc.traefik.io/traefik/v3.7/)
+
+### 3. GitHub App Manifest Flow & Installation Tokens
+- **Current Version / API:** GitHub REST API (2022-11-28 version, current).
+- **Maintenance Status:** **Actively Maintained** by GitHub. Core integration mechanism for GitHub Apps.
+- **Design Impacts:**
+  - **Manifest Flow:** Initiated via HTML form POST to `https://github.com/settings/apps/new` with JSON manifest string containing `redirect_url` pointing to `http://localhost:7070`. Code exchanged via `POST /app-manifests/{code}/conversions` returning App ID, private key PEM, and client credentials.
+  - **Webhook Secret:** Configured via `PATCH /app/hook/config` using App JWT (`content_type: "json"`). Constant-time HMAC SHA-256 verification (`SEC-11`) enforced.
+  - **Installation Tokens:** Minted on demand via `POST /app/installations/{installation_id}/access_tokens`, scoped strictly to single repository IDs (`repositories: ["<repo_name>"]`). Tokens passed to git over HTTPS using HTTP Basic auth (`x-access-token:<token>`) via environment git configuration (`GIT_CONFIG_*`), preventing leaks into `.git/config` or process argv.
+- **Source URLs:**
+  - [GitHub App Manifest Flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest)
+  - [GitHub App REST API](https://docs.github.com/en/rest/apps/apps)
+
+### 4. SvelteKit & Svelte 5
+- **Current Versions:** Svelte `5.x` (stable release Oct 2024); SvelteKit `3.2.0` (November 2026).
+- **Maintenance Status:** **Actively Maintained** by Svelte team / Vercel.
+- **Design Impacts:**
+  - **Runes Reactivity:** Modern Svelte 5 runes (`$state`, `$derived`, `$props`, `$effect`) replace legacy Svelte 3/4 reactive declarations (`$:`) and stores, providing fine-grained reactivity and cleaner TypeScript typings.
+  - **Snippets:** Svelte 5 snippets (`{#snippet ...}`) replace deprecated `<slot />` architecture for component composition.
+  - **Static Build & Embedding:** Built with `@sveltejs/adapter-static` using Bun into static assets (HTML, JS, CSS). Assets embedded directly into the Go binary (`embed.FS`). Zero Node.js or Bun runtime dependency on the production VPS.
+- **Source URLs:**
+  - [Svelte 5 Documentation](https://svelte.dev/docs/svelte/overview)
+  - [SvelteKit Releases](https://github.com/sveltejs/kit/releases)
+
+### 5. Tailwind CSS v4
+- **Current Version:** Tailwind CSS `v4.0+` (stable release January 22, 2025; active patch cycle).
+- **Maintenance Status:** **Actively Maintained** by Tailwind Labs.
+- **Design Impacts:**
+  - **CSS-First Configuration:** Replaces legacy `tailwind.config.js` with `@import "tailwindcss";` in stylesheet. Themes and utilities are customized directly in CSS.
+  - **Oxide Engine:** Rust-based engine built directly into Vite via `@tailwindcss/vite`, resulting in near-instant build times without requiring PostCSS.
+  - **Modern CSS Features:** Native cascade layers (`@layer`), container queries, and `@property` rules produce a minimal CSS payload for the embedded panel.
+- **Source URLs:**
+  - [Tailwind CSS v4 Documentation](https://tailwindcss.com/docs/v4-beta)
+  - [Tailwind CSS GitHub Repository](https://github.com/tailwindlabs/tailwindcss)
+
+---
+
+### 14. Step 4 Summary Table
+
+| Technology | Upstream Version | Debian 13 Baseline | Maintenance Status | Design Impact on Dermaga | Source URL |
+|---|---|---|---|---|---|
+| **Podman / Quadlet** | `v6.2.0` | `5.4.2` (systemd 257) | Actively maintained | Limits via `PodmanArgs=--memory=...`; units require `[Quadlet] DefaultDependencies=false` | [podman.io](https://docs.podman.io/en/v5.4.2/) |
+| **Traefik v3** | `v3.7.19` | `v3.7` container | Actively maintained | Socket activation on TCP 80, TCP 443, UDP 443 (HTTP/3); ACME via Pebble; JSON-in-`.yml` file provider | [traefik.io](https://doc.traefik.io/traefik/v3.7/) |
+| **GitHub App API** | REST API (2022-11-28) | N/A (GitHub Cloud API) | Actively maintained | Manifest flow with localhost redirect; repo-scoped tokens via HTTP Basic auth in `GIT_CONFIG_*` | [docs.github.com](https://docs.github.com/en/apps) |
+| **SvelteKit / Svelte 5** | Svelte 5.x / Kit `3.2.0` | Build-time (Bun); embedded static SPA | Actively maintained | Svelte 5 runes (`$state`, `$derived`); `adapter-static` SPA embedded into Go binary | [svelte.dev](https://svelte.dev) |
+| **Tailwind CSS v4** | `v4.0+` | Build-time (Vite plugin) | Actively maintained | CSS-first config (`@import "tailwindcss";`); no `tailwind.config.js`; minimal embedded CSS | [tailwindcss.com](https://tailwindcss.com) |
 

@@ -107,6 +107,7 @@ Tested end to end on a fresh Debian 13 VM.
 
 - **v1.1: databases together with backups** (PostgreSQL, MariaDB, Valkey; scheduled restic backups to
   S3-compatible storage; restore and disaster recovery). Never one without the other.
+- **v1.1: build secrets** (`--secret` mounts for `RUN --mount=type=secret` during container builds; deferred from v1.0.0).
 - Notifications (ntfy, Telegram, Discord); metrics history and traffic charts; exporting and importing
   the configuration; public images as a source; a template catalog; deploy keys as an alternative to
   the GitHub App; a CI gate (deploy after a GitHub Actions workflow succeeds); apps with volumes and
