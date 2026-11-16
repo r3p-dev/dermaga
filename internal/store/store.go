@@ -51,6 +51,7 @@ type AuditFilter struct {
 	Origin string
 	AppID  *string
 	Since  *time.Time
+	Until  *time.Time
 	Limit  int
 	Offset int
 }
@@ -363,6 +364,10 @@ func (s *Store) ListAuditLogs(ctx context.Context, filter AuditFilter) ([]AuditL
 	if filter.Since != nil {
 		conditions = append(conditions, "created_at >= ?")
 		args = append(args, filter.Since.UTC().Format(time.RFC3339))
+	}
+	if filter.Until != nil {
+		conditions = append(conditions, "created_at <= ?")
+		args = append(args, filter.Until.UTC().Format(time.RFC3339))
 	}
 
 	query := `SELECT id, origin, app_id, event, actor, description, details, created_at FROM audit_logs`

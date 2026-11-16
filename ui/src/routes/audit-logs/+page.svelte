@@ -6,14 +6,35 @@
 	let session = $state<SessionInfo | null>(null);
 	let logs = $state<AuditLogEntry[]>([]);
 	let selectedOrigin = $state('');
+	let selectedApp = $state('');
+	let selectedTime = $state('');
 	let loading = $state(true);
 	let error = $state<string | null>(null);
+
+	function calculateSince(timeRange: string): string | undefined {
+		const now = Date.now();
+		switch (timeRange) {
+			case '1h':
+				return new Date(now - 3600 * 1000).toISOString();
+			case '24h':
+				return new Date(now - 24 * 3600 * 1000).toISOString();
+			case '7d':
+				return new Date(now - 7 * 24 * 3600 * 1000).toISOString();
+			default:
+				return undefined;
+		}
+	}
 
 	async function loadLogs() {
 		loading = true;
 		error = null;
 		try {
-			const res = await getAuditLogs(selectedOrigin || undefined);
+			const since = calculateSince(selectedTime);
+			const res = await getAuditLogs(
+				selectedOrigin || undefined,
+				selectedApp.trim() || undefined,
+				since
+			);
 			logs = res.logs || [];
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load audit logs';
@@ -25,6 +46,18 @@
 	function handleOriginChange(e: Event) {
 		const target = e.target as HTMLSelectElement;
 		selectedOrigin = target.value;
+		loadLogs();
+	}
+
+	function handleAppInput(e: Event) {
+		const target = e.target as HTMLInputElement;
+		selectedApp = target.value;
+		loadLogs();
+	}
+
+	function handleTimeChange(e: Event) {
+		const target = e.target as HTMLSelectElement;
+		selectedTime = target.value;
 		loadLogs();
 	}
 
@@ -85,20 +118,49 @@
 			<p class="text-xs text-stone-500 mt-1">Immutable record of mutating actions and security events (AUD-1, AUD-2)</p>
 		</div>
 
-		<div class="flex items-center gap-2">
-			<label for="origin-filter" class="text-xs font-medium text-stone-500">Filter Origin:</label>
-			<select
-				id="origin-filter"
-				value={selectedOrigin}
-				onchange={handleOriginChange}
-				class="text-xs py-1.5 px-2.5 rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-500"
-			>
-				<option value="">All Origins</option>
-				<option value="panel">panel</option>
-				<option value="webhook">webhook</option>
-				<option value="server_command">server_command</option>
-				<option value="daemon">daemon</option>
-			</select>
+		<div class="flex flex-wrap items-center gap-3">
+			<div class="flex items-center gap-2">
+				<label for="origin-filter" class="text-xs font-medium text-stone-500">Origin:</label>
+				<select
+					id="origin-filter"
+					value={selectedOrigin}
+					onchange={handleOriginChange}
+					class="text-xs py-1.5 px-2.5 rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-500"
+				>
+					<option value="">All Origins</option>
+					<option value="panel">panel</option>
+					<option value="webhook">webhook</option>
+					<option value="server_command">server_command</option>
+					<option value="daemon">daemon</option>
+				</select>
+			</div>
+
+			<div class="flex items-center gap-2">
+				<label for="app-filter" class="text-xs font-medium text-stone-500">App:</label>
+				<input
+					id="app-filter"
+					type="text"
+					placeholder="Filter by app..."
+					value={selectedApp}
+					oninput={handleAppInput}
+					class="text-xs py-1.5 px-2.5 rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-500 w-32"
+				/>
+			</div>
+
+			<div class="flex items-center gap-2">
+				<label for="time-filter" class="text-xs font-medium text-stone-500">Time:</label>
+				<select
+					id="time-filter"
+					value={selectedTime}
+					onchange={handleTimeChange}
+					class="text-xs py-1.5 px-2.5 rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-500"
+				>
+					<option value="">All Time</option>
+					<option value="1h">Last hour</option>
+					<option value="24h">Last 24 hours</option>
+					<option value="7d">Last 7 days</option>
+				</select>
+			</div>
 		</div>
 	</div>
 

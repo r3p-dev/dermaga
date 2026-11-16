@@ -42,10 +42,16 @@ export async function getServerStatus(): Promise<ServerStatus> {
 
 export async function getAuditLogs(
   origin?: string,
+  app?: string,
+  since?: string,
+  until?: string,
   limit = 50,
 ): Promise<AuditLogsResponse> {
   const params = new URLSearchParams();
   if (origin) params.set("origin", origin);
+  if (app) params.set("app", app);
+  if (since) params.set("since", since);
+  if (until) params.set("until", until);
   params.set("limit", limit.toString());
 
   const res = await fetch(`/api/audit-logs?${params.toString()}`);
