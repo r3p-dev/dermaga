@@ -104,18 +104,13 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// 2. Origin verification on mutating methods
+		// 2. Origin verification on mutating methods (SEC-3)
 		switch r.Method {
 		case http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch:
 			origin := r.Header.Get("Origin")
 			if origin == "" {
-				// Also check Referer if Origin is omitted by some clients
-				referer := r.Header.Get("Referer")
-				if referer == "" {
-					http.Error(w, "Forbidden: missing Origin header on mutating request (SEC-3)", http.StatusForbidden)
-					return
-				}
-				origin = referer
+				http.Error(w, "Forbidden: missing Origin header on mutating request (SEC-3)", http.StatusForbidden)
+				return
 			}
 
 			u, err := url.Parse(origin)
@@ -333,6 +328,16 @@ func (s *Server) handleAuditLogs(w http.ResponseWriter, r *http.Request) {
 
 	if appID := q.Get("app_id"); appID != "" {
 		filter.AppID = &appID
+	}
+	if sinceStr := q.Get("since"); sinceStr != "" {
+		if t, err := time.Parse(time.RFC3339, sinceStr); err == nil {
+			filter.Since = &t
+		}
+	}
+	if untilStr := q.Get("until"); untilStr != "" {
+		if t, err := time.Parse(time.RFC3339, untilStr); err == nil {
+			filter.Until = &t
+		}
 	}
 	if limitStr := q.Get("limit"); limitStr != "" {
 		if l, err := strconv.Atoi(limitStr); err == nil {
