@@ -98,7 +98,7 @@
 			<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-5 shadow-sm">
 				<span class="text-xs font-medium text-stone-500 block mb-1">SQLite Database</span>
 				<div class="flex items-baseline gap-2">
-					<span class="text-xl font-bold text-teal-600 dark:text-teal-400">Schema v{status.schema_version}</span>
+					<span class="text-xl font-bold text-brand-text">Schema v{status.schema_version}</span>
 				</div>
 				<span class="text-xs {status.database_ok ? 'text-emerald-500' : 'text-red-500'} mt-2 block">
 					{status.database_ok ? 'Database Healthy' : 'Database Error'}

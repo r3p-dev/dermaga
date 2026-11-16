@@ -64,7 +64,7 @@
 	function getOriginBadge(origin: string): { bg: string; text: string } {
 		switch (origin) {
 			case 'panel':
-				return { bg: 'bg-teal-50 dark:bg-teal-950/40 border-teal-200 dark:border-teal-800', text: 'text-teal-700 dark:text-teal-300' };
+				return { bg: 'bg-brand-badge-bg border-brand-badge-border', text: 'text-brand-badge-text' };
 			case 'webhook':
 				return { bg: 'bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800', text: 'text-sky-700 dark:text-sky-300' };
 			case 'server_command':
@@ -125,7 +125,7 @@
 					id="origin-filter"
 					value={selectedOrigin}
 					onchange={handleOriginChange}
-					class="text-xs py-1.5 px-2.5 rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-500"
+					class="text-xs py-1.5 px-2.5 rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-ring"
 				>
 					<option value="">All Origins</option>
 					<option value="panel">panel</option>
@@ -143,7 +143,7 @@
 					placeholder="Filter by app..."
 					value={selectedApp}
 					oninput={handleAppInput}
-					class="text-xs py-1.5 px-2.5 rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-500 w-32"
+					class="text-xs py-1.5 px-2.5 rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-ring w-32"
 				/>
 			</div>
 
@@ -153,7 +153,7 @@
 					id="time-filter"
 					value={selectedTime}
 					onchange={handleTimeChange}
-					class="text-xs py-1.5 px-2.5 rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 focus:outline-none focus:ring-1 focus:ring-teal-500"
+					class="text-xs py-1.5 px-2.5 rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 focus:outline-none focus:ring-1 focus:ring-brand-ring"
 				>
 					<option value="">All Time</option>
 					<option value="1h">Last hour</option>

@@ -57,8 +57,8 @@
 	<header class="border-b border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 sticky top-0 z-40">
 		<div class="max-w-6xl mx-auto px-4 h-14 flex items-center justify-between">
 			<div class="flex items-center gap-6">
-				<a href="/" class="flex items-center gap-2 font-semibold text-lg tracking-tight hover:opacity-80 transition">
-					<span class="w-7 h-7 rounded bg-teal-600 text-white flex items-center justify-center font-bold text-sm">D</span>
+				<a href="/" class="flex items-center gap-2.5 font-semibold text-lg tracking-tight hover:opacity-80 transition">
+					<img src="/logo.svg" alt="dermaga" class="w-7 h-7 object-contain" />
 					<span>dermaga</span>
 				</a>
 

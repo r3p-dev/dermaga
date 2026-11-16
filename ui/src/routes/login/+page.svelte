@@ -46,9 +46,7 @@
 <div class="max-w-md mx-auto mt-12 md:mt-20">
 	<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-6 md:p-8 shadow-sm">
 		<div class="mb-6 text-center">
-			<div class="w-10 h-10 rounded-lg bg-teal-600 text-white font-bold text-lg flex items-center justify-center mx-auto mb-3">
-				D
-			</div>
+			<img src="/logo.svg" alt="dermaga logo" class="w-12 h-12 mx-auto mb-3 object-contain" />
 			<h1 class="text-xl font-semibold tracking-tight">Admin Login</h1>
 			<p class="text-xs text-stone-500 mt-1">Enter your password to unlock the dermaga panel</p>
 		</div>
@@ -70,14 +68,14 @@
 					bind:value={password}
 					placeholder="••••••••••••"
 					required
-					class="w-full px-3 py-2 text-sm rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-950 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
+					class="w-full px-3 py-2 text-sm rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-950 focus:outline-none focus:ring-2 focus:ring-brand-ring focus:border-transparent transition"
 				/>
 			</div>
 
 			<button
 				type="submit"
 				disabled={loading || !password}
-				class="w-full py-2 px-4 rounded-md bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white font-medium text-sm transition shadow-sm flex items-center justify-center gap-2"
+				class="w-full py-2 px-4 rounded-md bg-brand-primary hover:bg-brand-hover active:bg-brand-active disabled:opacity-50 text-brand-btn-text font-medium text-sm transition shadow-sm flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-brand-ring focus:ring-offset-2 dark:focus:ring-offset-stone-900"
 			>
 				{#if loading}
 					<span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
