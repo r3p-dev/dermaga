@@ -1,0 +1,79 @@
+=== DEP-10 Reconciliation Verification on dermaga-vm ===
+Timestamp: 2026-11-17T05:54:28+07:00
+Git commit: 46b94b5
+Working tree status: dirty
+ M cmd/dermaga/main.go
+ M docs/ARCHITECTURE.md
+ M docs/evidence/M2/logs/vm_quadlet_dryrun.log
+ M docs/evidence/M2/logs/vm_traefik_configs.log
+ M internal/config/paths.go
+ M internal/host/fake.go
+ M internal/host/host.go
+ M internal/host/host_test.go
+ M internal/quadlet/ini.go
+ M internal/quadlet/injection_test.go
+ M internal/quadlet/quadlet_test.go
+ M internal/quadlet/render.go
+ M internal/quadlet/validate.go
+ M internal/traefik/injection_test.go
+ M internal/traefik/testdata/basic-auth.golden
+ M internal/traefik/traefik_test.go
+ M test/vm/test_quadlet_dryrun.sh
+ M test/vm/test_traefik_configs.sh
+?? docs/evidence/M2/logs/vm_reconciliation.log
+?? internal/quadlet/testdata/url-escaped-health.golden
+?? internal/reconciler/
+?? internal/store/apps.go
+?? internal/store/apps_test.go
+?? internal/traefik/testdata/vps-setup-headers.golden
+?? test/vm/test_reconciliation.sh
+Host: dermaga-vm
+
+Building dermaga binary for remote VM...
+Build complete.
+Created remote test directory: /tmp/reconcile-test-qXely6
+Seeding remote SQLite database (/tmp/reconcile-test-qXely6/dermaga.db)...
+Preparing local test image localhost/demo:r1 on dermaga-vm...
+c555abafce116cd76dd7817e44d0c2dff676efae3b02576c2eeece56f305a8d5
+Getting image source signatures
+Copying blob sha256:75f1d9657d880da5f75298e8f40e9928bb6e260c50d26f97af196845307e3064
+Copying blob sha256:93d31f99063d2f1226581377542e5d902de3f51b0bbcdaf087fc92643d01eac4
+Copying blob sha256:386656441e1340d8992d4025996618c0f9421affdc24a4dee3a0eac79c85d4b7
+Copying config sha256:33138272b039dec8b6ab0b20d7870a60b81f1ff22432801712a2b19430c864c2
+Writing manifest to image destination
+33138272b039dec8b6ab0b20d7870a60b81f1ff22432801712a2b19430c864c2
+temp-demo-seed
+Staging scenario files in dermaga's directories...
+
+--- Running dermaga reconcile on dermaga-vm ---
+=== Reconciliation Report (DEP-10) ===
+Orphans removed:        2 [app-orphan-r1.container app-orphan.yml]
+Files re-rendered:      2 [app-demo-r1.container app-demo.yml]
+Units started:          1 [app-demo-r1.service]
+Verify routers cleaned: 1 [app-demo-verify.yml]
+Foreign files reported: 4 [custom-vpn.container traefik-acme.volume traefik.container custom-metrics.yml]
+
+--- Asserting Acceptance Cases ---
+1. Orphan files removed: PASS (app-orphan-r1.container and app-orphan.yml deleted)
+2a. Missing Quadlet infrastructure verified (web.network): PASS (web.network present)
+2b. Missing Quadlet app container re-rendered (app-demo-r1.container): PASS (app-demo-r1.container re-rendered)
+2c. Missing Traefik global dynamic config verified (00-global.yml): PASS (00-global.yml present)
+2d. Missing Traefik app dynamic config re-rendered (app-demo.yml): PASS (app-demo.yml re-rendered)
+3. Live unit started by systemd: PASS (app-demo-r1.service is active)
+4. Leftover verify router removed (app-demo-verify.yml): PASS (app-demo-verify.yml deleted)
+5a. Foreign Quadlet file untouched (custom-vpn.container): PASS (custom-vpn.container untouched)
+5b. Foreign Traefik file untouched (custom-metrics.yml): PASS (custom-metrics.yml untouched)
+5c. Existing system units untouched (traefik.container, traefik-acme.volume): PASS (system units preserved)
+5d. Foreign files reported in output: PASS (All foreign files accurately reported)
+
+--- Negative Control: Deliberately Broken Inaccessible Database ---
+Negative control execution output:
+Error: opening database: creating database directory: mkdir /nonexistent: permission denied
+Negative control PASSED: reconciler failed with non-zero exit on inaccessible database.
+
+=== All DEP-10 Reconciliation Acceptance Cases Verified: PASS ===
+
+Cleaning up reconciliation test environment on dermaga-vm...
+Untagged: localhost/demo:r1
+Deleted: 33138272b039dec8b6ab0b20d7870a60b81f1ff22432801712a2b19430c864c2
+Cleanup complete (§8: idempotent, no residue).

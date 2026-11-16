@@ -23,6 +23,8 @@ import (
 	"dermaga/internal/auth"
 	"dermaga/internal/config"
 	"dermaga/internal/crypto"
+	"dermaga/internal/host"
+	"dermaga/internal/reconciler"
 	"dermaga/internal/server"
 	"dermaga/internal/store"
 )
@@ -51,6 +53,8 @@ func main() {
 		err = runAdmin(args, os.Stdin)
 	case "panel":
 		err = runPanel(args)
+	case "reconcile":
+		err = runReconcile(args)
 	case "version", "--version", "-v":
 		fmt.Printf("dermaga version %s (commit %s)\n", Version, Commit)
 	case "hook-relay":
@@ -80,6 +84,7 @@ Commands:
   admin set-password   Set or reset the admin password (recovery)
   admin totp disable   Disable TOTP two-factor authentication (recovery)
   panel                Display laptop connection instructions and setup link
+  reconcile            Reconcile live units and routing configuration per DEP-10
   version              Print version information
 
 Internal Helpers:
@@ -117,6 +122,18 @@ func runDaemon(args []string) error {
 		return fmt.Errorf("opening database: %w", err)
 	}
 	defer st.Close()
+
+	// DEP-10: Self-healing startup reconciliation
+	rec := reconciler.New(host.NewRealHost(), st, reconciler.Config{
+		QuadletDir:        paths.QuadletDir,
+		TraefikDynamicDir: paths.TraefikDynamicDir,
+	})
+	if recReport, err := rec.Reconcile(context.Background()); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: startup reconciliation encountered error: %v\n", err)
+	} else if len(recReport.OrphansRemoved) > 0 || len(recReport.FilesReRendered) > 0 || len(recReport.UnitsStarted) > 0 || len(recReport.VerifyRoutersCleaned) > 0 {
+		fmt.Printf("Startup reconciliation complete: %d orphan(s) removed, %d file(s) re-rendered, %d unit(s) started, %d verify router(s) cleaned\n",
+			len(recReport.OrphansRemoved), len(recReport.FilesReRendered), len(recReport.UnitsStarted), len(recReport.VerifyRoutersCleaned))
+	}
 
 	srv, err := server.NewServer(server.Config{
 		ListenAddr: *addr,
@@ -516,4 +533,38 @@ func runProbe(args []string) error {
 		return nil
 	}
 	return fmt.Errorf("health probe returned non-2xx status: %d", resp.StatusCode)
+}
+
+func runReconcile(args []string) error {
+	paths := config.ResolvePaths()
+
+	fs := flag.NewFlagSet("reconcile", flag.ExitOnError)
+	dbPath := fs.String("db", paths.DBPath, "Path to SQLite database")
+	quadletDir := fs.String("quadlet-dir", paths.QuadletDir, "Path to Quadlet units directory")
+	traefikDir := fs.String("traefik-dir", paths.TraefikDynamicDir, "Path to Traefik dynamic configuration directory")
+	_ = fs.Parse(args)
+
+	st, err := store.Open(*dbPath)
+	if err != nil {
+		return fmt.Errorf("opening database: %w", err)
+	}
+	defer st.Close()
+
+	rec := reconciler.New(host.NewRealHost(), st, reconciler.Config{
+		QuadletDir:        *quadletDir,
+		TraefikDynamicDir: *traefikDir,
+	})
+
+	report, err := rec.Reconcile(context.Background())
+	if err != nil {
+		return fmt.Errorf("reconciliation failed: %w", err)
+	}
+
+	fmt.Println("=== Reconciliation Report (DEP-10) ===")
+	fmt.Printf("Orphans removed:        %d %v\n", len(report.OrphansRemoved), report.OrphansRemoved)
+	fmt.Printf("Files re-rendered:      %d %v\n", len(report.FilesReRendered), report.FilesReRendered)
+	fmt.Printf("Units started:          %d %v\n", len(report.UnitsStarted), report.UnitsStarted)
+	fmt.Printf("Verify routers cleaned: %d %v\n", len(report.VerifyRoutersCleaned), report.VerifyRoutersCleaned)
+	fmt.Printf("Foreign files reported: %d %v\n", len(report.ForeignFilesReported), report.ForeignFilesReported)
+	return nil
 }
