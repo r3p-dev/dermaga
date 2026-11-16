@@ -21,8 +21,8 @@ fi
 ssh "$VM_HOST" 'bash -s' << 'EOF'
 set -euo pipefail
 
-# Ensure ~/.local/bin and systemd user config exist
-mkdir -p ~/.local/bin ~/.config/systemd/user ~/.local/share/dermaga
+# Ensure ~/.local/bin, ~/.config/dermaga, and systemd user config exist
+mkdir -p ~/.local/bin ~/.config/dermaga ~/.config/systemd/user ~/.local/share/dermaga
 
 # Check binary exists
 if [ ! -f ~/.local/bin/dermaga ]; then
@@ -31,7 +31,11 @@ if [ ! -f ~/.local/bin/dermaga ]; then
 fi
 
 # Set default demo password if database does not exist yet or reset for demo
-~/.local/bin/dermaga admin set-password --password "correct-password-123"
+DEMO_PASS="correct-password-123"
+PASS_FILE="$HOME/.config/dermaga/demo_password"
+echo "$DEMO_PASS" > "$PASS_FILE"
+chmod 0600 "$PASS_FILE"
+echo "$DEMO_PASS" | ~/.local/bin/dermaga admin set-password
 
 # Install systemd user service if not present
 UNIT_FILE="$HOME/.config/systemd/user/dermaga.service"
@@ -74,4 +78,4 @@ echo "=== Dermaga M1 Demo State Ready ==="
 echo "Access the web panel:"
 echo "  1. Start SSH tunnel: ssh -N -L 7070:127.0.0.1:7070 $VM_HOST"
 echo "  2. Open browser:     http://127.0.0.1:7070"
-echo "  3. Admin password:   correct-password-123"
+echo "  3. Admin password stored on VM: ~/.config/dermaga/demo_password"
