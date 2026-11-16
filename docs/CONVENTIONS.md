@@ -65,6 +65,9 @@ explanations.**
   Quadlet/systemd). Atomic writes: temp file in the same directory, `fsync`, `rename`,
   `fsync` the directory.
 - **Secrets**: sealed with the secrets box and their column name; never logged; masked in build logs.
+  On webhook HMAC verification failure (`SEC-11`), log only the delivery ID, event, source and
+  "signature mismatch" — never log the expected signature, received signature, secret or payload to
+  prevent logs from acting as a signature oracle.
 - **API**: every request and response is a Go struct; the UI's types are generated with tygo. Never
   hand-write a type the UI reads from the server.
 - **Concurrency**: a per-app mutex for mutating actions; contexts carry deadlines; the daemon owns

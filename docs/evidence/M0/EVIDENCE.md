@@ -186,7 +186,7 @@ Raw `evidence.log`:
 ```
 Response status returned to client: `HTTP 202 Accepted`.
 
-#### 5.4 Negative HMAC Replay Check
+#### 5.4 Negative HMAC Replay Check & Oracle Prevention Rule
 Sent an HTTP POST to `http://127.0.0.1:7070/hooks/github-app` with invalid signature `sha256=0000000000000000000000000000000000000000000000000000000000000000`:
 - HTTP Status: `401 Unauthorized`
 - Body: `Invalid signature`
@@ -194,6 +194,9 @@ Sent an HTTP POST to `http://127.0.0.1:7070/hooks/github-app` with invalid signa
   ```
   [2026-11-15T09:41:46.055423647+07:00] WEBHOOK HMAC MISMATCH: received "sha256=0000000000000000000000000000000000000000000000000000000000000000", expected "sha256=5de1e77031f0c0e01ce1ddee17443275796bba0b08016516714fff447798ead2"
   ```
+
+> [!IMPORTANT]
+> **Signature Oracle Prevention (SEC-11 / CONVENTIONS.md)**: While logging `expected` signature was used in the throwaway spike for local debugging, doing so in production turns daemon logs into a signature oracle. An explicit rule was added to `SEC-11` and `docs/CONVENTIONS.md`: on HMAC verification failure, log only `delivery ID`, `event`, `source` and `"signature mismatch"`. Never log expected signature, received signature, secret, or payload. The spike logging was subsequently updated to match.
 
 ---
 
@@ -224,3 +227,12 @@ During initial git debugging in Step 2, the spike server had kept the newly conv
 | 7 | Scoped token isolation & 422 error shape | **PASS** | §4.2, §4.3 (remote repository not found exit 128; HTTP 422 for invalid repo) |
 | 8 | Push webhook delivery & constant-time HMAC-SHA256 verification | **PASS** | §5.3, §5.4 (`evidence.log` & `gosmee` status 202; bad sig rejected with 401) |
 | 9 | Hook domain configuration timing before manifest flow | **Decision recorded** | `docs/PLAN.md` M0 step 2 & `docs/PRD/install-and-access.md` (`SETUP-2`) |
+
+---
+
+### 8. Teardown of Step 2 Forwarding & Smee Public Channel Notice
+
+1. **`gosmee` Client Stopped:** Process PID 359420 stopped before beginning Step 3. The local webhook listener `http://127.0.0.1:7070/hooks/github-app` is no longer receiving relayed webhooks.
+2. **Channel & Dev App Kept:** The GitHub App (`dermaga-dev-r3p-spike`) and Smee channel (`https://smee.io/EqPiWtB72uBv1ZmL`) remain in place for later milestone testing and teardown in `docs/SETUP.md`.
+3. **Public Exposure Notice:** The Smee channel URL is effectively unauthenticated and publicly accessible over the internet. Therefore, it is strictly pointed only at non-production test repositories (`r3p-dev/dermaga-test-app`). Production repositories must never be linked to public webhook forwarders.
+

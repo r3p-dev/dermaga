@@ -60,7 +60,9 @@ Authentication and secrets
 Webhooks
 
 - **SEC-11** Verify `X-Hub-Signature-256` (HMAC-SHA256, constant-time compare) **before** parsing JSON;
-  bounded read (`http.MaxBytesReader`) with body limit 25 MiB.
+  bounded read (`http.MaxBytesReader`) with body limit 25 MiB. On verification failure, log only the
+  delivery ID, event, source and "signature mismatch" — never log the expected signature, received
+  signature, secret or payload (avoids turning logs into a signature oracle).
 - **SEC-12** Accept only `push` and the installation events; deploy only for a repo and branch that
   belong to an app.
 - **SEC-13** Dedupe on `X-GitHub-Delivery`; respond `202` immediately and enqueue; rate-limit per app

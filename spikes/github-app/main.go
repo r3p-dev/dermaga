@@ -597,7 +597,7 @@ func handleWebhook(w http.ResponseWriter, r *http.Request) {
 	expectedSig := "sha256=" + hex.EncodeToString(mac.Sum(nil))
 
 	if !hmac.Equal([]byte(sigHeader), []byte(expectedSig)) {
-		logEvidence("WEBHOOK HMAC MISMATCH: received %q, expected %q", sigHeader, expectedSig)
+		logEvidence("WEBHOOK VERIFICATION FAILED: delivery=%s event=%s source=%s error=\"signature mismatch\"", delivery, event, r.RemoteAddr)
 		http.Error(w, "Invalid signature", http.StatusUnauthorized)
 		return
 	}
