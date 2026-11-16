@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -12,9 +13,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
+
+	"golang.org/x/term"
 
 	"dermaga/internal/auth"
 	"dermaga/internal/config"
@@ -24,8 +28,9 @@ import (
 )
 
 // Version and Commit are set at build time via -ldflags.
+// Default "dev" indicates a non-release build fallback.
 var (
-	Version = "0.1.0-dev"
+	Version = "dev"
 	Commit  = "unknown"
 )
 
@@ -43,7 +48,7 @@ func main() {
 	case "daemon":
 		err = runDaemon(args)
 	case "admin":
-		err = runAdmin(args)
+		err = runAdmin(args, os.Stdin)
 	case "panel":
 		err = runPanel(args)
 	case "version", "--version", "-v":
@@ -154,7 +159,46 @@ func runDaemon(args []string) error {
 	}
 }
 
-func runAdmin(args []string) error {
+func readPassword(in io.Reader) (string, error) {
+	if f, ok := in.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		fmt.Print("Enter new admin password: ")
+		passBytes, err := term.ReadPassword(int(f.Fd()))
+		fmt.Println()
+		if err != nil {
+			return "", fmt.Errorf("reading password: %w", err)
+		}
+		password := strings.TrimRight(string(passBytes), "\r\n")
+		if password == "" {
+			return "", errors.New("password cannot be empty")
+		}
+
+		fmt.Print("Confirm password: ")
+		confirmBytes, err := term.ReadPassword(int(f.Fd()))
+		fmt.Println()
+		if err != nil {
+			return "", fmt.Errorf("reading confirmation: %w", err)
+		}
+		confirm := strings.TrimRight(string(confirmBytes), "\r\n")
+		if password != confirm {
+			return "", errors.New("passwords do not match")
+		}
+		return password, nil
+	}
+
+	// Non-TTY / piped input: read one line from stdin
+	reader := bufio.NewReader(in)
+	line, err := reader.ReadString('\n')
+	if err != nil && len(line) == 0 {
+		return "", fmt.Errorf("reading password from stdin: %w", err)
+	}
+	password := strings.TrimRight(line, "\r\n")
+	if password == "" {
+		return "", errors.New("password cannot be empty")
+	}
+	return password, nil
+}
+
+func runAdmin(args []string, in io.Reader) error {
 	if len(args) == 0 {
 		fmt.Println("Usage: dermaga admin <set-password|totp disable>")
 		return nil
@@ -164,22 +208,13 @@ func runAdmin(args []string) error {
 
 	switch args[0] {
 	case "set-password":
-		var password string
-		fs := flag.NewFlagSet("set-password", flag.ContinueOnError)
-		fs.StringVar(&password, "password", "", "New admin password")
-		_ = fs.Parse(args[1:])
-
-		if password == "" && len(fs.Args()) > 0 {
-			password = fs.Args()[0]
+		if len(args) > 1 {
+			return fmt.Errorf("set-password takes no arguments; input password via prompt or stdin")
 		}
-		if password == "" {
-			fmt.Print("Enter new admin password: ")
-			reader := bufio.NewReader(os.Stdin)
-			input, err := reader.ReadString('\n')
-			if err != nil {
-				return fmt.Errorf("reading password: %w", err)
-			}
-			password = strings.TrimSpace(input)
+
+		password, err := readPassword(in)
+		if err != nil {
+			return err
 		}
 
 		if len(password) < 8 {
@@ -242,6 +277,79 @@ func runAdmin(args []string) error {
 	}
 }
 
+type SSHConnectionInfo struct {
+	HostName string
+	Port     string
+	Notice   string
+	Reliable bool
+}
+
+func isCarrierGradeNAT(ip net.IP) bool {
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return false
+	}
+	return ip4[0] == 100 && (ip4[1]&0xc0) == 64
+}
+
+func deriveSSHConfig(sshConnectionEnv string, sshdConfigReader io.Reader) SSHConnectionInfo {
+	tokens := strings.Fields(sshConnectionEnv)
+	if len(tokens) >= 4 {
+		serverIP := tokens[2]
+		serverPort := tokens[3]
+		ip := net.ParseIP(serverIP)
+		if ip != nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || isCarrierGradeNAT(ip)) {
+			return SSHConnectionInfo{
+				HostName: serverIP,
+				Port:     serverPort,
+				Reliable: false,
+				Notice:   fmt.Sprintf("Note: The detected connection address (%s) is a private or local network address that may sit behind NAT or a VM bridge.\nIf connecting from outside this local network, replace it with the public IP or hostname you normally use to SSH to this server.", serverIP),
+			}
+		}
+		return SSHConnectionInfo{
+			HostName: serverIP,
+			Port:     serverPort,
+			Reliable: true,
+			Notice:   "",
+		}
+	}
+
+	// No active SSH session: detect configured sshd port
+	port := "22"
+	if sshdConfigReader != nil {
+		scanner := bufio.NewScanner(sshdConfigReader)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if strings.HasPrefix(line, "#") {
+				continue
+			}
+			parts := strings.Fields(line)
+			if len(parts) >= 2 && strings.EqualFold(parts[0], "Port") {
+				port = parts[1]
+				break
+			}
+		}
+	}
+
+	return SSHConnectionInfo{
+		HostName: "<your-server-ip-or-hostname>",
+		Port:     port,
+		Reliable: false,
+		Notice:   "Note: No active SSH session detected (SSH_CONNECTION environment variable not set).\nUse the hostname or IP address you normally use to SSH to this server.",
+	}
+}
+
+func openSSHDConfig() (*os.File, error) {
+	files, _ := filepath.Glob("/etc/ssh/sshd_config.d/*.conf")
+	files = append(files, "/etc/ssh/sshd_config")
+	for _, p := range files {
+		if f, err := os.Open(p); err == nil {
+			return f, nil
+		}
+	}
+	return nil, os.ErrNotExist
+}
+
 func runPanel(args []string) error {
 	paths := config.ResolvePaths()
 
@@ -255,23 +363,29 @@ func runPanel(args []string) error {
 		return nil
 	}
 
-	hostname, _ := os.Hostname()
-	if hostname == "" {
-		hostname = "server"
+	var sshdReader io.Reader
+	if f, err := openSSHDConfig(); err == nil {
+		defer f.Close()
+		sshdReader = f
 	}
+	info := deriveSSHConfig(os.Getenv("SSH_CONNECTION"), sshdReader)
 
 	fmt.Println("=== dermaga Panel Access ===")
 	fmt.Println()
 	fmt.Println("1. On your laptop, add or verify this configuration in ~/.ssh/config:")
 	fmt.Println()
 	fmt.Println("   Host dermaga")
-	fmt.Printf("       HostName %s\n", hostname)
+	fmt.Printf("       HostName %s\n", info.HostName)
 	fmt.Println("       User server")
-	fmt.Println("       Port 4222")
+	fmt.Printf("       Port %s\n", info.Port)
 	fmt.Println("       LocalForward 7070 127.0.0.1:7070")
 	fmt.Println("       ServerAliveInterval 30")
 	fmt.Println("       ServerAliveCountMax 3")
 	fmt.Println()
+	if info.Notice != "" {
+		fmt.Println(info.Notice)
+		fmt.Println()
+	}
 	fmt.Println("2. Connect from your laptop:")
 	fmt.Println("   ssh dermaga")
 	fmt.Println()

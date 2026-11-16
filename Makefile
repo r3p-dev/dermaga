@@ -1,4 +1,4 @@
-VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "0.1.0-dev")
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 LDFLAGS = -s -w -X main.Version=$(VERSION) -X main.Commit=$(COMMIT)

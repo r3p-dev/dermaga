@@ -60,7 +60,7 @@ func NewServer(cfg Config) (*Server, error) {
 		cfg.ListenAddr = "127.0.0.1:7070"
 	}
 	if cfg.Version == "" {
-		cfg.Version = "0.1.0-dev"
+		cfg.Version = "dev"
 	}
 
 	s := &Server{

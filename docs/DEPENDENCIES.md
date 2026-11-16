@@ -20,6 +20,7 @@ _Filled in as dependencies are added (M1 onward)._
 | ---------- | ---- | ------- | -------- |
 | `modernc.org/sqlite` v1.62.0 | Go module | SQLite driver without cgo; static binary | M1 |
 | `golang.org/x/crypto` v0.59.0 | Go module | argon2id password hashing | M1 |
+| `golang.org/x/term` v0.48.0 | Go module | Terminal detection and password prompt without echo | M1 |
 | `honnef.co/go/tools` (staticcheck) | Go tool | Lint, deprecated API detection | M1 |
 | `golang.org/x/vuln` (govulncheck) | Go tool | Known Go vulnerability scanning | M1 |
 | `github.com/gzuidhof/tygo` | Go tool | TypeScript types from Go structs | M1 |

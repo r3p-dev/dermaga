@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	golang.org/x/crypto v0.0.0-20210817164053-32db794688a5
+	golang.org/x/term v0.48.0
 	modernc.org/sqlite v1.62.0
 )
 
