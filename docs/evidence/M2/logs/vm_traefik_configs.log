@@ -1,0 +1,28 @@
+=== Traefik Golden Configurations Verification on dermaga-vm ===
+Timestamp: 2026-11-16T21:09:56+07:00
+Git commit: 4274867
+Working tree status: dirty
+ M docs/PLAN.md
+ M internal/host/fake.go
+ M internal/host/host.go
+?? docs/evidence/M2/
+?? internal/quadlet/
+?? internal/traefik/
+?? test/vm/test_quadlet_dryrun.sh
+?? test/vm/test_traefik_configs.sh
+Host: dermaga-vm
+
+Testing dynamic config aliases-www... OK (loaded by Traefik without errors)
+Testing dynamic config allowlist... OK (loaded by Traefik without errors)
+Testing dynamic config basic-auth... OK (loaded by Traefik without errors)
+Testing dynamic config body-size... OK (loaded by Traefik without errors)
+Testing dynamic config custom-removed-headers... OK (loaded by Traefik without errors)
+Testing dynamic config global-dynamic... OK (loaded by Traefik without errors)
+Testing dynamic config middleware-toggles... OK (loaded by Traefik without errors)
+Testing dynamic config minimal... OK (loaded by Traefik without errors)
+Testing dynamic config path-prefix... OK (loaded by Traefik without errors)
+Testing dynamic config path-prefix-no-strip... OK (loaded by Traefik without errors)
+Validating static config static-config (JSON syntax)... OK
+Testing dynamic config switch-verify... OK (loaded by Traefik without errors)
+
+=== All Traefik Golden Configurations Verified: PASS ===

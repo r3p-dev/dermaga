@@ -1,0 +1,284 @@
+=== Quadlet Generator Dry-Run Verification on dermaga-vm ===
+Timestamp: 2026-11-16T21:08:14+07:00
+Git commit: 4274867
+Working tree status: dirty
+ M docs/PLAN.md
+ M internal/host/fake.go
+ M internal/host/host.go
+?? docs/evidence/M2/
+?? internal/quadlet/
+?? internal/traefik/
+?? test/vm/test_quadlet_dryrun.sh
+Host: dermaga-vm
+
+Created remote directory: /tmp/quadlet-verify-zDcGqn
+Staging caps-added -> app-caps-added.container
+Staging custom-limits -> app-custom-limits.container
+Staging env-file -> app-env-file.container
+Staging health-cmd -> app-health-cmd.container
+Staging minimal -> app-minimal.container
+Staging network-unit -> web.network
+Staging readonly-root -> app-readonly-root.container
+
+Executing /usr/lib/systemd/system-generators/podman-system-generator --dryrun --user...
+quadlet-generator[3596]: Loading source unit file /tmp/quadlet-verify-zDcGqn/app-caps-added.container
+quadlet-generator[3596]: Loading source unit file /tmp/quadlet-verify-zDcGqn/app-custom-limits.container
+quadlet-generator[3596]: Loading source unit file /tmp/quadlet-verify-zDcGqn/app-env-file.container
+quadlet-generator[3596]: Loading source unit file /tmp/quadlet-verify-zDcGqn/app-health-cmd.container
+quadlet-generator[3596]: Loading source unit file /tmp/quadlet-verify-zDcGqn/app-minimal.container
+quadlet-generator[3596]: Loading source unit file /tmp/quadlet-verify-zDcGqn/app-readonly-root.container
+quadlet-generator[3596]: Loading source unit file /tmp/quadlet-verify-zDcGqn/web.network
+---web-network.service---
+[X-Network]
+NetworkName=web
+
+[X-Quadlet]
+DefaultDependencies=false
+
+[Unit]
+SourcePath=/tmp/quadlet-verify-zDcGqn/web.network
+RequiresMountsFor=%t/containers
+
+[Service]
+ExecStart=/usr/bin/podman network create --ignore web
+SyslogIdentifier=%N
+Type=oneshot
+RemainAfterExit=yes
+
+---app-caps-added.service---
+[Unit]
+Description=dermaga app proxy release 1
+SourcePath=/tmp/quadlet-verify-zDcGqn/app-caps-added.container
+RequiresMountsFor=%t/containers
+
+[X-Container]
+ContainerName=app-proxy-r1
+Image=localhost/proxy:r1
+Network=web
+PidsLimit=128
+NoNewPrivileges=true
+DropCapability=ALL
+AddCapability=NET_BIND_SERVICE
+StopTimeout=10
+
+[X-Quadlet]
+DefaultDependencies=false
+
+[Service]
+Restart=on-failure
+RestartSec=1s
+RestartSteps=3
+RestartMaxDelaySec=8s
+TimeoutStartSec=30
+TimeoutStopSec=20
+Environment=PODMAN_SYSTEMD_UNIT=%n
+KillMode=mixed
+ExecStop=/usr/bin/podman rm -v -f -i --cidfile=%t/%N.cid
+ExecStopPost=-/usr/bin/podman rm -v -f -i --cidfile=%t/%N.cid
+Delegate=yes
+Type=notify
+NotifyAccess=all
+SyslogIdentifier=%N
+ExecStart=/usr/bin/podman run --name app-proxy-r1 --cidfile=%t/%N.cid --replace --rm --cgroups=split --stop-timeout 10 --pids-limit 128 --network web --sdnotify=conmon -d --security-opt=no-new-privileges --cap-drop all --cap-add net_bind_service localhost/proxy:r1
+
+[Install]
+WantedBy=default.target
+
+---app-custom-limits.service---
+[Unit]
+Description=dermaga app shop release 2
+SourcePath=/tmp/quadlet-verify-zDcGqn/app-custom-limits.container
+RequiresMountsFor=%t/containers
+
+[X-Container]
+ContainerName=app-shop-r2
+Image=ghcr.io/org/shop:sha256-abcdef
+Network=web
+PodmanArgs=--memory=1g --cpus=2.0
+PidsLimit=256
+NoNewPrivileges=true
+DropCapability=ALL
+StopTimeout=10
+
+[X-Quadlet]
+DefaultDependencies=false
+
+[Service]
+Restart=on-failure
+RestartSec=1s
+RestartSteps=3
+RestartMaxDelaySec=8s
+TimeoutStartSec=30
+TimeoutStopSec=20
+Environment=PODMAN_SYSTEMD_UNIT=%n
+KillMode=mixed
+ExecStop=/usr/bin/podman rm -v -f -i --cidfile=%t/%N.cid
+ExecStopPost=-/usr/bin/podman rm -v -f -i --cidfile=%t/%N.cid
+Delegate=yes
+Type=notify
+NotifyAccess=all
+SyslogIdentifier=%N
+ExecStart=/usr/bin/podman run --name app-shop-r2 --cidfile=%t/%N.cid --replace --rm --cgroups=split --pids-limit 256 --stop-timeout 10 --network web --sdnotify=conmon -d --security-opt=no-new-privileges --cap-drop all --memory=1g --cpus=2.0 ghcr.io/org/shop:sha256-abcdef
+
+[Install]
+WantedBy=default.target
+
+---app-env-file.service---
+[Unit]
+Description=dermaga app backend release 4
+SourcePath=/tmp/quadlet-verify-zDcGqn/app-env-file.container
+RequiresMountsFor=%t/containers
+
+[X-Container]
+ContainerName=app-backend-r4
+Image=localhost/backend:r4
+Network=web
+PidsLimit=128
+NoNewPrivileges=true
+DropCapability=ALL
+EnvironmentFile=/home/server/.config/dermaga/env/backend.env
+StopTimeout=10
+
+[X-Quadlet]
+DefaultDependencies=false
+
+[Service]
+Restart=on-failure
+RestartSec=1s
+RestartSteps=3
+RestartMaxDelaySec=8s
+TimeoutStartSec=30
+TimeoutStopSec=20
+Environment=PODMAN_SYSTEMD_UNIT=%n
+KillMode=mixed
+ExecStop=/usr/bin/podman rm -v -f -i --cidfile=%t/%N.cid
+ExecStopPost=-/usr/bin/podman rm -v -f -i --cidfile=%t/%N.cid
+Delegate=yes
+Type=notify
+NotifyAccess=all
+SyslogIdentifier=%N
+ExecStart=/usr/bin/podman run --name app-backend-r4 --cidfile=%t/%N.cid --replace --rm --cgroups=split --stop-timeout 10 --pids-limit 128 --network web --sdnotify=conmon -d --security-opt=no-new-privileges --cap-drop all --env-file /home/server/.config/dermaga/env/backend.env localhost/backend:r4
+
+[Install]
+WantedBy=default.target
+
+---app-health-cmd.service---
+[Unit]
+Description=dermaga app backend-api release 5
+SourcePath=/tmp/quadlet-verify-zDcGqn/app-health-cmd.container
+RequiresMountsFor=%t/containers
+
+[X-Container]
+ContainerName=app-backend-api-r5
+Image=localhost/backend-api:r5
+Network=web
+PidsLimit=128
+NoNewPrivileges=true
+DropCapability=ALL
+StopTimeout=10
+HealthCmd=curl -fsS http://localhost:8080/health || exit 1
+Notify=healthy
+
+[X-Quadlet]
+DefaultDependencies=false
+
+[Service]
+Restart=on-failure
+RestartSec=1s
+RestartSteps=3
+RestartMaxDelaySec=8s
+TimeoutStartSec=45
+TimeoutStopSec=20
+Environment=PODMAN_SYSTEMD_UNIT=%n
+KillMode=mixed
+ExecStop=/usr/bin/podman rm -v -f -i --cidfile=%t/%N.cid
+ExecStopPost=-/usr/bin/podman rm -v -f -i --cidfile=%t/%N.cid
+Delegate=yes
+Type=notify
+NotifyAccess=all
+SyslogIdentifier=%N
+ExecStart=/usr/bin/podman run --name app-backend-api-r5 --cidfile=%t/%N.cid --replace --rm --cgroups=split --stop-timeout 10 --pids-limit 128 --network web --sdnotify=healthy -d --security-opt=no-new-privileges --cap-drop all --health-cmd "curl -fsS http://localhost:8080/health || exit 1" localhost/backend-api:r5
+
+[Install]
+WantedBy=default.target
+
+---app-minimal.service---
+[Unit]
+Description=dermaga app demo release 1
+SourcePath=/tmp/quadlet-verify-zDcGqn/app-minimal.container
+RequiresMountsFor=%t/containers
+
+[X-Container]
+ContainerName=app-demo-r1
+Image=localhost/app-demo:r1
+Network=web
+PidsLimit=128
+NoNewPrivileges=true
+DropCapability=ALL
+StopTimeout=10
+
+[X-Quadlet]
+DefaultDependencies=false
+
+[Service]
+Restart=on-failure
+RestartSec=1s
+RestartSteps=3
+RestartMaxDelaySec=8s
+TimeoutStartSec=30
+TimeoutStopSec=20
+Environment=PODMAN_SYSTEMD_UNIT=%n
+KillMode=mixed
+ExecStop=/usr/bin/podman rm -v -f -i --cidfile=%t/%N.cid
+ExecStopPost=-/usr/bin/podman rm -v -f -i --cidfile=%t/%N.cid
+Delegate=yes
+Type=notify
+NotifyAccess=all
+SyslogIdentifier=%N
+ExecStart=/usr/bin/podman run --name app-demo-r1 --cidfile=%t/%N.cid --replace --rm --cgroups=split --stop-timeout 10 --pids-limit 128 --network web --sdnotify=conmon -d --security-opt=no-new-privileges --cap-drop all localhost/app-demo:r1
+
+[Install]
+WantedBy=default.target
+
+---app-readonly-root.service---
+[Unit]
+Description=dermaga app worker release 3
+SourcePath=/tmp/quadlet-verify-zDcGqn/app-readonly-root.container
+RequiresMountsFor=%t/containers
+
+[X-Container]
+ContainerName=app-worker-r3
+Image=localhost/worker:r3
+Network=web
+PidsLimit=128
+NoNewPrivileges=true
+DropCapability=ALL
+ReadOnly=true
+ReadOnlyTmpfs=true
+StopTimeout=10
+
+[X-Quadlet]
+DefaultDependencies=false
+
+[Service]
+Restart=on-failure
+RestartSec=1s
+RestartSteps=3
+RestartMaxDelaySec=8s
+TimeoutStartSec=30
+TimeoutStopSec=20
+Environment=PODMAN_SYSTEMD_UNIT=%n
+KillMode=mixed
+ExecStop=/usr/bin/podman rm -v -f -i --cidfile=%t/%N.cid
+ExecStopPost=-/usr/bin/podman rm -v -f -i --cidfile=%t/%N.cid
+Delegate=yes
+Type=notify
+NotifyAccess=all
+SyslogIdentifier=%N
+ExecStart=/usr/bin/podman run --name app-worker-r3 --cidfile=%t/%N.cid --replace --rm --cgroups=split --pids-limit 128 --stop-timeout 10 --read-only-tmpfs --network web --sdnotify=conmon -d --security-opt=no-new-privileges --cap-drop all --read-only localhost/worker:r3
+
+[Install]
+WantedBy=default.target
+
+
+=== Quadlet Dry-Run Verification: PASS ===
