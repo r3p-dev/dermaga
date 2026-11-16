@@ -60,8 +60,8 @@ The installer gives at least every guarantee `vps-setup.sh` gives, and weakens n
 - **HOST-4** fail2ban for sshd plus recidive.
 - **HOST-5** sysctl hardening, unattended security upgrades, zram swap, synchronised clock.
 - **HOST-6** Rootless Podman with Quadlet under the systemd user manager; Traefik v3 with socket
-  activation for :80/:443 (tcp, and udp for HTTP/3, **verify in M0**; if UDP socket activation is
-  unsupported by Traefik, HTTP/3 is disabled and Traefik serves TCP 80/443 via socket activation only),
+  activation for :80/:443 (TCP 80 via `traefik-http.socket`, and TCP + UDP 443 via `traefik-https.socket`
+  with shared `FileDescriptorName=websecure` for HTTP/3, verified in M0 on production and `dermaga-vm`),
   file provider only; no container gets the Podman socket.
 - **HOST-7** Recommends `SUDO_NOPASSWD=no` for `server` and explains why.
 

@@ -102,7 +102,8 @@ Draft acceptance criteria:
   re-run, newer DB refused); secrets (round-trip, tamper, wrong key).
 - Panel: login, layout and navigation, a dashboard showing real daemon status, the audit log page.
 - On the VM: the daemon runs as a user service; login through `ssh -L` from the laptop works and shows
-  in the audit log; idle RSS recorded (NFR-2).
+  in the audit log; idle RSS and binary size re-measured with the real embedded SvelteKit production
+  build (NFR-2; M0 Spike 3.7 measured an estimated ~12 MB binary and ~18.8 MB RSS using simulated assets).
 - `spikes/` deleted; relay and probe ported into the project.
 
 ## M2 (0.2.0): Generators and reconciliation

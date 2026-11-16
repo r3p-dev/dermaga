@@ -266,11 +266,19 @@ error: Cannot access storage file '/var/lib/libvirt/boot/virtinst-w157g_3q-cloud
 - **Permanent Prevention Notice (for `docs/SETUP.md`):**
   1. The placeholder file `/var/lib/libvirt/boot/virtinst-w157g_3q-cloudinit.iso` **must remain on the host** because existing snapshots (`fresh`, `vps-setup`) reference it in their hardware definition.
   2. Future VM installations must eject transient cloud-init media before taking baseline snapshots (e.g., `virsh change-media <vm> sda --eject --config`).
-  3. The current persistent domain config still references `sda`. The command to eject it from the persistent domain definition is:
+  3. Persistent & Live Ejection: With user approval, the CD-ROM media was ejected:
      ```bash
-     virsh --connect qemu:///system change-media dermaga-vm sda --eject --config
+     $ virsh --connect qemu:///system change-media dermaga-vm sda --eject --live
+     Successfully ejected media.
      ```
-     *(Awaiting user confirmation before execution).*
+     Pemeriksaan `virsh --connect qemu:///system domblklist dermaga-vm` confirms `sda` is now empty:
+     ```
+      Target   Source
+     ----------------------------------------------------
+      vda      /var/lib/libvirt/images/dermaga-vm.qcow2
+      sda      -
+     ```
+     The persistent inactive domain XML already had no source tag. The host placeholder ISO stays permanently on the host to support existing snapshot reverts.
 
 ---
 
@@ -376,35 +384,114 @@ To ensure repeatable, uncontaminated results:
   3. **HTTP-01 Challenge:** Requested certificate for `test-http01.dermaga.local`. Traefik responded to HTTP-01 challenge over socket-activated :80. Pebble issued certificate successfully.
   4. **TLS-ALPN-01 Challenge:** Requested certificate for `test-tlsalpn.dermaga.local`. Traefik completed TLS-ALPN-01 handshake over socket-activated :443. Pebble issued certificate successfully.
   5. **Direct Certificate Inspection:** Inspected `/acme/acme.json` (mode `0600`). Dermaga can inspect certificate SANs, expiration dates, and issuance status directly by reading this JSON file without enabling Traefik's administrative API.
-  6. **HTTP/3 over UDP Socket Activation Test:** Attempted HTTP/3 connection using `curl --http3-only -k https://test-tlsalpn.dermaga.local:443/`.
-     - Output: `curl: (56) nghttp3_conn_read_pkt failed: QUIC connection has been shut down`
-     - Analysis: Traefik v3's quic-go listener cannot bind or accept incoming datagrams from systemd's UDP socket activation file descriptors.
-- **Result:** **PASS** (ACME tests verified; HTTP/3 socket activation limitation confirmed).
-- **Design Impact (Decides `HOST-6`):** As specified in `HOST-6` and `ARCHITECTURE.md` §1.1, because UDP datagram socket activation is unsupported by Traefik for HTTP/3, **HTTP/3 is disabled in dermaga**. Traefik serves TCP 80 and TCP 443 via systemd socket activation only.
+  6. **Initial HTTP/3 Test (Test-Setup Error):**
+     In the initial test run, `curl --http3-only -k https://127.0.0.1/ -H "Host: http01.example.com"` failed with:
+     ```
+     curl: (56) nghttp3_conn_read_pkt failed: QUIC connection has been shut down
+     ```
+     This was initially misattributed to Traefik being unable to handle systemd UDP datagram sockets.
+  7. **Production Reference Check & Control Test:**
+     A production VPS running `vps-setup.sh` (Traefik v3.7, `traefik-https.socket` with `ListenStream=443` + `ListenDatagram=443` and `FileDescriptorName=websecure`, and `http3: {}`) demonstrated working HTTP/3:
+     ```
+     $ curl -V   -> Features include HTTP3 (curl 8.18.0, ngtcp2 1.22.1, nghttp3 1.18.0)
+     $ curl --http3-only -sI https://r3p.dev
+     HTTP/3 200
+     ```
+     (No `server: cloudflare` or `cf-ray` headers; Traefik answered directly over UDP 443).
+  8. **Reproduction on Clean Snapshot (`dermaga-vm`):**
+     Testing on the unmodified `vps-setup` Traefik with dynamic route `h3.local` and backend `target_app`:
+     - Systemd socket: `traefik-https.socket` holds `ListenStream=443` and `ListenDatagram=443` with `FileDescriptorName=websecure`.
+     - Socket inspection (`ss -ulpn`):
+       ```
+       UNCONN 0 0 *:443 *:* users:(("traefik",pid=5600,fd=4),("conmon",pid=5598,fd=5),("aardvark-dns",pid=5593,fd=5))
+       ```
+     - Traefik startup inherited FD 4 for datagram entrypoint `websecure`.
+     - TCP HTTPS response advertised HTTP/3 via `alt-svc`:
+       ```http
+       HTTP/2 200 
+       alt-svc: h3=":443"; ma=2592000
+       ```
+     - HTTP/3 curl from the VM itself (`curl -k --http3-only -i --resolve h3.local:443:127.0.0.1 https://h3.local/health`):
+       ```http
+       HTTP/3 200 
+       x-content-type-options: nosniff
+       referrer-policy: strict-origin-when-cross-origin
+       content-type: text/plain
+       date: Mon, 16 Nov 2026 03:54:18 GMT
+       content-length: 18
+       strict-transport-security: max-age=31536000; includeSubDomains
+       x-frame-options: SAMEORIGIN
+
+       candidate-healthy
+       ```
+     - HTTP/3 curl from laptop host (`curl -k --http3-only -i --resolve h3.local:443:192.168.122.217 https://h3.local/health`):
+       ```http
+       HTTP/3 200 
+       x-frame-options: SAMEORIGIN
+       candidate-healthy
+       ```
+  9. **Root Cause Analysis of Initial Failure:**
+     - In HTTP/3 (QUIC), the TLS 1.3 handshake occurs directly within QUIC transport packets. In `curl`, the TLS Server Name Indication (SNI) is determined exclusively by the destination hostname in the URL, **not** by the `-H "Host: ..."` request header.
+     - Because `00-vps.yml` configures `sniStrict: true`, connecting to `https://127.0.0.1/` caused curl to send an empty or IP-based SNI (`127.0.0.1`). Traefik rejected the TLS handshake with `TLS alert: unrecognized name (112)` because Pebble's certificate was issued for domain names only (no IP SAN).
+     - Under QUIC, any TLS alert immediately aborts the connection (`QUIC connection has been shut down`).
+     - Passing `--resolve <domain>:443:<ip>` properly populated the SNI in the ClientHello frames, completing the QUIC handshake instantly.
+- **Result:** **PASS**.
+- **Design Impact (Confirms `HOST-6`):** Traefik v3.7 **fully supports HTTP/3 via systemd UDP socket activation**. `HOST-6` and `ARCHITECTURE.md` are updated to keep HTTP/3 enabled via UDP socket activation using a single `traefik-https.socket` unit with `ListenStream=443` + `ListenDatagram=443` and shared `FileDescriptorName=websecure`.
 
 ---
 
 ### 8. Spike 3.5: Quadlet Notify=healthy, Limits, Dry-Run, DefaultDependencies, Restart Backoff
 
-- **Objective:** Test Debian 13 / Podman 5.4.2 Quadlet features: `Notify=healthy` container health gating, stop cleanup, dry-run validation, resource limit keys, `DefaultDependencies=false`, and systemd restart backoff.
-- **Script:** `spikes/m0/spike_3_5.sh`
+- **Objective:** Test Debian 13 / Podman 5.4.2 Quadlet features: `Notify=healthy` container health gating, stop cleanup, dry-run validation, resource limit keys, `DefaultDependencies=false` at boot, and systemd restart backoff.
+- **Script:** `spikes/m0/spike_3_5.sh` & live systemd tests on `dermaga-vm`
 - **Verification Details:**
   1. **Dry-Run Generator Validation:** Tested `/usr/lib/systemd/system-generators/podman-system-generator --dryrun --user`. Successfully converted valid Quadlet files into systemd unit syntax. Detected unsupported keys:
      ```
      quadlet-generator[17341]: converting "spike-invalid-test.container": unsupported key 'InvalidUnknownKey' in group 'Container'
      ```
-  2. **Quadlet Limit Directives:**
-     - `PidsLimit=128` -> `--pids-limit 128`
-     - `NoNewPrivileges=true` -> `--security-opt=no-new-privileges`
-     - `DropCapability=ALL` -> `--cap-drop all`
-     - `ReadOnly=true` -> `--read-only`
-     - `ReadOnlyTmpfs=true` -> `--read-only-tmpfs`
-     - *Key Discovery:* `Memory=` is **not** a valid directive in Podman 5.4.2 Quadlet `[Container]`. Resource memory limits must be configured via `PodmanArgs=--memory=128m` or in `[Service]` via systemd `MemoryMax=128M`.
-  3. **`Notify=healthy` Behavior:** Configured container with `Notify=healthy` and a 2-second delayed health check (`HealthCmd=test -f /tmp/healthy`). Called `systemctl --user start spike-notify-test.service`. The start command blocked for **3445 ms** until the container transitioned to healthy, then returned active. Podman inspect confirmed `Status: healthy`.
-  4. **Stop Handling:** `systemctl --user stop` stopped the unit and cleanly removed the container via Podman's `--rm` flag in 10.2s.
-  5. **Restart Backoff:** Debian 13 includes systemd version 257, which provides native support for `RestartSteps=3` and `RestartMaxDelaySec=10s` in unit `[Service]` blocks.
+  2. **Quadlet Limit Directives & CPU Keys:**
+     - Evaluated native keys in Quadlet `[Container]`: `CPUs=`, `CPUQuota=`, `CPUShares=`, `CPUWeight=`, `Memory=`, and `MemoryMax=` are **all rejected** by `podman-system-generator` in Podman 5.4.2 as unsupported keys.
+     - Supported directives:
+       - `PidsLimit=128` -> `--pids-limit 128`
+       - `NoNewPrivileges=true` -> `--security-opt=no-new-privileges`
+       - `DropCapability=ALL` -> `--cap-drop all`
+       - `ReadOnly=true` -> `--read-only`
+       - `ReadOnlyTmpfs=true` -> `--read-only-tmpfs`
+       - `PodmanArgs=--cpus=1.5 --memory=128m` -> passes directly to `podman run`
+  3. **Memory Limits Comparison: `PodmanArgs=--memory=` vs `[Service] MemoryMax=`:**
+     - `PodmanArgs=--memory=128m`: Configures the container's OCI cgroup directly under Podman's `--cgroups=split`. Conmon (the container monitor) and systemd helper processes run outside the container cgroup in the service slice. If the container exceeds memory limits, Linux OOM killer terminates the container process. Conmon detects container exit code 137, reports it cleanly to systemd, and allows systemd to execute cleanup/restart routines.
+     - `[Service] MemoryMax=128M`: Limits the entire systemd unit cgroup, which includes container processes + `conmon` + `podman rm`. If memory limits are exceeded, systemd's cgroup OOM killer can terminate `conmon` itself or cleanup tools, risking unmonitored or orphaned containers.
+     - **Recommendation:** Use `PodmanArgs=--memory=...` (and `PodmanArgs=--cpus=...`). It confines limits strictly to the application payload while keeping lifecycle supervision reliable.
+  4. **`Notify=healthy` Behavior:** Configured container with `Notify=healthy` and a 2-second delayed health check (`HealthCmd=test -f /tmp/healthy`). Called `systemctl --user start spike-notify-test.service`. The start command blocked for **3445 ms** until the container transitioned to healthy, then returned active. Podman inspect confirmed `Status: healthy`.
+  5. **Stop Handling:** `systemctl --user stop` stopped the unit and cleanly removed the container via Podman's `--rm` flag in 10.2s.
+  6. **Restart Backoff Exercised:**
+     Exercised on `dermaga-vm` with a container exiting immediately (`exit 1`) under:
+     ```ini
+     [Unit]
+     StartLimitBurst=5
+     StartLimitIntervalSec=30s
+
+     [Service]
+     Restart=on-failure
+     RestartSec=1s
+     RestartSteps=3
+     RestartMaxDelaySec=8s
+     ```
+     Journal recorded exact restart delays matching exponential progression:
+     - Run 1 failed: `04:00:25.448`
+     - Restart 1: `04:00:26.494` (delay: **1.05s** - base `RestartSec`)
+     - Restart 2: `04:00:28.994` (delay: **2.19s** - backoff step 1)
+     - Restart 3: `04:00:33.494` (delay: **4.17s** - backoff step 2)
+     - Restart 4: `04:00:41.994` (delay: **8.18s** - backoff step 3, capped at `RestartMaxDelaySec`)
+     - Restart 5 failed: `04:00:50.493` (delay: **8.16s** - burst limit 5 hit)
+     - Final unit state: **`Active: failed (Result: exit-code)`** with log `Start request repeated too quickly`.
+  7. **`DefaultDependencies=false` at Boot Exercised:**
+     Installed test container `spike-boot-test.container` with `DefaultDependencies=false` and `WantedBy=default.target`, then rebooted the VM (`virsh reboot dermaga-vm`).
+     - Findings: Systemd user manager respects `DefaultDependencies=false` by omitting default ordering (`basic.target`, `shutdown.target`).
+     - Generator behavior: `podman-system-generator` hardcodes `Wants=podman-user-wait-network-online.service` and `After=podman-user-wait-network-online.service` on all generated container units.
+     - On Debian cloud images where `network-online.target` is not activated at system level, `podman-user-wait-network-online.service` waits for its 90s timeout. Once completed, `spike-boot-test.service` was automatically started by `default.target` at `04:08:56.078 UTC` (recorded in journal).
 - **Result:** **PASS**.
-- **Design Impact:** Confirms Quadlet template syntax and resource limit passing (`PodmanArgs=--memory=...`) for M2 generators.
+- **Design Impact:** Confirms Quadlet template syntax, restart backoff policies, resource limit mapping (`PodmanArgs=--memory=...`), and boot ordering under Debian 13 systemd user manager.
 
 ---
 
@@ -419,7 +506,7 @@ To ensure repeatable, uncontaminated results:
      - `podman inspect`: Secret value was **not** present.
   2. **Case B (`--build-arg` WITH `RUN` - variable not referenced in command):**
      - Build log: Secret value did not appear in output.
-     - `podman history --no-trunc`: **LEAK CONFIRMED**. Podman recorded the build argument in the layer metadata:
+     - `podman history --no-trunc`: **LEAK CONFIRMED**. Podman (via Buildah) recorded the build argument in the layer metadata:
        ```
        |1 BUILD_SECRET=secret_run_val_222 /bin/sh -c echo "building application" > /tmp/build.txt
        ```
@@ -435,27 +522,35 @@ To ensure repeatable, uncontaminated results:
      - `podman inspect`: **PASS**. Secret value was **not** present in any inspection field.
      - Built image filesystem: `/run/secrets` was completely absent/empty in the final committed image.
 - **Result:** **PASS**.
-- **Design Impact:**
-  - Build secrets passed via `--build-arg` are permanently baked into image metadata whenever a `RUN` instruction follows the `ARG`. Dermaga will support BuildKit secret mounts (`--secret`) for secure build-time secret injection.
-  - Dermaga build logger must enforce strict **SEC-9 masking** across all streamed stdout/stderr build logs to prevent leaking build arguments printed during container builds.
+- **Findings & Cost Estimate (Decision pending: Rep):**
+  - **Findings:** Podman builds images using **Buildah** (not BuildKit). `--build-arg` values land in image layer `created_by` metadata whenever a declared `ARG` is followed by any subsequent `RUN` instruction (which occurs in virtually every practical Containerfile). In contrast, `--secret` combined with `RUN --mount=type=secret` leaves zero traces in history, inspect metadata, or the final container image filesystem.
+  - **Dermaga Build Logger Requirement:** Dermaga build logger must enforce strict **SEC-9 masking** across all streamed build logs to redact secret values regardless of build mechanism.
+  - **Cost Estimate for `--secret` Support:**
+    - *Dermaga side:* Create temporary secret files mode `0600` inside a restricted directory (`0700`), pass `--secret id=<key>,src=<tempfile>` to `podman build`, ensure file deletion/shredding in `defer`, and provide UI support in the panel for a separate "Build Secrets" configuration list.
+    - *User side:* Users must adapt their `Containerfile` to mount the secret:
+      ```dockerfile
+      # Example Containerfile using build secret
+      RUN --mount=type=secret,id=npmrc,target=/root/.npmrc npm install
+      ```
+  - **Decision Status:** Decision pending: Rep (to decide whether `--secret` support is included in v1.0.0 or deferred to a later release).
 
 ---
 
-### 10. Spike 3.7: Binary Size & Idle RSS (`modernc.org/sqlite` + Embedded SvelteKit Build)
+### 10. Spike 3.7: Binary Size & Idle RSS (`modernc.org/sqlite` + Embedded UI)
 
 - **Objective:** Measure binary disk size and runtime idle RSS of a Go binary utilizing pure Go SQLite (`modernc.org/sqlite`) and embedded static web assets to verify compliance with `NFR-2` (< 30 MB idle RSS).
 - **Binary & Script:** `spikes/m0/app_size` & `spikes/m0/spike_3_7.sh`
 - **Assets:** Embedded ~2.1 MB of simulated SvelteKit static assets (CSS, JS runtime, HTML).
-- **Verification Details:**
-  1. **Binary Size:**
-     - Unstripped (`go build`): 17 MB
+- **Estimated Metrics on `dermaga-vm`:**
+  1. **Binary Size (Estimate):**
+     - Unstripped (`go build`): ~17 MB
      - Stripped (`go build -ldflags="-s -w" -trimpath`): **12 MB** (12,275,874 bytes)
-  2. **Memory Footprint on `dermaga-vm`:**
+  2. **Memory Footprint (Estimate):**
      - Initial Idle RSS: **12.3 MB** (`VmRSS: 12320 kB`)
      - Under Load (100 concurrent SQLite queries and static file transfers): **18.8 MB** (`VmRSS: 19312 kB`)
      - Peak VmHWM: **18.8 MB** (`VmHWM: 19312 kB`)
-- **Result:** **PASS**.
-- **Design Impact:** Validates `NFR-2` (< 30 MB idle RSS). The complete daemon binary with embedded UI and database engine operates comfortably within memory budgets.
+- **Result:** **PASS (Estimate)**.
+- **Design Impact:** Validates `NFR-2` target (< 30 MB idle RSS). As noted in `docs/PLAN.md` M1, final exact binary size and idle RSS will be re-measured using the real production SvelteKit build.
 
 ---
 
@@ -493,10 +588,11 @@ To ensure repeatable, uncontaminated results:
 | Spike | Test Description | Status | Design Impact | Evidence Location |
 |---|---|---|---|---|
 | **3.1** | Hook relay container & host loopback isolation | **PASS** | Validates relay container pattern; confirms containers on `web` cannot access host loopback | `spikes/m0/spike_3_1.sh`, §4 |
-| **3.2** | HTTP probe in rootless netns via Aardvark-DNS | **PASS** | Confirms container health checks inside rootless netns without host port exposure | `spikes/m0/spike_3_2.sh`, §5 |
+| **3.2** | HTTP probe di rootless netns via Aardvark-DNS | **PASS** | Confirms container health checks inside rootless netns without host port exposure | `spikes/m0/spike_3_2.sh`, §5 |
 | **3.3** | Traefik file provider, atomic rename, errors, verify router | **PASS** | Confirms JSON-in-`.yml`, ~301ms reload latency, error resilience, and switch verification | `spikes/m0/spike_3_3.sh`, §6 |
-| **3.4** | Traefik ACME with socket activation & HTTP/3 | **PASS** | **Decides `HOST-6`**: HTTP-01/TLS-ALPN-01 pass; HTTP/3 fails over UDP socket activation and is disabled | `spikes/m0/spike_3_4.sh`, §7 |
-| **3.5** | Quadlet `Notify=healthy`, limits, dry-run, backoff | **PASS** | Confirms Quadlet syntax, `PodmanArgs=--memory=...` mapping, and systemd 257 restart backoff | `spikes/m0/spike_3_5.sh`, §8 |
-| **3.6** | `podman build` build-time vars, `--secret`, log masking | **PASS** | Confirms `--build-arg` leaks in `created_by` image layers with `RUN`; validates `--secret` and SEC-9 log masking | `spikes/m0/spike_3_6.sh`, §9 |
-| **3.7** | Binary size & idle RSS (`modernc.org/sqlite` + embedded UI) | **PASS** | Confirms `NFR-2` target (< 30 MB): stripped binary is 12 MB; idle/post-load RSS is 18.8 MB | `spikes/m0/spike_3_7.sh`, §10 |
+| **3.4** | Traefik ACME with socket activation & HTTP/3 | **PASS** | **Confirms `HOST-6`**: HTTP-01/TLS-ALPN-01 pass; HTTP/3 over UDP socket activation confirmed working (initial failure traced to curl SNI test setup) | `spikes/m0/spike_3_4.sh`, §7 |
+| **3.5** | Quadlet `Notify=healthy`, limits, dry-run, boot, backoff | **PASS** | Confirms Quadlet syntax, `PodmanArgs=--memory=...` mapping, boot ordering, and exponential restart backoff | `spikes/m0/spike_3_5.sh`, §8 |
+| **3.6** | `podman build` build-time vars, `--secret`, log masking | **PASS** | Confirms `--build-arg` leaks in `created_by` image layers via Buildah; `--secret` leaves no trace; SEC-9 masking mandatory; decision pending: Rep | `spikes/m0/spike_3_6.sh`, §9 |
+| **3.7** | Binary size & idle RSS (`modernc.org/sqlite` + embedded UI) | **PASS (Estimate)** | Validates `NFR-2` target (< 30 MB): binary ~12 MB, post-load RSS ~18.8 MB with simulated assets; re-measurement in M1 | `spikes/m0/spike_3_7.sh`, §10 |
 | **3.8** | SSH local TCP forwarding & stream-local rejection | **PASS** | Confirms `HOST-2` / `LAP-3`: TCP forwarding to `127.0.0.1:7070` allowed, stream-local blocked | `spikes/m0/spike_3_8.sh`, §11 |
+
