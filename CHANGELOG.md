@@ -5,3 +5,19 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [0.1.0] - 2026-11-16
+
+### Added
+- Core daemon listening on `127.0.0.1:7070` with root refusal (`SEC-1`).
+- DNS rebinding protection (421 Misdirected Request) and foreign Origin protection (403 Forbidden) (`SEC-3`).
+- Strict HttpOnly session cookies (`SEC-7`) and timeout headers (`SEC-15`).
+- Admin authentication with Argon2id password hashing, progressive rate limiting, and idle/absolute session expiration (`ADM-1`, `ADM-2`, `ADM-3`).
+- Recovery commands `dermaga admin set-password` and `dermaga admin totp disable` communicating over a 0600 Unix socket with direct SQLite fallback (`SRV-1`, `SRV-2`).
+- `dermaga panel` CLI helper to print SSH local port-forwarding instructions (`SRV-1`).
+- AES-256-GCM encryption at rest for secrets under master key with column-bound AAD.
+- SQLite database store with WAL mode, foreign keys, embedded schema migrations, and audit logging (`AUD-1`, `AUD-2`).
+- Embedded SvelteKit 3 and Tailwind v4 single-page application within the static Go binary.
+- Web panel pages: Login, Dashboard showing real daemon status and system telemetry, and Audit Log viewer.
+- Ported `hook-relay` and `probe` tools from M0 spikes into the binary.
+- Multi-architecture build targets (`linux/amd64` and `linux/arm64`) with automated CI pipeline.

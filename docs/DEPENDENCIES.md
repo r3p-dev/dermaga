@@ -18,6 +18,20 @@ _Filled in as dependencies are added (M1 onward)._
 
 | Dependency | Kind | Purpose | Added in |
 | ---------- | ---- | ------- | -------- |
+| `modernc.org/sqlite` v1.62.0 | Go module | SQLite driver without cgo; static binary | M1 |
+| `golang.org/x/crypto` v0.59.0 | Go module | argon2id password hashing | M1 |
+| `honnef.co/go/tools` (staticcheck) | Go tool | Lint, deprecated API detection | M1 |
+| `golang.org/x/vuln` (govulncheck) | Go tool | Known Go vulnerability scanning | M1 |
+| `github.com/gzuidhof/tygo` | Go tool | TypeScript types from Go structs | M1 |
+| `@sveltejs/kit` 3.2.0 | UI (build) | SvelteKit 3 framework | M1 |
+| `@sveltejs/adapter-static` 4.0.1 | UI (build) | Static SPA adapter | M1 |
+| `@sveltejs/vite-plugin-svelte` 7.3.1 | UI (build) | Svelte integration for Vite | M1 |
+| `svelte` 5.57.3 | UI (build) | Svelte 5 compiler | M1 |
+| `vite` 8.3.8 | UI (build) | Build tool | M1 |
+| `tailwindcss` 4.3.5, `@tailwindcss/vite` | UI (build) | Utility-first CSS | M1 |
+| `typescript` 5.x, `svelte-check` | UI (build) | Type checking | M1 |
+| `prettier`, `prettier-plugin-svelte` | UI (build) | Code formatting | M1 |
+| `@playwright/test` 1.65.1 | UI (test) | Browser end-to-end tests | M1 |
 
 ## 2. Approved to add
 
@@ -91,3 +105,4 @@ Re-checked at the start of every milestone (`govulncheck`, `bun audit`).
 
 | Advisory | Reached? | Decision | Date |
 | -------- | -------- | -------- | ---- |
+| [GHSA-gcqx-w48m-w2h4](https://github.com/advisories/GHSA-gcqx-w48m-w2h4) — deepmerge ≥4.2.0 prototype poisoning (low) | No — transitive via `@sveltejs/vite-plugin-svelte`, build-time only, never in the browser bundle | Accepted; waiting for upstream fix in vite-plugin-svelte | 2026-11-16 |

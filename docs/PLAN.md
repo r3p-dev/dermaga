@@ -16,7 +16,7 @@ backups come in v1.1.
 | #   | Version | Milestone                                        | Status      | Hours |
 | --- | ------- | ------------------------------------------------ | ----------- | ----- |
 | M0  | –       | Spikes and plan                                  | completed   | 28    |
-| M1  | 0.1.0   | Foundation: daemon, login, panel shell           | not started | 36    |
+| M1  | 0.1.0   | Foundation: daemon, login, panel shell           | completed   | 36    |
 | M2  | 0.2.0   | Generators and reconciliation                    | not started | 28    |
 | M3  | 0.3.0   | Installer, hardening, lockout guard              | not started | 24    |
 | M4  | 0.4.0   | First-run setup and panel access                 | not started | 20    |
