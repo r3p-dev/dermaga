@@ -1,0 +1,5 @@
+# Command: ls -la /home/r3p/Projects/containers/dermaga-archive/ui/static/logo.svg && file /home/r3p/Projects/containers/dermaga-archive/ui/static/logo.svg
+# Commit: 9a0ad2c
+# Timestamp: 2026-11-16T19:35:25+07:00
+-rw-r--r--. 1 r3p r3p 33232 Nov 10 09:39 /home/r3p/Projects/containers/dermaga-archive/ui/static/logo.svg
+/home/r3p/Projects/containers/dermaga-archive/ui/static/logo.svg: SVG Scalable Vector Graphics image

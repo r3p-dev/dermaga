@@ -6,6 +6,22 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-11-16
+
+### Added
+- Official Dermaga logo (`ui/static/logo.svg`) incorporated from `dermaga-archive/ui/static/logo.svg`.
+- High-resolution favicons (`favicon.png` 32x32, `favicon-16x16.png` 16x16, and `favicon.svg`) generated reproducibly via ImageMagick (`docs/SETUP.md` §6.7).
+- Brand-derived design tokens in `ui/src/app.css` (`--brand-primary`, `--brand-hover`, `--brand-active`, `--brand-ring`, `--brand-accent`, `--brand-navy`, `--brand-text`, `--brand-badge-*`, `--brand-btn-text`) mapped into Tailwind v4 `@theme`.
+- Automated contrast verification script `scripts/check_contrast.py` verifying all 17 text/background and focus-ring color pairings meet or exceed WCAG 2.1 Level AA (`NFR-7`).
+- Comprehensive browser journey screenshots in light and dark modes across desktop (1280x800) and narrow (375x667) viewports in `docs/evidence/M1/brand/`.
+- Architectural decision `DEC-13` recorded in `docs/ARCHITECTURE.md`.
+
+### Changed
+- Replaced panel header "D" placeholder with official SVG logo and updated alt text.
+- Replaced login card icon with official SVG logo, and replaced default button colors with brand primary tokens.
+- Replaced teal accent classes across Dashboard and Audit Log views with brand tokens (`text-brand-text`, `bg-brand-badge-bg`, `text-brand-badge-text`, `focus:ring-brand-ring`).
+- Updated `make test-browser` target in `Makefile` to depend on `build` to guarantee tested binaries reflect current UI builds.
+
 ## [0.1.2] - 2026-11-16
 
 ### Added

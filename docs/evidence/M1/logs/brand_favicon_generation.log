@@ -1,0 +1,9 @@
+# Command: magick -background none ui/static/logo.svg -resize 32x32 -gravity center -extent 32x32 ui/static/favicon.png
+# Commit: 9a0ad2c
+# Timestamp: 2026-11-16T19:38:43+07:00
+-rw-r--r--. 1 r3p r3p 2,0K Nov 16 19:38 ui/static/favicon-16x16.png
+-rw-r--r--. 1 r3p r3p 5,9K Nov 16 19:38 ui/static/favicon.png
+-rw-r--r--. 1 r3p r3p  33K Nov 16 19:38 ui/static/favicon.svg
+ui/static/favicon-16x16.png: PNG image data, 16 x 16, 16-bit/color RGBA, non-interlaced
+ui/static/favicon.png:       PNG image data, 32 x 32, 16-bit/color RGBA, non-interlaced
+ui/static/favicon.svg:       SVG Scalable Vector Graphics image

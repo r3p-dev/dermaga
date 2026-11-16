@@ -1,0 +1,15 @@
+# Command: Deploy brand update to dermaga-vm and restart service
+# Commit: 9a0ad2c
+# Timestamp: 2026-11-16T19:50:10+07:00
+● dermaga.service - dermaga deployment platform daemon
+     Loaded: loaded (/home/server/.config/systemd/user/dermaga.service; enabled; preset: enabled)
+     Active: active (running) since Mon 2026-11-16 12:50:10 UTC; 8ms ago
+ Invocation: 52a5200c1ee849ce98a067544555acac
+   Main PID: 2901 ((dermaga))
+      Tasks: 1 (limit: 4676)
+     Memory: 1.6M (peak: 1.6M)
+        CPU: 3ms
+     CGroup: /user.slice/user-1001.slice/user@1001.service/app.slice/dermaga.service
+             └─2901 "(dermaga)"
+
+Nov 16 12:50:10 dermaga-vm systemd[694]: Started dermaga.service - dermaga deployment platform daemon.

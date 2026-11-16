@@ -314,3 +314,93 @@ Desktop viewport with origin filter and badges:
 
 Narrow viewport:
 ![Audit Log Narrow](audit-narrow.png)
+
+---
+
+## 6. M1-brand: Brand Identity and WCAG 2.1 AA Contrast Verification
+
+Checkpoint `M1-brand` updates the web panel visual identity to use the official Dermaga brand assets and derived color tokens approved by the owner (`DEC-13`), achieving full WCAG 2.1 Level AA contrast compliance (`NFR-7`).
+
+### 6.1 Brand Logo Assets and Favicons
+- **Canonical Logo**: `ui/static/logo.svg` (copied from `dermaga-archive/ui/static/logo.svg`, 33,232 bytes SVG).
+- **Favicons**: Multi-size icons generated via ImageMagick (`ui/static/favicon.png` 32x32, `ui/static/favicon-16x16.png` 16x16, and `ui/static/favicon.svg`).
+- **Discovery and Generation Logs**:
+  - Logo discovery: [`docs/evidence/M1/logs/brand_logo_find.log`](logs/brand_logo_find.log)
+  - Raw color extraction: [`docs/evidence/M1/logs/brand_colors_raw.log`](logs/brand_colors_raw.log)
+  - Favicon generation: [`docs/evidence/M1/logs/brand_favicon_generation.log`](logs/brand_favicon_generation.log)
+
+### 6.2 Derived Color Tokens and Contrast Verification
+Raw extracted hex values from `ui/static/logo.svg`:
+- `#1A1B36`: Deep Navy
+- `#5B58A8`: Slate Indigo
+- `#7C78EE`: Vibrant Periwinkle
+- `#C9C5FB`: Lavender Accent
+
+Derived Tailwind v4 tokens (`ui/src/app.css`):
+| Token Name | Light Theme Hex | Dark Theme Hex | Role / Origin |
+|---|---|---|---|
+| `--color-brand-primary` | `#5B58A8` | `#7C78EE` | Primary action buttons |
+| `--color-brand-hover` | `#4A478A` | `#8D8AF1` | Hover state (darkened/lightened) |
+| `--color-brand-active` | `#3C3972` | `#9E9BF4` | Active/pressed state |
+| `--color-brand-ring` | `#7C78EE` | `#7C78EE` | Keyboard focus ring |
+| `--color-brand-accent` | `#C9C5FB` | `#C9C5FB` | Accent / highlight |
+| `--color-brand-navy` | `#1A1B36` | `#1A1B36` | Base logo navy |
+| `--color-brand-text` | `#5B58A8` | `#C9C5FB` | Informational text / metrics |
+| `--color-brand-badge-bg` | `#F4F3FE` | `rgba(124, 120, 238, 0.15)` | Origin filter badges |
+| `--color-brand-badge-border` | `#DCD9FD` | `rgba(124, 120, 238, 0.35)` | Badge borders |
+| `--color-brand-badge-text` | `#4F4B9B` | `#C9C5FB` | Badge text (adjusted for AA) |
+| `--color-brand-btn-text` | `#FFFFFF` | `#1A1B36` | Text on primary buttons |
+
+#### Contrast Ratio Measurements (NFR-7)
+Automated verification run with `python3 scripts/check_contrast.py` (log: [`docs/evidence/M1/logs/brand_contrast.log`](logs/brand_contrast.log)):
+
+| Token / Usage Pair | Foreground | Background | Ratio | WCAG Required | Status |
+|---|---|---|---|---|---|
+| Primary Button Text (Light) | `#FFFFFF` | `#5B58A8` | 6.17:1 | >= 4.5:1 | **PASS (AA)** |
+| Primary Button Hover Text (Light) | `#FFFFFF` | `#4A478A` | 8.20:1 | >= 4.5:1 | **PASS (AAA)** |
+| Primary Button Active Text (Light) | `#FFFFFF` | `#3C3972` | 10.39:1 | >= 4.5:1 | **PASS (AAA)** |
+| Focus Ring vs White Bg (Light) | `#7C78EE` | `#FFFFFF` | 3.63:1 | >= 3.0:1 | **PASS (AA)** |
+| Focus Ring vs Stone-50 Bg (Light) | `#7C78EE` | `#FAFAF9` | 3.48:1 | >= 3.0:1 | **PASS (AA)** |
+| Brand Text vs White Card (Light) | `#5B58A8` | `#FFFFFF` | 6.17:1 | >= 4.5:1 | **PASS (AA)** |
+| Origin Badge Text vs Badge Bg (Light) | `#4F4B9B` | `#F4F3FE` | 6.79:1 | >= 4.5:1 | **PASS (AA)** |
+| Origin Badge Text vs Card Bg (Light) | `#4F4B9B` | `#FFFFFF` | 7.47:1 | >= 4.5:1 | **PASS (AAA)** |
+| Primary Button Text (Dark, Navy on Periwinkle) | `#1A1B36` | `#7C78EE` | 4.61:1 | >= 4.5:1 | **PASS (AA)** |
+| Primary Button Hover Text (Dark) | `#1A1B36` | `#8D8AF1` | 5.61:1 | >= 4.5:1 | **PASS (AA)** |
+| Primary Button Active Text (Dark) | `#1A1B36` | `#9E9BF4` | 6.74:1 | >= 4.5:1 | **PASS (AA)** |
+| Focus Ring vs Stone-900 Bg (Dark) | `#7C78EE` | `#1C1917` | 4.81:1 | >= 3.0:1 | **PASS (AA)** |
+| Focus Ring vs Stone-950 Bg (Dark) | `#7C78EE` | `#0C0A09` | 5.44:1 | >= 3.0:1 | **PASS (AA)** |
+| Brand Text vs Stone-900 Card (Dark) | `#C9C5FB` | `#1C1917` | 10.71:1 | >= 4.5:1 | **PASS (AAA)** |
+| Brand Text vs Stone-950 Bg (Dark) | `#C9C5FB` | `#0C0A09` | 12.10:1 | >= 4.5:1 | **PASS (AAA)** |
+| Origin Badge Text vs Badge Bg (Dark) | `#C9C5FB` | `#1A1B36` | 10.26:1 | >= 4.5:1 | **PASS (AAA)** |
+| Origin Badge Text vs Card Bg (Dark) | `#C9C5FB` | `#1C1917` | 10.71:1 | >= 4.5:1 | **PASS (AAA)** |
+
+*All 17 evaluated pairs meet or exceed WCAG 2.1 Level AA.*
+
+### 6.3 Visual Evidence (Playwright E2E Screenshots)
+Automated Playwright tests in `ui/e2e/panel.test.ts` (log: [`docs/evidence/M1/logs/test_browser.log`](logs/test_browser.log)) captured the panel across themes and viewports:
+
+#### Admin Login Page
+| Light Mode | Dark Mode |
+|---|---|
+| Desktop (1280x800):<br>![Login Desktop Light](brand/login-desktop-light.png) | Desktop (1280x800):<br>![Login Desktop Dark](brand/login-desktop-dark.png) |
+| Narrow (375x667):<br>![Login Narrow Light](brand/login-narrow-light.png) | Narrow (375x667):<br>![Login Narrow Dark](brand/login-narrow-dark.png) |
+
+#### Server Overview Dashboard
+| Light Mode | Dark Mode |
+|---|---|
+| Desktop (1280x800):<br>![Dashboard Desktop Light](brand/dashboard-desktop-light.png) | Desktop (1280x800):<br>![Dashboard Desktop Dark](brand/dashboard-desktop-dark.png) |
+| Narrow (375x667):<br>![Dashboard Narrow Light](brand/dashboard-narrow-light.png) | Narrow (375x667):<br>![Dashboard Narrow Dark](brand/dashboard-narrow-dark.png) |
+
+#### Audit Log Viewer
+| Light Mode | Dark Mode |
+|---|---|
+| Desktop (1280x800):<br>![Audit Desktop Light](brand/audit-desktop-light.png) | Desktop (1280x800):<br>![Audit Desktop Dark](brand/audit-desktop-dark.png) |
+| Narrow (375x667):<br>![Audit Narrow Light](brand/audit-narrow-light.png) | Narrow (375x667):<br>![Audit Narrow Dark](brand/audit-narrow-dark.png) |
+
+### 6.4 Real VM Deployment Verification (`dermaga-vm`)
+Binary `v0.1.2-dirty` (commit `9a0ad2c`) was deployed to `dermaga-vm` via atomic replacement (`docs/evidence/M1/logs/brand_vm_deploy.log`). The panel was accessed through the host SSH tunnel (`ssh -L 7070:127.0.0.1:7070 dermaga-vm`) and verified in a real browser session (log: [`docs/evidence/M1/logs/brand_vm_screenshot.log`](logs/brand_vm_screenshot.log)):
+
+| Light Mode (Real VM) | Dark Mode (Real VM) |
+|---|---|
+| ![VM Dashboard Brand Light](brand/panel-vm-brand.png) | ![VM Dashboard Brand Dark](brand/panel-vm-brand-dark.png) |
+

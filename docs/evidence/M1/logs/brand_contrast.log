@@ -1,0 +1,31 @@
+# Command: python3 scripts/check_contrast.py
+# Commit: 9a0ad2c
+# Timestamp: 2026-11-16T19:38:05+07:00
+=== Dermaga Brand Palette WCAG 2.1 Contrast Analysis (NFR-7) ===
+Logo Source Colors:
+  #1A1B36 : Logo Deep Navy
+  #5B58A8 : Logo Slate Indigo
+  #7C78EE : Logo Vibrant Periwinkle
+  #C9C5FB : Logo Lavender Accent
+
+Token / Usage Pair                         | Foreground | Background | Ratio   | Required | Status
+-----------------------------------------------------------------------------------------------
+Primary Button Text (Light)                | #FFFFFF    | #5B58A8    |  6.17:1 | >= 4.5:1  | PASS (AA) (AA)
+Primary Button Hover Text (Light)          | #FFFFFF    | #4A478A    |  8.20:1 | >= 4.5:1  | PASS (AA) (AAA)
+Primary Button Active Text (Light)         | #FFFFFF    | #3C3972    | 10.39:1 | >= 4.5:1  | PASS (AA) (AAA)
+Focus Ring vs White Bg (Light)             | #7C78EE    | #FFFFFF    |  3.63:1 | >= 3.0:1  | PASS (AA) (AA)
+Focus Ring vs Stone-50 Bg (Light)          | #7C78EE    | #FAFAF9    |  3.48:1 | >= 3.0:1  | PASS (AA) (AA)
+Brand Text vs White Card (Light)           | #5B58A8    | #FFFFFF    |  6.17:1 | >= 4.5:1  | PASS (AA) (AA)
+Origin Badge Text vs Badge Bg (Light)      | #4F4B9B    | #F4F3FE    |  6.79:1 | >= 4.5:1  | PASS (AA) (AA)
+Origin Badge Text vs Card Bg (Light)       | #4F4B9B    | #FFFFFF    |  7.47:1 | >= 4.5:1  | PASS (AA) (AAA)
+Primary Button Text (Dark, Navy on Periwinkle) | #1A1B36    | #7C78EE    |  4.61:1 | >= 4.5:1  | PASS (AA) (AA)
+Primary Button Hover Text (Dark)           | #1A1B36    | #8D8AF1    |  5.61:1 | >= 4.5:1  | PASS (AA) (AA)
+Primary Button Active Text (Dark)          | #1A1B36    | #9E9BF4    |  6.74:1 | >= 4.5:1  | PASS (AA) (AA)
+Focus Ring vs Stone-900 Bg (Dark)          | #7C78EE    | #1C1917    |  4.81:1 | >= 3.0:1  | PASS (AA) (AA)
+Focus Ring vs Stone-950 Bg (Dark)          | #7C78EE    | #0C0A09    |  5.44:1 | >= 3.0:1  | PASS (AA) (AA)
+Brand Text vs Stone-900 Card (Dark)        | #C9C5FB    | #1C1917    | 10.71:1 | >= 4.5:1  | PASS (AA) (AAA)
+Brand Text vs Stone-950 Bg (Dark)          | #C9C5FB    | #0C0A09    | 12.10:1 | >= 4.5:1  | PASS (AA) (AAA)
+Origin Badge Text vs Badge Bg (Dark)       | #C9C5FB    | #1A1B36    | 10.26:1 | >= 4.5:1  | PASS (AA) (AAA)
+Origin Badge Text vs Card Bg (Dark)        | #C9C5FB    | #1C1917    | 10.71:1 | >= 4.5:1  | PASS (AA) (AAA)
+-----------------------------------------------------------------------------------------------
+RESULT: ALL PAIRS PASS WCAG 2.1 LEVEL AA CONTRAST CRITERIA (NFR-7)

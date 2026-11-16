@@ -1,0 +1,82 @@
+# Command: make test-browser
+# Commit: 9a0ad2c
+# Timestamp: 2026-11-16T19:48:25+07:00
+go tool tygo generate
+cd ui && bun install && bun run build
+bun install v1.4.2 (744846f84)
+
+Checked 72 installs across 116 packages (no changes) [4.00ms]
+$ vite build
+vite v8.3.8 building ssr environment for production...
+transforming...
+✓ 140 modules transformed.
+rendering chunks...
+computing gzip size...
+.svelte-kit/output/server/.vite/manifest.json                           3.60 kB │ gzip:  0.58 kB
+.svelte-kit/output/server/_app/immutable/assets/_layout.DuicWwIc.css   25.40 kB │ gzip:  5.75 kB
+.svelte-kit/output/server/chunks/index-server.js                        0.03 kB │ gzip:  0.05 kB
+.svelte-kit/output/server/entries/pages/_layout.ts.js                   0.13 kB │ gzip:  0.12 kB │ map:   0.22 kB
+.svelte-kit/output/server/env.js                                        0.29 kB │ gzip:  0.18 kB │ map:   0.57 kB
+.svelte-kit/output/server/entries/fallbacks/error.svelte.js             0.43 kB │ gzip:  0.27 kB │ map:   0.46 kB
+.svelte-kit/output/server/chunks/state.js                               0.74 kB │ gzip:  0.30 kB │ map:   2.22 kB
+.svelte-kit/output/server/chunks/api.js                                 0.94 kB │ gzip:  0.39 kB │ map:   2.44 kB
+.svelte-kit/output/server/entries/pages/_page.svelte.js                 1.39 kB │ gzip:  0.67 kB │ map:   5.36 kB
+.svelte-kit/output/server/entries/pages/_layout.svelte.js               1.98 kB │ gzip:  0.88 kB │ map:   5.71 kB
+.svelte-kit/output/server/index.js                                      2.24 kB │ gzip:  0.90 kB │ map:   3.32 kB
+.svelte-kit/output/server/entries/pages/login/_page.svelte.js           2.30 kB │ gzip:  1.02 kB │ map:   3.75 kB
+.svelte-kit/output/server/entries/pages/audit-logs/_page.svelte.js      8.26 kB │ gzip:  2.40 kB │ map:  10.83 kB
+.svelte-kit/output/server/chunks/server-errors.js                      23.96 kB │ gzip:  4.49 kB │ map:  34.73 kB
+.svelte-kit/output/server/chunks/server.js                             43.58 kB │ gzip: 12.11 kB │ map: 125.80 kB
+.svelte-kit/output/server/remote-entry.js                              54.53 kB │ gzip: 11.90 kB │ map:  90.21 kB
+.svelte-kit/output/server/chunks/internal.js                           90.32 kB │ gzip: 24.82 kB │ map: 196.98 kB
+.svelte-kit/output/server/chunks/instance.js                          117.18 kB │ gzip: 31.63 kB │ map: 238.73 kB
+
+✓ built in 292ms
+Analysing routes
+Building app
+vite v8.3.8 building client environment for production...
+transforming...
+✓ 179 modules transformed.
+rendering chunks...
+computing gzip size...
+.svelte-kit/output/client/_app/version.json                          0.02 kB │ gzip:  0.04 kB
+.svelte-kit/output/client/.vite/manifest.json                        4.27 kB │ gzip:  0.68 kB
+.svelte-kit/output/client/_app/immutable/assets/0.DuicWwIc.css      25.40 kB │ gzip:  5.75 kB
+.svelte-kit/output/client/_app/immutable/chunks/CbZM-fOv.js          0.02 kB │ gzip:  0.04 kB
+.svelte-kit/output/client/_app/immutable/entry/payload.DSmR2FwN.js   0.06 kB │ gzip:  0.07 kB
+.svelte-kit/output/client/_app/immutable/nodes/1.DfpmsY2h.js         0.35 kB │ gzip:  0.26 kB
+.svelte-kit/output/client/_app/immutable/entry/start.D2xBPuqZ.js     0.52 kB │ gzip:  0.31 kB
+.svelte-kit/output/client/_app/immutable/chunks/CP19GSbd.js          0.85 kB │ gzip:  0.39 kB
+.svelte-kit/output/client/_app/immutable/chunks/Bjy-W4x2.js          1.36 kB │ gzip:  0.65 kB
+.svelte-kit/output/client/_app/immutable/entry/app.Drk6ujDN.js       1.40 kB │ gzip:  0.64 kB
+.svelte-kit/output/client/_app/immutable/chunks/DclECHGd.js          1.63 kB │ gzip:  0.83 kB
+.svelte-kit/output/client/_app/immutable/nodes/4._K1V7dtn.js         3.01 kB │ gzip:  1.49 kB
+.svelte-kit/output/client/_app/immutable/nodes/2.DzcJOOpO.js         4.35 kB │ gzip:  1.69 kB
+.svelte-kit/output/client/_app/immutable/chunks/BcMEiOpW.js          4.56 kB │ gzip:  2.04 kB
+.svelte-kit/output/client/_app/immutable/nodes/0.DDIM0ON1.js         4.78 kB │ gzip:  1.87 kB
+.svelte-kit/output/client/_app/immutable/nodes/3.CHIU7jbQ.js         6.93 kB │ gzip:  2.61 kB
+.svelte-kit/output/client/_app/immutable/chunks/S7n6w-30.js         39.52 kB │ gzip: 14.58 kB
+.svelte-kit/output/client/_app/immutable/chunks/El4PLrF8.js         41.81 kB │ gzip: 16.17 kB
+
+✓ built in 200ms
+Prerendering
+
+Run npm run preview to preview your production build locally.
+
+> Using @sveltejs/adapter-static
+adapter_fallback_overwrites
+Overwriting `build/index.html` with fallback page. Consider using a different name for the fallback.
+https://svelte.dev/e/kit/adapter_fallback_overwrites
+Wrote site to "build"
+✔ done
+rm -rf internal/server/dist
+cp -r ui/build internal/server/dist
+CGO_ENABLED=0 go build -ldflags="-s -w -X main.Version=v0.1.2-dirty -X main.Commit=9a0ad2c" -trimpath -o bin/dermaga ./cmd/dermaga
+cd ui && bunx playwright test
+
+Running 2 tests using 1 worker
+
+  ✓  1 [firefox] › e2e/panel.test.ts:4:3 › Dermaga Panel Journeys (M1-brand) › unauthenticated access redirects to /login (1.5s)
+  ✓  2 [firefox] › e2e/panel.test.ts:10:3 › Dermaga Panel Journeys (M1-brand) › login journey with failure, success, and evidence capture (2.4s)
+
+  2 passed (6.1s)

@@ -220,3 +220,13 @@ To completely tear down the M1 installation and remove all runtime state on `der
 ssh dermaga-vm "systemctl --user stop dermaga.service && systemctl --user disable dermaga.service && rm -f ~/.config/systemd/user/dermaga.service && systemctl --user daemon-reload && rm -rf ~/.local/share/dermaga ~/.local/bin/dermaga"
 ```
 
+### 6.7 Favicon and Brand Asset Generation (Development)
+The web panel assets are generated directly from the canonical SVG logo (`ui/static/logo.svg`):
+```bash
+# Generate multi-size transparent PNG favicons and scalable SVG favicon
+magick -background none ui/static/logo.svg -resize 32x32 -gravity center -extent 32x32 ui/static/favicon.png
+magick -background none ui/static/logo.svg -resize 16x16 -gravity center -extent 16x16 ui/static/favicon-16x16.png
+cp ui/static/logo.svg ui/static/favicon.svg
+```
+
+
