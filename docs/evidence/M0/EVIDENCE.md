@@ -342,6 +342,12 @@ To ensure repeatable, uncontaminated results:
 2. **Strict Ephemeral Isolation:** All spike artifacts, mock listeners, and Quadlet definitions were created in isolated directories (`~/spikes/`, `/tmp/`) and automatically purged in bash `trap ... EXIT` handlers.
 3. **Non-Interactive Sudo Ban:** No spike scripts invoked `sudo` non-interactively; queries used unprivileged `ss -tuln` and user-level systemd commands (`systemctl --user`).
 4. **Timeouts:** All network commands and HTTP curls included strict `--connect-timeout` and `--max-time` limits.
+5. **Root-Level Changes Inventory Since Snapshot Revert:**
+   To maintain complete transparency and auditability of all root-level actions on `dermaga-vm`:
+   - `/etc/systemd/system/multi-user.target.wants/network-online.target` symlink created to `/usr/lib/systemd/system/network-online.target` (via `sudo systemctl add-wants multi-user.target network-online.target` during boot-delay fix verification in Spike 3.5b).
+   - `network-online.target` started dynamically during testing (`sudo systemctl start network-online.target`).
+   - Guest reboots executed via `sudo -n reboot` to measure cold-boot timings without triggering the libvirt ACPI poweroff bug.
+   - *Rule commitment:* No further root-level modifications will be executed on the VM without prior explicit user confirmation.
 
 ---
 
@@ -603,7 +609,10 @@ To ensure repeatable, uncontaminated results:
        ```
        `network-online.target` was cleanly reached at 3.045s into boot. Starting `podman-user-wait-network-online.service` succeeded in **9 ms** with `code=exited, status=0/SUCCESS` (matching production behavior).
      - **Container Network Needs Analysis at Boot:**
-       - Traefik: Listeners are socket-activated by systemd user sockets (`traefik-http.socket`, `traefik-https.socket`). Ports 80 and 443 are listening before Traefik starts. Traefik inherits the fds, talks to rootless Podman over local Unix socket (`podman.sock`), and routes across bridge network `web`. It does not require host default route to begin proxying traffic.
+       - Traefik (vps-setup baseline measured vs Dermaga design):
+         - *Measured vps-setup baseline:* Traefik was configured using the Docker provider with `podman.sock` mounted (`Volume=%t/podman/podman.sock:/var/run/docker.sock`).
+         - *Dermaga production architecture (`SEC-5`):* **No container, including Traefik, gets the Podman socket.** Dermaga's Traefik unit operates with the **file provider only**, has **no `Requires=podman.socket`**, and **no socket mount** (`podman.sock` is never exposed).
+         - *Boot behavior:* Listeners are socket-activated by systemd user sockets (`traefik-http.socket`, `traefik-https.socket`). Ports 80 and 443 are listening before Traefik starts. Traefik inherits the fds, reads dynamic configuration from the mounted file directory (`/etc/traefik/dynamic`), and routes across bridge network `web`. It does not require host default route to begin proxying traffic.
        - App Containers: Run pre-pulled images stored locally in rootless storage. They connect to Traefik over bridge `web`. They do not need the host WAN route to initialize, though outbound API calls depend on the default route (which DHCP establishes in < 2 s).
      - **Architectural Decision (Defense in Depth):**
        1. **Quadlet Unit Generation:** Dermaga sets `[Quadlet] DefaultDependencies=false` on all generated Quadlet units (`traefik.container`, app containers, `web.network`, `traefik-acme.volume`). This guarantees dermaga containers are 100% immune to 90s boot hangs on any Linux image.
@@ -715,77 +724,118 @@ To ensure repeatable, uncontaminated results:
 
 ## Step 4: Documentation and Maintenance Review
 
-Per `PLAN.md` M0 Step 4, evaluated upstream documentation, maintenance cadence, version deltas against Debian 13 baseline, and architectural design impacts across all core technologies.
+Per `PLAN.md` M0 Step 4, evaluated upstream documentation, maintenance cadence, exact release dates, version deltas against the Debian 13 baseline, and architectural design impacts across all core technologies.
 
-### 1. Podman and Quadlet
-- **Current Upstream Version:** Podman `v6.2.0` (Latest stable release stream, 2026).
-- **Debian 13 Baseline:** Podman `5.4.2` (released April 2, 2025; packaged in Debian testing/trixie alongside systemd 257).
-- **Maintenance Status:** **Actively Maintained**. Upstream maintained by Red Hat / CNCF container tooling; Debian packaging actively maintained.
-- **Upstream vs Debian 13 Divergence:**
-  - Upstream Podman 5.4+ / 6.x documentation describes newer Quadlet unit types (such as `.image`, `.build`) and enhanced container directives.
-  - In Debian 13's Podman 5.4.2, native resource limit keys under `[Container]` (`CPUs=`, `Memory=`) are **rejected** by `podman-system-generator`. Dermaga must map limits via `PodmanArgs=--memory=... --cpus=...`.
-  - Quadlet `[Quadlet]` group with `DefaultDependencies=false` is fully supported in 5.4.2 (introduced in Podman 5.0+), which strips `podman-user-wait-network-online.service` from generated units.
-- **Design Impact on Dermaga:**
-  - Generator must strictly adhere to Podman 5.4.2 supported syntax to ensure valid Quadlet dry-runs.
-  - Every container and network unit must include `[Quadlet] DefaultDependencies=false` to eliminate the 90s boot delay.
-  - Rootless networking uses Netavark + Pasta bridge (`web`).
+### 1. SvelteKit & Svelte 5
+
+#### SvelteKit 3
+- **Latest Stable Version:** `@sveltejs/kit@3.2.0` (Released November 10, 2026). SvelteKit 3.0 GA was released on **October 1, 2026**.
+- **Adapter Static:** `@sveltejs/adapter-static@4.0.1` (Released October 29, 2026).
+- **Maintenance Status:** **Actively Maintained** by Svelte core team and Vercel.
+- **Design Impacts from Upstream Changelog:**
+  1. *Configuration Unified in Vite:* `svelte.config.js` is completely removed. All configuration now lives inside `vite.config.ts` under plugin options (`sveltekit({ adapter: adapter(...) })`), enabling synchronous resolution by Vite plugins.
+  2. *Subpath Imports:* The legacy `$lib` alias is retired in favor of Node's native subpath imports (`#lib`), requiring explicit file extensions on internal imports.
+  3. *Toolchain Minimums:* Node `v22.17+`, TypeScript `v6+`, Vite `v8.0.12+` (bundling stable Rolldown v1), and `@sveltejs/vite-plugin-svelte` `v7+`.
+  4. *Routing:* Native shallow routing via `goto(url, { shallow: true })`.
+- **SvelteKit 2 vs SvelteKit 3 Decision for Dermaga:**
+  - **Decision:** **Pin SvelteKit 3** (`@sveltejs/kit@3.2.0`, `@sveltejs/adapter-static@4.0.1`, `vite@8.3.8`).
+  - **Rationale:** Dermaga is a greenfield project with zero legacy code or migration debt. Adopting SvelteKit 3 avoids building against the deprecated `svelte.config.js` and `$lib` patterns, ensuring long-term compatibility and native Vite 8 / Rolldown performance.
+  - **Bun Compatibility Verification:** Tested building a minimal SvelteKit 3 + adapter-static + Svelte 5 + Tailwind v4 application using Bun `1.4.2` on the development host (`bun run build`). The build completed cleanly in **381 ms**, writing static SPA assets (`index.html`, immutable JS/CSS) to `build/`.
 - **Source URLs:**
-  - [Podman GitHub Releases](https://github.com/containers/podman/releases)
-  - [Podman Systemd Unit Documentation](https://docs.podman.io/en/v5.4.2/markdown/podman-systemd.unit.5.html)
+  - [SvelteKit 3 Migration Guide](https://svelte.dev/docs/kit/migrating-to-sveltekit-3)
+  - [SvelteKit 3.2.0 GitHub Release](https://github.com/sveltejs/kit/releases/tag/%40sveltejs%2Fkit%403.2.0)
+  - [Adapter Static 4.0.1 GitHub Release](https://github.com/sveltejs/kit/releases/tag/%40sveltejs%2Fadapter-static%404.0.1)
 
-### 2. Traefik v3 (including ACME & HTTP/3)
-- **Current Upstream Version:** Traefik `v3.7.19` (Latest v3 release stream).
-- **Maintenance Status:** **Actively Maintained**. Traefik Labs releases regular security patches and minor updates.
+#### Svelte 5
+- **Latest Stable Version:** `svelte@5.57.3` (Released October 26, 2026). Svelte 5 GA was released on **October 19, 2024**.
+- **Maintenance Status:** **Actively Maintained**.
 - **Design Impacts:**
-  - **Socket Activation:** Traefik natively supports systemd socket activation for both TCP (`traefik-http.socket`, `traefik-https.socket`) and UDP (`traefik-https.socket` with `FileDescriptorName=websecure`). Full HTTP/3 (QUIC) verified working over socket activation on Debian 13.
-  - **ACME Certificates:** Automatic issuance and renewal via HTTP-01 and TLS-ALPN-01 challenges works seamlessly behind socket-activated entry points. Certificates are stored in `acme.json` (mode 0600 enforced). Dermaga reads status directly from `acme.json` without exposing Traefik's API.
-  - **Dynamic Configuration:** File provider accepts JSON syntax within `.yml` files. Reloads triggered via atomic file renaming in the mounted directory complete in ~300 ms.
+  - Replaces legacy reactive declarations (`$:`) and store contracts with explicit **Runes** (`$state`, `$derived`, `$props`, `$effect`), providing fine-grained reactivity and cleaner TypeScript typings.
+  - Replaces deprecated `<slot />` component composition with typed **snippets** (`{#snippet ...}`).
 - **Source URLs:**
-  - [Traefik GitHub Releases](https://github.com/traefik/traefik/releases)
-  - [Traefik v3 Documentation](https://doc.traefik.io/traefik/v3.7/)
+  - [Svelte 5.57.3 GitHub Release](https://github.com/sveltejs/svelte/releases/tag/svelte%405.57.3)
+  - [Svelte 5 Runes Overview](https://svelte.dev/docs/svelte/overview)
 
-### 3. GitHub App Manifest Flow & Installation Tokens
-- **Current Version / API:** GitHub REST API (2022-11-28 version, current).
-- **Maintenance Status:** **Actively Maintained** by GitHub. Core integration mechanism for GitHub Apps.
+---
+
+### 2. Tailwind CSS v4
+- **Latest Stable Version:** `v4.3.5` (Released November 6, 2026). Tailwind CSS v4.0 GA was released on **January 22, 2025**.
+- **Pinned Version:** `tailwindcss@4.3.5` with `@tailwindcss/vite@4.3.5`.
+- **Maintenance Status:** **Actively Maintained** by Tailwind Labs.
+- **Design Impacts & Vite 8 Integration:**
+  - **CSS-First Configuration:** Completely eliminates `tailwind.config.js` and `postcss.config.js`. Configured via a single `@import "tailwindcss";` directive in `src/app.css`.
+  - **Vite 8 Plugin:** Integrates directly with Vite 8 via `@tailwindcss/vite`, powered by the Rust-based Oxide engine for near-instant builds.
+  - **Modern CSS:** Utilizes native cascade layers (`@layer`), CSS container queries, and `@property` rules, producing an ultra-compact embedded bundle for Dermaga's single binary.
+- **Source URLs:**
+  - [Tailwind CSS v4.3.5 GitHub Release](https://github.com/tailwindlabs/tailwindcss/releases/tag/v4.3.5)
+  - [Tailwind CSS v4 Documentation](https://tailwindcss.com/docs/v4-beta)
+
+---
+
+### 3. Podman & Quadlet
+
+- **Upstream Version:** Podman `v6.2.0` (Latest stable release stream). Podman 6.0 GA was released on **June 16, 2026**.
+- **Debian 13 Baseline:** Podman `5.4.2` (Released April 2, 2025; packaged in Debian testing/trixie alongside systemd 257).
+- **Pinned Version for Dermaga:** Debian 13 packaged Podman `5.4.2`.
+- **Upstream Breaking Changes in Podman 6.0:**
+  1. *Mandatory Toolchain Upgrades:* Requires Netavark / Aardvark `v2.0.0+`, Buildah `v1.44.0+`, and Skopeo `v1.23+`.
+  2. *Legacy Removals:* `slirp4netns` is completely removed (Pasta is now the sole default rootless stack); CNI networking is removed; `iptables` support is dropped in favor of `nftables`; `cgroups v1` support is dropped (Cgroups v2 strictly required); BoltDB is dropped in favor of SQLite.
+  3. *Quadlet Updates:* Structural service generation updates, including directory layout rules to avoid cleanup bugs, and new `.volume` options (`UID=`, `GID=`, `Options=`).
+- **Forward-Compatibility Risk:**
+  - Debian 13 ships Podman 5.4.2, so Podman 6 changes do not impact v1.0.0.
+  - Dermaga's current architectural decisions (Pasta rootless backend, nftables, systemd user manager, cgroups v2) are aligned with Podman 6 removals.
+  - *Risk to monitor:* If Debian backports or a future Debian 14 upgrade introduces Podman 6, Dermaga's Quadlet unit generator must be verified against any subdirectory layout restrictions or `.volume` directive changes.
+- **Design Impacts on Debian 13 (Podman 5.4.2):**
+  - Native resource limit keys under `[Container]` (`CPUs=`, `Memory=`) are rejected; Dermaga must map limits via `PodmanArgs=--memory=... --cpus=...`.
+  - Units must declare `[Quadlet] DefaultDependencies=false` to strip the 90s `podman-user-wait-network-online.service` boot delay.
+- **Source URLs:**
+  - [Podman v6.0.0 GitHub Release Notes](https://github.com/containers/podman/releases/tag/v6.0.0)
+  - [Podman 5.4.2 Systemd Unit Documentation](https://docs.podman.io/en/v5.4.2/markdown/podman-systemd.unit.5.html)
+
+---
+
+### 4. Traefik v3 (including ACME & Socket Activation)
+
+- **Pinned Version:** Image tag `docker.io/library/traefik:v3.7.19` (Digest `docker.io/library/traefik@sha256:44b61e76a251fe586d17d881fc900452d0a7b4a4b08c97ce6eac86d45b4c8b9d`). Traefik v3.7.19 was released in **October 2026**.
+- **Maintenance Status:** **Actively Maintained** by Traefik Labs.
+- **Upstream Documented Behavior & Design Impacts:**
+  - **Systemd Socket Activation:** Traefik officially documents systemd socket activation at [Traefik EntryPoints Systemd Socket Activation](https://doc.traefik.io/traefik/v3.7/routing/entrypoints/#systemd-socket-activation). When an EntryPoint name matches a systemd socket's `FileDescriptorName`, Traefik inherits the listening file descriptors and ignores the configured entrypoint address. HTTP/3 (QUIC) over UDP datagram socket activation is verified working on Debian 13.
+  - **File Provider:** Officially documented at [Traefik File Provider](https://doc.traefik.io/traefik/v3.7/providers/file/). Traefik watches the mounted directory for dynamic `.yml` updates (which accept JSON format). Reloads triggered via atomic file renaming in the mounted directory complete in ~300 ms.
+  - **Zero Podman Socket Access (`SEC-5`):** Traefik runs purely with the file provider; it has no `Requires=podman.socket` and no socket bind mounts.
+  - **ACME Certificates:** Automatic issuance via HTTP-01 and TLS-ALPN-01 challenges works seamlessly behind socket-activated entry points. Certificates are stored in `acme.json` (mode 0600 enforced). Dermaga reads certificate status directly from `acme.json` without exposing Traefik's API.
+- **Source URLs:**
+  - [Traefik v3.7.19 GitHub Release](https://github.com/traefik/traefik/releases/tag/v3.7.19)
+  - [Traefik EntryPoints Systemd Documentation](https://doc.traefik.io/traefik/v3.7/routing/entrypoints/#systemd-socket-activation)
+  - [Traefik File Provider Documentation](https://doc.traefik.io/traefik/v3.7/providers/file/)
+  - [Traefik ACME Documentation](https://doc.traefik.io/traefik/v3.7/https/acme/)
+
+---
+
+### 5. GitHub App Manifest Flow & Installation Tokens
+
+- **Current API Version:** Calendar version `2026-03-10` (Released March 10, 2026; fallback default is `2022-11-28`). Dermaga will explicitly set `X-GitHub-Api-Version: 2026-03-10`.
+- **Maintenance Status:** **Actively Maintained** by GitHub.
 - **Design Impacts:**
   - **Manifest Flow:** Initiated via HTML form POST to `https://github.com/settings/apps/new` with JSON manifest string containing `redirect_url` pointing to `http://localhost:7070`. Code exchanged via `POST /app-manifests/{code}/conversions` returning App ID, private key PEM, and client credentials.
   - **Webhook Secret:** Configured via `PATCH /app/hook/config` using App JWT (`content_type: "json"`). Constant-time HMAC SHA-256 verification (`SEC-11`) enforced.
   - **Installation Tokens:** Minted on demand via `POST /app/installations/{installation_id}/access_tokens`, scoped strictly to single repository IDs (`repositories: ["<repo_name>"]`). Tokens passed to git over HTTPS using HTTP Basic auth (`x-access-token:<token>`) via environment git configuration (`GIT_CONFIG_*`), preventing leaks into `.git/config` or process argv.
 - **Source URLs:**
-  - [GitHub App Manifest Flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest)
-  - [GitHub App REST API](https://docs.github.com/en/rest/apps/apps)
-
-### 4. SvelteKit & Svelte 5
-- **Current Versions:** Svelte `5.x` (stable release Oct 2024); SvelteKit `3.2.0` (November 2026).
-- **Maintenance Status:** **Actively Maintained** by Svelte team / Vercel.
-- **Design Impacts:**
-  - **Runes Reactivity:** Modern Svelte 5 runes (`$state`, `$derived`, `$props`, `$effect`) replace legacy Svelte 3/4 reactive declarations (`$:`) and stores, providing fine-grained reactivity and cleaner TypeScript typings.
-  - **Snippets:** Svelte 5 snippets (`{#snippet ...}`) replace deprecated `<slot />` architecture for component composition.
-  - **Static Build & Embedding:** Built with `@sveltejs/adapter-static` using Bun into static assets (HTML, JS, CSS). Assets embedded directly into the Go binary (`embed.FS`). Zero Node.js or Bun runtime dependency on the production VPS.
-- **Source URLs:**
-  - [Svelte 5 Documentation](https://svelte.dev/docs/svelte/overview)
-  - [SvelteKit Releases](https://github.com/sveltejs/kit/releases)
-
-### 5. Tailwind CSS v4
-- **Current Version:** Tailwind CSS `v4.0+` (stable release January 22, 2025; active patch cycle).
-- **Maintenance Status:** **Actively Maintained** by Tailwind Labs.
-- **Design Impacts:**
-  - **CSS-First Configuration:** Replaces legacy `tailwind.config.js` with `@import "tailwindcss";` in stylesheet. Themes and utilities are customized directly in CSS.
-  - **Oxide Engine:** Rust-based engine built directly into Vite via `@tailwindcss/vite`, resulting in near-instant build times without requiring PostCSS.
-  - **Modern CSS Features:** Native cascade layers (`@layer`), container queries, and `@property` rules produce a minimal CSS payload for the embedded panel.
-- **Source URLs:**
-  - [Tailwind CSS v4 Documentation](https://tailwindcss.com/docs/v4-beta)
-  - [Tailwind CSS GitHub Repository](https://github.com/tailwindlabs/tailwindcss)
+  - [GitHub REST API Versions Documentation](https://docs.github.com/en/rest/about-the-rest-api/api-versions)
+  - [Registering a GitHub App from a Manifest](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest)
+  - [Manifest Conversions Endpoint](https://docs.github.com/en/rest/apps/apps#create-a-github-app-from-a-manifest)
+  - [Installation Access Tokens Endpoint](https://docs.github.com/en/rest/apps/installations#create-an-installation-access-token-for-an-app)
+  - [Webhook Configuration Endpoint](https://docs.github.com/en/rest/apps/webhooks#update-a-webhook-configuration-for-an-app)
 
 ---
 
 ### 14. Step 4 Summary Table
 
-| Technology | Upstream Version | Debian 13 Baseline | Maintenance Status | Design Impact on Dermaga | Source URL |
+| Technology | Upstream Latest Version & Date | Version Pinned by Dermaga | Maintenance Status | Design Impact on Dermaga | Source URL |
 |---|---|---|---|---|---|
-| **Podman / Quadlet** | `v6.2.0` | `5.4.2` (systemd 257) | Actively maintained | Limits via `PodmanArgs=--memory=...`; units require `[Quadlet] DefaultDependencies=false` | [podman.io](https://docs.podman.io/en/v5.4.2/) |
-| **Traefik v3** | `v3.7.19` | `v3.7` container | Actively maintained | Socket activation on TCP 80, TCP 443, UDP 443 (HTTP/3); ACME via Pebble; JSON-in-`.yml` file provider | [traefik.io](https://doc.traefik.io/traefik/v3.7/) |
-| **GitHub App API** | REST API (2022-11-28) | N/A (GitHub Cloud API) | Actively maintained | Manifest flow with localhost redirect; repo-scoped tokens via HTTP Basic auth in `GIT_CONFIG_*` | [docs.github.com](https://docs.github.com/en/apps) |
-| **SvelteKit / Svelte 5** | Svelte 5.x / Kit `3.2.0` | Build-time (Bun); embedded static SPA | Actively maintained | Svelte 5 runes (`$state`, `$derived`); `adapter-static` SPA embedded into Go binary | [svelte.dev](https://svelte.dev) |
-| **Tailwind CSS v4** | `v4.0+` | Build-time (Vite plugin) | Actively maintained | CSS-first config (`@import "tailwindcss";`); no `tailwind.config.js`; minimal embedded CSS | [tailwindcss.com](https://tailwindcss.com) |
+| **SvelteKit** | `3.2.0` (2026-11-10; GA 2026-10-01) | `@sveltejs/kit@3.2.0`, `@sveltejs/adapter-static@4.0.1` | Actively maintained | Greenfield choice: config in `vite.config.ts`, `#lib` imports, Vite 8; verified 381 ms build with Bun | [svelte.dev](https://svelte.dev/docs/kit/migrating-to-sveltekit-3) |
+| **Svelte 5** | `5.57.3` (2026-10-26; GA 2024-10-19) | `svelte@5.57.3` | Actively maintained | Runes (`$state`, `$derived`, `$props`); snippets replace `<slot />` | [svelte.dev](https://svelte.dev/docs/svelte/overview) |
+| **Tailwind CSS** | `v4.3.5` (2026-11-06; GA 2025-01-22) | `tailwindcss@4.3.5`, `@tailwindcss/vite@4.3.5` | Actively maintained | CSS-first `@import "tailwindcss";`; Oxide engine via `@tailwindcss/vite`; no PostCSS/tailwind.config | [tailwindcss.com](https://tailwindcss.com/docs/v4-beta) |
+| **Podman / Quadlet** | `v6.2.0` (Podman 6.0 GA 2026-06-16) | Debian 13 packaged `5.4.2` (2025-04-02) | Actively maintained | Limits via `PodmanArgs=--memory=...`; `[Quadlet] DefaultDependencies=false` eliminates 90s delay; Podman 6 is forward-compat risk | [podman.io](https://docs.podman.io/en/v5.4.2/) |
+| **Traefik v3** | `v3.7.19` (2026-10) | `docker.io/library/traefik@sha256:44b61e76a...` | Actively maintained | Socket activation TCP 80, TCP 443, UDP 443 (HTTP/3); ACME via Pebble; file provider only (no `podman.sock`) | [traefik.io](https://doc.traefik.io/traefik/v3.7/) |
+| **GitHub REST API** | Version `2026-03-10` (2026-03-10) | `X-GitHub-Api-Version: 2026-03-10` | Actively maintained | Manifest flow with localhost redirect; repo-scoped tokens via HTTP Basic auth in `GIT_CONFIG_*` | [docs.github.com](https://docs.github.com/en/rest) |
 

@@ -15,18 +15,19 @@ backups come in v1.1.
 
 | #   | Version | Milestone                                        | Status      | Hours |
 | --- | ------- | ------------------------------------------------ | ----------- | ----- |
-| M0  | –       | Spikes and plan                                  | not started | –     |
-| M1  | 0.1.0   | Foundation: daemon, login, panel shell           | not started | –     |
-| M2  | 0.2.0   | Generators and reconciliation                    | not started | –     |
-| M3  | 0.3.0   | Installer, hardening, lockout guard              | not started | –     |
-| M4  | 0.4.0   | First-run setup and panel access                 | not started | –     |
-| M5  | 0.5.0   | Connect GitHub                                   | not started | –     |
-| M6  | 0.6.0   | First deploy: wizard, build, env, logs           | not started | –     |
-| M7  | 0.7.0   | Zero downtime: push-to-deploy, redeploy, rollback | not started | –    |
-| M8  | 0.8.0   | Domains, HTTPS, headers, middleware              | not started | –     |
-| M9  | 0.9.0   | Server care: app status, disk, dashboard, doctor | not started | –     |
-| M10 | 0.10.0  | Updating dermaga, migration guide                | not started | –     |
-| M11 | 1.0.0   | Hardening and release                            | not started | –     |
+| M0  | –       | Spikes and plan                                  | completed   | 28    |
+| M1  | 0.1.0   | Foundation: daemon, login, panel shell           | not started | 36    |
+| M2  | 0.2.0   | Generators and reconciliation                    | not started | 28    |
+| M3  | 0.3.0   | Installer, hardening, lockout guard              | not started | 24    |
+| M4  | 0.4.0   | First-run setup and panel access                 | not started | 20    |
+| M5  | 0.5.0   | Connect GitHub                                   | not started | 28    |
+| M6  | 0.6.0   | First deploy: wizard, build, env, logs           | not started | 36    |
+| M7  | 0.7.0   | Zero downtime: push-to-deploy, redeploy, rollback | not started | 32    |
+| M8  | 0.8.0   | Domains, HTTPS, headers, middleware              | not started | 28    |
+| M9  | 0.9.0   | Server care: app status, disk, dashboard, doctor | not started | 24    |
+| M10 | 0.10.0  | Updating dermaga, migration guide                | not started | 24    |
+| M11 | 1.0.0   | Hardening and release                            | not started | 32    |
+|     |         | **Total**                                        |             | **330** |
 
 Hours are the implementer's estimate for building, testing and writing the evidence of each
 milestone; review time is not included.
@@ -93,7 +94,7 @@ after this.
 Repository skeleton (Go module, `Makefile`, CI, `LICENSE` Apache-2.0 with the copyright line I give
 you, `README.md`), the daemon, login and sessions, the recovery commands, the panel shell.
 
-Draft acceptance criteria:
+Acceptance criteria:
 
 - `make check` passes locally and in CI (Debian 13 container, actions pinned by SHA); binaries for both
   architectures; the panel shows the version from the tag.
@@ -111,7 +112,7 @@ Draft acceptance criteria:
 Typed structs → Quadlet units, Traefik static/global/app files (full middleware model, ACME resolver,
 verify router); dry-run validation; startup reconciliation.
 
-Draft acceptance criteria:
+Acceptance criteria:
 
 - Golden tests for every generator (minimal app, every middleware toggle, aliases + www, path prefix,
   basic auth, allowlist, body size, custom/removed headers, ACME on every router, verify router only in
@@ -123,7 +124,7 @@ Draft acceptance criteria:
 
 ## M3 (0.3.0): Installer, hardening, lockout guard
 
-Draft acceptance criteria:
+Acceptance criteria:
 
 - INST-1–INST-12, HOST-1–HOST-7, LOCK-1–LOCK-5, LAP-1–LAP-2, SEC-22 (installer side).
 - VM from `fresh`, each run separately (needs a `v0.3.0-rc` pre-release tag from me): (a) provider key
@@ -134,7 +135,7 @@ Draft acceptance criteria:
 
 ## M4 (0.4.0): First-run setup and panel access
 
-Draft acceptance criteria:
+Acceptance criteria:
 
 - SETUP-1–SETUP-3, LAP-3, ADM-4–ADM-5, SEC-8, SEC-10, TLS-5 (hook domain certificate, Pebble).
 - From a fresh install: `ssh dermaga` + browser → `/setup` → panel, without any command typed on the
@@ -146,7 +147,7 @@ Draft acceptance criteria:
 Creating the GitHub App from the panel, installing it, listing repositories, the server-wide webhook
 endpoint, disconnecting.
 
-Draft acceptance criteria:
+Acceptance criteria:
 
 - GHA-1–GHA-8, SEC-9, SEC-11–SEC-14.
 - With a real GitHub account (I click): App created from the panel, installed on a test repo, the repo
@@ -162,7 +163,7 @@ Draft acceptance criteria:
 The wizard, mirrors and exports, builds with limits, build-time and runtime env, the first deploy (no
 switch yet: one release), build and runtime logs, cancel.
 
-Draft acceptance criteria:
+Acceptance criteria:
 
 - WIZ-1–WIZ-6, APP-1, APP-5–APP-7, APP-9, DEP-3, DEP-5–DEP-9, LOG-1–LOG-2, UI-1–UI-7.
 - Portfolio created through the wizard and live (Pebble certificate); a build-time
@@ -173,7 +174,7 @@ Draft acceptance criteria:
 
 ## M7 (0.7.0): Zero downtime: push-to-deploy, redeploy, rollback
 
-Draft acceptance criteria:
+Acceptance criteria:
 
 - DEP-1, DEP-2, DEP-4, DEP-10, APP-8, REL-6.
 - `git push` to the test repo → live; push to another branch ignored; watch paths respected.
@@ -184,7 +185,7 @@ Draft acceptance criteria:
 
 ## M8 (0.8.0): Domains, HTTPS, headers, middleware
 
-Draft acceptance criteria:
+Acceptance criteria:
 
 - APP-2–APP-4, APP-10, APP-11, TLS-1–TLS-4, REL-7, REL-8.
 - Every control exercised in the browser; a header change shows in `curl -sI` within seconds;
@@ -195,7 +196,7 @@ Draft acceptance criteria:
 
 ## M9 (0.9.0): Server care: app status, disk, dashboard, doctor
 
-Draft acceptance criteria:
+Acceptance criteria:
 
 - DASH-1–DASH-3, RUN-1–RUN-3, DISK-1–DISK-3, DOC-1–DOC-2, REL-10, NFR-2.
 - A crashing app shows as crash loop with its last log lines and recovers after a fixed redeploy;
@@ -207,7 +208,7 @@ Draft acceptance criteria:
 
 ## M10 (0.10.0): Updating dermaga, migration guide
 
-Draft acceptance criteria:
+Acceptance criteria:
 
 - UPD-1–UPD-4, SEC-22 (update side), REL-11, MIG-1–MIG-3.
 - Update from the previous pre-release to a new one in the panel while `oha` runs against portfolio:
@@ -218,7 +219,7 @@ Draft acceptance criteria:
 
 ## M11 (1.0.0): Hardening and release
 
-Draft acceptance criteria:
+Acceptance criteria:
 
 - A written self-review of `docs/ARCHITECTURE.md` §1.2 (SEC-1–SEC-23) and NFR-1–NFR-8, each finding
   fixed or recorded with a reason; `docs/THREAT-MODEL.md`.
