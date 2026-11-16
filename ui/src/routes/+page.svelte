@@ -28,11 +28,6 @@
 		return `${mb.toFixed(1)} MB`;
 	}
 
-	function formatVersion(ver?: string): string {
-		if (!ver) return 'v0.0.0';
-		return ver.startsWith('v') ? ver : `v${ver}`;
-	}
-
 	onMount(async () => {
 		try {
 			session = await getSession();
@@ -63,7 +58,7 @@
 		{#if status}
 			<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 w-fit">
 				<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-				Daemon Active ({formatVersion(status.version)})
+				Daemon Active ({status.version})
 			</div>
 		{/if}
 	</div>
@@ -103,33 +98,20 @@
 			<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-5 shadow-sm">
 				<span class="text-xs font-medium text-stone-500 block mb-1">SQLite Database</span>
 				<div class="flex items-baseline gap-2">
-					<span class="text-xl font-bold text-teal-600 dark:text-teal-400">v{status.schema_version}</span>
-					<span class="text-xs text-stone-500">WAL mode</span>
+					<span class="text-xl font-bold text-teal-600 dark:text-teal-400">Schema v{status.schema_version}</span>
 				</div>
-				<span class="text-xs text-stone-400 mt-2 block">0600 mode encrypted</span>
+				<span class="text-xs {status.database_ok ? 'text-emerald-500' : 'text-red-500'} mt-2 block">
+					{status.database_ok ? 'Database Healthy' : 'Database Error'}
+				</span>
 			</div>
 
 			<!-- Build Info -->
 			<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-5 shadow-sm">
 				<span class="text-xs font-medium text-stone-500 block mb-1">Binary Version</span>
 				<div class="flex items-baseline gap-2">
-					<span class="text-xl font-bold font-mono">{formatVersion(status.version)}</span>
+					<span class="text-xl font-bold font-mono">{status.version}</span>
 				</div>
 				<span class="text-xs text-stone-400 mt-2 block truncate">Commit: {status.commit}</span>
-			</div>
-		</div>
-
-		<!-- Apps Overview placeholder for M2+ -->
-		<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-6 shadow-sm">
-			<div class="flex items-center justify-between mb-4">
-				<h2 class="text-base font-semibold">Configured Applications</h2>
-				<span class="text-xs font-mono px-2 py-0.5 rounded bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400">
-					M1 Foundation
-				</span>
-			</div>
-			<div class="text-center py-8 text-stone-500">
-				<p class="text-sm font-medium">No applications deployed yet</p>
-				<p class="text-xs mt-1">Application creation and generators will be available in milestone M2.</p>
 			</div>
 		</div>
 	{/if}
