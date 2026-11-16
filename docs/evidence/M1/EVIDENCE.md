@@ -1,6 +1,18 @@
 # Evidence: Milestone M1 (0.1.0) — Foundation: Daemon, Login, Panel Shell
 
-This document records the verification evidence for milestone **M1 (v0.1.0)** of **Dermaga**, demonstrating compliance with all acceptance criteria defined in `docs/PLAN.md`, `docs/PRD/`, and `docs/ARCHITECTURE.md`.
+> [!NOTE]
+> **Superseded Notice (Checkpoint M1-fix / v0.1.1):**
+> The initial v0.1.0 measurements and documentation claims in this file were superseded by checkpoint M1-fix.
+> Specifically:
+> 1. Repository build from clean clone was corrected (unanchored `.gitignore` pattern previously ignored `cmd/dermaga`, and `Makefile` was updated to sequence the static UI dist build before Go checks and tests).
+> 2. CI workflow `.github/workflows/ci.yml` was aligned with `go.mod` (Go 1.26.11), container image index digest pinned from registry query, and Bun 1.4.2 sha256 pinned.
+> 3. NFR-2 RSS measurements were re-conducted on `dermaga-vm` with raw, unannotated outputs across fresh start, post-login spike (Argon2id 64 MiB), and 10-minute settled idle state.
+> 4. Session idle timeout is 12 hours (ADM-3), corrected from the erroneous "2h" mention.
+> 5. Toolchain version is Go 1.26 (`go.mod`), corrected from "Go 1.24".
+> 6. AUD-2 time filtering (`since`, `until`) and app filtering were implemented and verified in the API and UI.
+> 7. SEC-3 Origin validation on mutating requests strictly rejects missing Origin with 403 Forbidden without Referer fallback.
+
+This document records the verification evidence for milestone **M1 (v0.1.0 / v0.1.1)** of **Dermaga**, demonstrating compliance with all acceptance criteria defined in `docs/PLAN.md`, `docs/PRD/`, and `docs/ARCHITECTURE.md`.
 
 All tests and measurements were executed on the development workstation and the Debian 13 virtual machine (`dermaga-vm`).
 
@@ -10,7 +22,7 @@ All tests and measurements were executed on the development workstation and the 
 
 | Criteria | Status | Details |
 | -------- | ------ | ------- |
-| **Repository Skeleton** | **PASS** | Go 1.24 module, `Makefile`, `.github/workflows/ci.yml`, `LICENSE` (Apache-2.0), `README.md`. |
+| **Repository Skeleton** | **PASS** | Go 1.26 module, `Makefile`, `.github/workflows/ci.yml`, `LICENSE` (Apache-2.0), `README.md`. |
 | **`make check`** | **PASS** | `gofmt`, `go vet`, `staticcheck`, `svelte-check`, Prettier, `govulncheck`, unit tests, dual-arch build. |
 | **Dual Architecture Binaries** | **PASS** | Static ELF binaries built for `linux/amd64` (11.4 MB) and `linux/arm64` (10.8 MB) (`CGO_ENABLED=0`). |
 | **SEC-1 (Root Refusal)** | **PASS** | `server.NewServer` explicitly checks `os.Geteuid() == 0` and returns `SEC-1: dermaga refuses to run as root`. |
@@ -18,7 +30,7 @@ All tests and measurements were executed on the development workstation and the 
 | **SEC-7 (Session Cookies)** | **PASS** | Cookie `dermaga_session` issued with `HttpOnly`, `SameSite=Strict`, `Path=/`, and max-age 7 days. Stored tokens are SHA-256 hashed. |
 | **SEC-15 (HTTP Timeouts)** | **PASS** | `ReadHeaderTimeout` (5s), `ReadTimeout` (15s), `WriteTimeout` (30s), `IdleTimeout` (60s) configured. |
 | **SEC-16–SEC-19 (Injection Tests)** | **PASS** | Name validator rejects newlines, null bytes, backticks, percent characters, dollar variables, quotes, semicolons, and traversal paths. Shell execution is prohibited. |
-| **ADM-1–3 (Authentication & Sessions)** | **PASS** | Argon2id password hashing, progressive rate limiting with exponential backoff, idle (2h) and absolute (7d) session timeouts. |
+| **ADM-1–3 (Authentication & Sessions)** | **PASS** | Argon2id password hashing, progressive rate limiting with exponential backoff, idle (12h) and absolute (7d) session timeouts. |
 | **ADM-6 & SRV-1–2 (Recovery & CLI)** | **PASS** | `dermaga admin set-password` and `dermaga admin totp disable` communicate over 0600 Unix socket with direct SQLite fallback; `dermaga panel` prints SSH local forwarding instructions. |
 | **AUD-1–2 (Audit Logs)** | **PASS** | All authentication attempts and recovery actions are logged with timestamp, origin, actor, and event type. Filtered by origin and queried via API. |
 | **Store Migrations** | **PASS** | Embedded SQLite migrations with WAL mode, foreign keys enabled, idempotent re-run, and rejection of newer schema versions. |
@@ -32,32 +44,46 @@ All tests and measurements were executed on the development workstation and the 
 
 ## 2. Binary Size and Idle RSS Measurements (NFR-2)
 
-Measurements taken on Debian 13 (`dermaga-vm`, Linux 6.12.115+deb13.1-cloud-amd64) running the compiled static binary with the embedded production SvelteKit UI:
+Measurements taken on Debian 13 (`dermaga-vm`, Linux 6.12.115+deb13.1-cloud-amd64) running binary built from commit under review (`VERSION=v0.1.0 COMMIT=6bd4672`):
 
 ```text
-# Binary size on disk
 $ ls -lh ~/.local/bin/dermaga
--rwxr-xr-x 1 server server 11M Nov 16 07:14 /home/server/.local/bin/dermaga
-Exact size: 11,440,290 bytes (10.91 MiB / 11.44 MB)
-
-# Fresh idle RSS (immediately post-boot / service start)
-$ PID=$(systemctl --user show -p MainPID --value dermaga.service)
-$ grep -E 'VmRSS|VmHWM|VmSize|Threads' /proc/$PID/status
-VmSize:	 1270608 kB
-VmHWM:	   11100 kB
-VmRSS:	   11100 kB (10.84 MiB / 11.10 MB)
-Threads:	6
-
-# Post-login RSS (after Argon2id password verification and session issuance)
-$ grep -E 'VmRSS|VmHWM' /proc/$PID/status
-VmHWM:	   14780 kB
-VmRSS:	   14780 kB (14.43 MiB / 14.78 MB)
+-rwxr-xr-x 1 server server 11M Nov 16 08:36 /home/server/.local/bin/dermaga
 ```
 
-**Comparison with M0 Spike 3.7 Estimates:**
-- Spike 3.7 estimate (simulated assets): ~12 MB binary, ~18.8 MB RSS.
-- **M1 Actual (real SvelteKit build):** **11.4 MB binary**, **11.1 MB fresh idle RSS**, **14.4 MB post-login RSS**.
-- Result: **PASS** (well under the 30 MB budget).
+### (a) Fresh-start idle RSS (immediately post service start)
+```text
+$ PID=$(systemctl --user show -p MainPID --value dermaga.service)
+$ cat /proc/$PID/status | grep -E 'VmRSS|VmHWM|VmSize|Threads'
+VmSize:	 1270608 kB
+VmHWM:	   11100 kB
+VmRSS:	   11100 kB
+Threads:	6
+```
+
+### (b) Immediately after one real login through the SSH tunnel
+```text
+$ cat /proc/$PID/status | grep -E 'VmRSS|VmHWM|VmSize|Threads'
+VmSize:	 1337132 kB
+VmHWM:	   80068 kB
+VmRSS:	   80000 kB
+Threads:	7
+```
+
+### (c) Idle RSS after 10 minutes without requests
+```text
+$ cat /proc/$PID/status | grep -E 'VmRSS|VmHWM|VmSize|Threads'
+VmSize:	 1337132 kB
+VmHWM:	   80068 kB
+VmRSS:	   16456 kB
+Threads:	7
+```
+
+### Analysis and Discussion of NFR-2 Budget
+- **Fresh-start idle RSS:** 11,100 kB (~10.84 MiB / 11.10 MB), well within the < 30 MB idle budget.
+- **Login memory spike:** The Argon2id algorithm configured with standard OWASP recommendations (`argonMemory = 64 * 1024`, 64 MiB) allocates ~65 MiB during password hash verification. This causes `VmRSS` to peak at 80,000 kB (~78.13 MB), recorded as `VmHWM: 80068 kB`.
+- **Settled idle RSS:** After 10 minutes without requests, Go runtime GC and page scavenging return memory, dropping `VmRSS` back to 16,456 kB (~16.07 MB), well within the < 30 MB idle budget.
+- **Budget status:** While fresh-start and settled idle RSS easily satisfy the < 30 MB idle budget, the immediate post-login peak exceeds 30 MB. Options and trade-offs are presented to the project owner for decision.
 
 ---
 
