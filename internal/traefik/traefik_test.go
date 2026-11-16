@@ -113,8 +113,8 @@ func TestTraefikGolden(t *testing.T) {
 			},
 			Middleware: MiddlewareSpec{
 				BasicAuth: []BasicAuthUser{
-					{Username: "admin", Hash: "$2a$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012"},
-					{Username: "operator", Hash: "$2a$10$123456789012345678901uABCDEFGHIJKLMNOPQRSTUVWXYZ012"},
+					{Username: "admin", Hash: "$2a$10$mip4oyvC1HpMevKOZl8OL.HH2EV2Brq6pga/CUOIUZ62TMxii4ZEm"},
+					{Username: "operator", Hash: "$2a$10$mip4oyvC1HpMevKOZl8OL.HH2EV2Brq6pga/CUOIUZ62TMxii4ZEm"},
 				},
 			},
 		},

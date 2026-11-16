@@ -1,0 +1,16 @@
+# Source: /home/r3p/Projects/dotfiles/vps-setup.sh
+# Commit: 8fe4cb1aa647a7d7c44710a72bc85000e4d80ef6
+# Security headers from render_traefik_dynamic (lines 869-879)
+# and per-app default headers from DEFAULT_HEADERS (line 1327)
+securityHeaders:
+  stsSeconds: 31536000
+  stsIncludeSubdomains: true
+  contentTypeNosniff: true
+  customFrameOptionsValue: SAMEORIGIN
+  referrerPolicy: strict-origin-when-cross-origin
+  customResponseHeaders:
+    Server: ""
+    X-Powered-By: ""
+
+perAppDefaultHeaders:
+  Permissions-Policy: "camera=(), microphone=(), geolocation=(), payment=()"

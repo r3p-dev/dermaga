@@ -2,8 +2,12 @@ package traefik
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v2"
 )
 
 func TestTraefikInjectionRejection(t *testing.T) {
@@ -194,6 +198,28 @@ func TestACMEOnEveryRouter(t *testing.T) {
 }
 
 func TestDefaultHeadersMatchVPSSetup(t *testing.T) {
+	// Read reference header block from vps-setup.sh golden file
+	goldenPath := filepath.Join("testdata", "vps-setup-headers.golden")
+	goldenData, err := os.ReadFile(goldenPath)
+	if err != nil {
+		t.Fatalf("reading vps-setup-headers.golden: %v", err)
+	}
+
+	var ref struct {
+		SecurityHeaders struct {
+			STSSeconds              int64             `yaml:"stsSeconds"`
+			STSIncludeSubdomains    bool              `yaml:"stsIncludeSubdomains"`
+			ContentTypeNosniff      bool              `yaml:"contentTypeNosniff"`
+			CustomFrameOptionsValue string            `yaml:"customFrameOptionsValue"`
+			ReferrerPolicy          string            `yaml:"referrerPolicy"`
+			CustomResponseHeaders   map[string]string `yaml:"customResponseHeaders"`
+		} `yaml:"securityHeaders"`
+		PerAppDefaultHeaders map[string]string `yaml:"perAppDefaultHeaders"`
+	}
+	if err := yaml.Unmarshal(goldenData, &ref); err != nil {
+		t.Fatalf("unmarshaling vps-setup-headers.golden: %v", err)
+	}
+
 	spec := AppSpec{
 		AppName:       "headers-check",
 		ReleaseNumber: 1,
@@ -219,28 +245,29 @@ func TestDefaultHeadersMatchVPSSetup(t *testing.T) {
 	}
 
 	h := mid.Headers
-	if h.STSSeconds != 31536000 {
-		t.Errorf("STSSeconds = %d, want 31536000", h.STSSeconds)
+	if h.STSSeconds != ref.SecurityHeaders.STSSeconds {
+		t.Errorf("STSSeconds = %d, want %d (from vps-setup.sh)", h.STSSeconds, ref.SecurityHeaders.STSSeconds)
 	}
-	if !h.STSIncludeSubdomains {
-		t.Errorf("STSIncludeSubdomains = false, want true")
+	if h.STSIncludeSubdomains != ref.SecurityHeaders.STSIncludeSubdomains {
+		t.Errorf("STSIncludeSubdomains = %v, want %v (from vps-setup.sh)", h.STSIncludeSubdomains, ref.SecurityHeaders.STSIncludeSubdomains)
 	}
-	if !h.ContentTypeNosniff {
-		t.Errorf("ContentTypeNosniff = false, want true")
+	if h.ContentTypeNosniff != ref.SecurityHeaders.ContentTypeNosniff {
+		t.Errorf("ContentTypeNosniff = %v, want %v (from vps-setup.sh)", h.ContentTypeNosniff, ref.SecurityHeaders.ContentTypeNosniff)
 	}
-	if h.CustomFrameOptionsValue != "SAMEORIGIN" {
-		t.Errorf("CustomFrameOptionsValue = %q, want 'SAMEORIGIN'", h.CustomFrameOptionsValue)
+	if h.CustomFrameOptionsValue != ref.SecurityHeaders.CustomFrameOptionsValue {
+		t.Errorf("CustomFrameOptionsValue = %q, want %q (from vps-setup.sh)", h.CustomFrameOptionsValue, ref.SecurityHeaders.CustomFrameOptionsValue)
 	}
-	if h.ReferrerPolicy != "strict-origin-when-cross-origin" {
-		t.Errorf("ReferrerPolicy = %q, want 'strict-origin-when-cross-origin'", h.ReferrerPolicy)
+	if h.ReferrerPolicy != ref.SecurityHeaders.ReferrerPolicy {
+		t.Errorf("ReferrerPolicy = %q, want %q (from vps-setup.sh)", h.ReferrerPolicy, ref.SecurityHeaders.ReferrerPolicy)
 	}
-	if h.CustomResponseHeaders["Server"] != "" {
-		t.Errorf("Server header not stripped: %q", h.CustomResponseHeaders["Server"])
+	for k, expectedVal := range ref.SecurityHeaders.CustomResponseHeaders {
+		if gotVal, ok := h.CustomResponseHeaders[k]; !ok || gotVal != expectedVal {
+			t.Errorf("CustomResponseHeaders[%q] = %q, want %q (from vps-setup.sh)", k, gotVal, expectedVal)
+		}
 	}
-	if h.CustomResponseHeaders["X-Powered-By"] != "" {
-		t.Errorf("X-Powered-By header not stripped: %q", h.CustomResponseHeaders["X-Powered-By"])
-	}
-	if h.CustomResponseHeaders["Permissions-Policy"] != DefaultPermissionsPolicy {
-		t.Errorf("Permissions-Policy = %q, want %q", h.CustomResponseHeaders["Permissions-Policy"], DefaultPermissionsPolicy)
+	for k, expectedVal := range ref.PerAppDefaultHeaders {
+		if gotVal, ok := h.CustomResponseHeaders[k]; !ok || gotVal != expectedVal {
+			t.Errorf("CustomResponseHeaders[%q] = %q, want %q (from vps-setup.sh)", k, gotVal, expectedVal)
+		}
 	}
 }

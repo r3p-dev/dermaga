@@ -31,8 +31,8 @@
       "app-internal-portal-auth": {
         "basicAuth": {
           "users": [
-            "admin:$2a$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012",
-            "operator:$2a$10$123456789012345678901uABCDEFGHIJKLMNOPQRSTUVWXYZ012"
+            "admin:$2a$10$mip4oyvC1HpMevKOZl8OL.HH2EV2Brq6pga/CUOIUZ62TMxii4ZEm",
+            "operator:$2a$10$mip4oyvC1HpMevKOZl8OL.HH2EV2Brq6pga/CUOIUZ62TMxii4ZEm"
           ]
         }
       },

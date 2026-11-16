@@ -1,28 +1,103 @@
 === Traefik Golden Configurations Verification on dermaga-vm ===
-Timestamp: 2026-11-16T21:09:56+07:00
-Git commit: 4274867
+Timestamp: 2026-11-17T05:35:52+07:00
+Git commit: 46b94b5
 Working tree status: dirty
- M docs/PLAN.md
- M internal/host/fake.go
- M internal/host/host.go
-?? docs/evidence/M2/
-?? internal/quadlet/
-?? internal/traefik/
-?? test/vm/test_quadlet_dryrun.sh
-?? test/vm/test_traefik_configs.sh
+ M docs/ARCHITECTURE.md
+ M docs/evidence/M2/logs/vm_quadlet_dryrun.log
+ M docs/evidence/M2/logs/vm_traefik_configs.log
+ M internal/quadlet/ini.go
+ M internal/quadlet/injection_test.go
+ M internal/quadlet/quadlet_test.go
+ M internal/quadlet/render.go
+ M internal/quadlet/validate.go
+ M internal/traefik/injection_test.go
+ M internal/traefik/testdata/basic-auth.golden
+ M internal/traefik/traefik_test.go
+ M test/vm/test_quadlet_dryrun.sh
+ M test/vm/test_traefik_configs.sh
+?? internal/quadlet/testdata/url-escaped-health.golden
+?? internal/traefik/testdata/vps-setup-headers.golden
 Host: dermaga-vm
 
-Testing dynamic config aliases-www... OK (loaded by Traefik without errors)
-Testing dynamic config allowlist... OK (loaded by Traefik without errors)
-Testing dynamic config basic-auth... OK (loaded by Traefik without errors)
-Testing dynamic config body-size... OK (loaded by Traefik without errors)
-Testing dynamic config custom-removed-headers... OK (loaded by Traefik without errors)
-Testing dynamic config global-dynamic... OK (loaded by Traefik without errors)
-Testing dynamic config middleware-toggles... OK (loaded by Traefik without errors)
-Testing dynamic config minimal... OK (loaded by Traefik without errors)
-Testing dynamic config path-prefix... OK (loaded by Traefik without errors)
-Testing dynamic config path-prefix-no-strip... OK (loaded by Traefik without errors)
-Validating static config static-config (JSON syntax)... OK
-Testing dynamic config switch-verify... OK (loaded by Traefik without errors)
+Discovered live Traefik container image: docker.io/library/traefik:v3.7
+Discovered live Traefik image digest: sha256:44b61e76a251fe586d17d881fc900452d0a7b4a4b08c97ce6eac86d45b4c8b9d
+Using pinned Traefik image: docker.io/library/traefik:v3.7@sha256:44b61e76a251fe586d17d881fc900452d0a7b4a4b08c97ce6eac86d45b4c8b9d
+
+Creating isolated test directory: /tmp/traefik-verify-lX3zr1
+Staging dynamic golden configuration files...
+  Staging aliases-www.golden -> aliases-www.yml
+  Staging allowlist.golden -> allowlist.yml
+  Staging basic-auth.golden -> basic-auth.yml
+  Staging body-size.golden -> body-size.yml
+  Staging custom-removed-headers.golden -> custom-removed-headers.yml
+  Staging global-dynamic.golden -> global-dynamic.yml
+  Staging middleware-toggles.golden -> middleware-toggles.yml
+  Staging minimal.golden -> minimal.yml
+  Staging path-prefix.golden -> path-prefix.yml
+  Staging path-prefix-no-strip.golden -> path-prefix-no-strip.yml
+  Staging switch-verify.golden -> switch-verify.yml
+Creating isolated bridge network test-traefik-net-628221...
+test-traefik-net-628221
+Starting throwaway backend echo responders on test-traefik-net-628221...
+b7ae2691f8606ed33f7da7fc8cef1862a41cc8c5fbe7930d1bb07837fcb5b101
+d180e35654c2fbffb88329c73ac4d95cad057c114c5026efe57eb1f6f4dad194
+4af05cb149f629ec1ee588baa95b43d470a6327e24897e11c8f3226f1c53296f
+1a1787de4803719be37f6086d2364e7a5189f2641db27ecb8690bdd5a1ae560d
+0cc1dce94cc1b67c1a4a5e335b32ecd5f8535734e72e347bb4d8a3176988050f
+113de79387e139b142fb2ed15ca3c886cc1ead3e48c517bbe1c9e7fcc5e6f0c7
+0bf7f37b1163c2488534b7635af93f52cd9cda5e3e1d022d331d82a2d0b095f0
+Starting throwaway Traefik container test-traefik-628221...
+05d70175b5225d782c9af4f7c0eafa4dbe80fe544c2ba90e96ffcc98f8b5d9c1
+
+Polling Traefik API (http://127.0.0.1:18088/api/http/routers) until dynamic configs load...
+Traefik loaded all dynamic routers after 200 ms.
+
+--- Asserting API Router Status ---
+Router app-portfolio@file: status=enabled, errors=0 -> OK
+Router app-landing@file: status=enabled, errors=0 -> OK
+Router app-landing-redirect-2@file: status=enabled, errors=0 -> OK
+Router app-landing-redirect-3@file: status=enabled, errors=0 -> OK
+Router app-secure-admin@file: status=enabled, errors=0 -> OK
+Router app-internal-portal@file: status=enabled, errors=0 -> OK
+Router app-uploader@file: status=enabled, errors=0 -> OK
+Router app-custom-headers-app@file: status=enabled, errors=0 -> OK
+Router app-blog@file: status=enabled, errors=0 -> OK
+Router app-api-service@file: status=enabled, errors=0 -> OK
+Router app-docs-service@file: status=enabled, errors=0 -> OK
+Router app-web-app@file: status=enabled, errors=0 -> OK
+Router app-web-app-verify@file: status=enabled, errors=0 -> OK
+
+--- Asserting Real HTTP Behavior via curl ---
+1. Routing by Host (portfolio.example.com): PASS (HTTP 200 OK)
+2. Path prefix with strip (/api/v1/users -> backend sees /users): PASS (X-Echo-Path: /users received)
+3. Path prefix without strip (/docs/guide -> backend sees /docs/guide): PASS (X-Echo-Path: /docs/guide received)
+4. Alias www redirect (www.landing.com/about -> 301 to https://landing.com/about): PASS (301 https://landing.com/about)
+5a. Basic Auth without credentials: PASS (HTTP 401 Unauthorized)
+5b. Basic Auth with valid credentials (admin:secret): PASS (HTTP 200 OK)
+6. IP Allowlist rejection from non-allowed client (127.0.0.1): PASS (HTTP 403 Forbidden)
+7a. Request buffering with allowed body size (1 KiB <= 10 MiB): PASS (HTTP 200 OK)
+7b. Request buffering exceeding max request body size (11 MiB > 10 MiB limit): PASS (HTTP 413 Payload Too Large)
+8a. Default security headers verification (portfolio.example.com): PASS (all 5 default security headers present, Server and X-Powered-By stripped)
+8b. Custom and removed headers verification (headers.example.com): PASS (CSP and custom header added, X-Frame-Options successfully removed)
+9a. Standard request routes to production release 1: PASS (production release 1 served)
+9b. Request with X-Dermaga-Verify token routes to candidate release 2: PASS (candidate release 2 served)
+
+--- Negative Control: Deliberately Broken Traefik Configuration ---
+Polling API for broken router error detection...
+Negative control router successfully flagged with error:
+{"entryPoints":["websecure"],"middlewares":["nonexistent-middleware@file"],"service":"nonexistent-service","rule":"Host(`broken.example.com`)","priority":26,"tls":{"options":"default","certResolver":"le"},"observability":{"accessLogs":true,"metrics":true,"tracing":true,"traceVerbosity":"minimal"},"error":["the service \"nonexistent-service@file\" does not exist"],"status":"disabled","using":["websecure"],"name":"app-broken-router@file","provider":"file","priorityStr":"26"}
+Negative control PASSED: router referencing missing middleware was flagged by Traefik API.
 
 === All Traefik Golden Configurations Verified: PASS ===
+
+Cleaning up throwaway test containers and network on dermaga-vm...
+test-backend-p3000-628221
+test-backend-p9000-628221
+test-backend-p4000-628221
+test-traefik-628221
+test-backend-p80-628221
+test-backend-cand-628221
+test-backend-main-628221
+test-backend-p8443-628221
+test-traefik-net-628221
+Cleanup complete (§8: idempotent, no residue).
