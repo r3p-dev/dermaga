@@ -1,0 +1,69 @@
+{
+  "http": {
+    "routers": {
+      "app-web-app": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "Host(`webapp.example.com`)",
+        "service": "app-web-app",
+        "middlewares": [
+          "app-web-app-headers"
+        ],
+        "tls": {
+          "certResolver": "le"
+        }
+      },
+      "app-web-app-verify": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "Host(`webapp.example.com`) \u0026\u0026 Header(`X-Dermaga-Verify`, `test-switch-verify-token-999`)",
+        "service": "app-web-app-candidate",
+        "middlewares": [
+          "app-web-app-headers"
+        ],
+        "tls": {
+          "certResolver": "le"
+        },
+        "priority": 10000
+      }
+    },
+    "services": {
+      "app-web-app": {
+        "loadBalancer": {
+          "servers": [
+            {
+              "url": "http://app-web-app-r1:8080"
+            }
+          ]
+        }
+      },
+      "app-web-app-candidate": {
+        "loadBalancer": {
+          "servers": [
+            {
+              "url": "http://app-web-app-r2:8080"
+            }
+          ]
+        }
+      }
+    },
+    "middlewares": {
+      "app-web-app-headers": {
+        "headers": {
+          "stsSeconds": 31536000,
+          "stsIncludeSubdomains": true,
+          "contentTypeNosniff": true,
+          "customFrameOptionsValue": "SAMEORIGIN",
+          "referrerPolicy": "strict-origin-when-cross-origin",
+          "customResponseHeaders": {
+            "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+            "Server": "",
+            "X-Powered-By": ""
+          }
+        }
+      }
+    }
+  }
+}

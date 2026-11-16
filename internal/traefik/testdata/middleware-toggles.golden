@@ -1,0 +1,60 @@
+{
+  "http": {
+    "routers": {
+      "app-blog": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "Host(`blog.example.com`)",
+        "service": "app-blog",
+        "middlewares": [
+          "app-blog-headers",
+          "app-blog-ratelimit",
+          "app-blog-compress"
+        ],
+        "tls": {
+          "certResolver": "le"
+        }
+      }
+    },
+    "services": {
+      "app-blog": {
+        "loadBalancer": {
+          "servers": [
+            {
+              "url": "http://app-blog-r2:3000"
+            }
+          ]
+        }
+      }
+    },
+    "middlewares": {
+      "app-blog-compress": {
+        "compress": {
+          "minResponseBodyBytes": 1024
+        }
+      },
+      "app-blog-headers": {
+        "headers": {
+          "stsSeconds": 31536000,
+          "stsIncludeSubdomains": true,
+          "contentTypeNosniff": true,
+          "customFrameOptionsValue": "SAMEORIGIN",
+          "referrerPolicy": "strict-origin-when-cross-origin",
+          "customResponseHeaders": {
+            "Permissions-Policy": "camera=(), microphone=()",
+            "Server": "",
+            "X-Powered-By": ""
+          }
+        }
+      },
+      "app-blog-ratelimit": {
+        "rateLimit": {
+          "average": 50,
+          "burst": 100,
+          "period": "1s"
+        }
+      }
+    }
+  }
+}

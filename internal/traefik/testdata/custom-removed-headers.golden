@@ -1,0 +1,49 @@
+{
+  "http": {
+    "routers": {
+      "app-custom-headers-app": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "Host(`headers.example.com`)",
+        "service": "app-custom-headers-app",
+        "middlewares": [
+          "app-custom-headers-app-headers"
+        ],
+        "tls": {
+          "certResolver": "le"
+        }
+      }
+    },
+    "services": {
+      "app-custom-headers-app": {
+        "loadBalancer": {
+          "servers": [
+            {
+              "url": "http://app-custom-headers-app-r1:8080"
+            }
+          ]
+        }
+      }
+    },
+    "middlewares": {
+      "app-custom-headers-app-headers": {
+        "headers": {
+          "stsSeconds": 31536000,
+          "stsIncludeSubdomains": true,
+          "contentTypeNosniff": true,
+          "customFrameOptionsValue": "SAMEORIGIN",
+          "referrerPolicy": "strict-origin-when-cross-origin",
+          "customResponseHeaders": {
+            "Content-Security-Policy": "default-src 'self'",
+            "Permissions-Policy": "",
+            "Server": "",
+            "X-Custom-Header": "custom-value-123",
+            "X-Frame-Options": "",
+            "X-Powered-By": ""
+          }
+        }
+      }
+    }
+  }
+}

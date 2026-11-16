@@ -1,0 +1,54 @@
+{
+  "http": {
+    "routers": {
+      "app-api-service": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "Host(`example.com`) \u0026\u0026 PathPrefix(`/api/v1`)",
+        "service": "app-api-service",
+        "middlewares": [
+          "app-api-service-headers",
+          "app-api-service-stripprefix"
+        ],
+        "tls": {
+          "certResolver": "le"
+        }
+      }
+    },
+    "services": {
+      "app-api-service": {
+        "loadBalancer": {
+          "servers": [
+            {
+              "url": "http://app-api-service-r3:8080"
+            }
+          ]
+        }
+      }
+    },
+    "middlewares": {
+      "app-api-service-headers": {
+        "headers": {
+          "stsSeconds": 31536000,
+          "stsIncludeSubdomains": true,
+          "contentTypeNosniff": true,
+          "customFrameOptionsValue": "SAMEORIGIN",
+          "referrerPolicy": "strict-origin-when-cross-origin",
+          "customResponseHeaders": {
+            "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+            "Server": "",
+            "X-Powered-By": ""
+          }
+        }
+      },
+      "app-api-service-stripprefix": {
+        "stripPrefix": {
+          "prefixes": [
+            "/api/v1"
+          ]
+        }
+      }
+    }
+  }
+}

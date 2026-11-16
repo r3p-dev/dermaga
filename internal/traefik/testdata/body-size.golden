@@ -1,0 +1,52 @@
+{
+  "http": {
+    "routers": {
+      "app-uploader": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "Host(`upload.example.com`)",
+        "service": "app-uploader",
+        "middlewares": [
+          "app-uploader-headers",
+          "app-uploader-buffering"
+        ],
+        "tls": {
+          "certResolver": "le"
+        }
+      }
+    },
+    "services": {
+      "app-uploader": {
+        "loadBalancer": {
+          "servers": [
+            {
+              "url": "http://app-uploader-r1:9000"
+            }
+          ]
+        }
+      }
+    },
+    "middlewares": {
+      "app-uploader-buffering": {
+        "buffering": {
+          "maxRequestBodyBytes": 10485760
+        }
+      },
+      "app-uploader-headers": {
+        "headers": {
+          "stsSeconds": 31536000,
+          "stsIncludeSubdomains": true,
+          "contentTypeNosniff": true,
+          "customFrameOptionsValue": "SAMEORIGIN",
+          "referrerPolicy": "strict-origin-when-cross-origin",
+          "customResponseHeaders": {
+            "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+            "Server": "",
+            "X-Powered-By": ""
+          }
+        }
+      }
+    }
+  }
+}

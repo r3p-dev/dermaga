@@ -1,0 +1,55 @@
+{
+  "http": {
+    "routers": {
+      "app-internal-portal": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "Host(`portal.example.com`)",
+        "service": "app-internal-portal",
+        "middlewares": [
+          "app-internal-portal-headers",
+          "app-internal-portal-auth"
+        ],
+        "tls": {
+          "certResolver": "le"
+        }
+      }
+    },
+    "services": {
+      "app-internal-portal": {
+        "loadBalancer": {
+          "servers": [
+            {
+              "url": "http://app-internal-portal-r1:8080"
+            }
+          ]
+        }
+      }
+    },
+    "middlewares": {
+      "app-internal-portal-auth": {
+        "basicAuth": {
+          "users": [
+            "admin:$2a$10$abcdefghijklmnopqrstuuABCDEFGHIJKLMNOPQRSTUVWXYZ012",
+            "operator:$2a$10$123456789012345678901uABCDEFGHIJKLMNOPQRSTUVWXYZ012"
+          ]
+        }
+      },
+      "app-internal-portal-headers": {
+        "headers": {
+          "stsSeconds": 31536000,
+          "stsIncludeSubdomains": true,
+          "contentTypeNosniff": true,
+          "customFrameOptionsValue": "SAMEORIGIN",
+          "referrerPolicy": "strict-origin-when-cross-origin",
+          "customResponseHeaders": {
+            "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+            "Server": "",
+            "X-Powered-By": ""
+          }
+        }
+      }
+    }
+  }
+}

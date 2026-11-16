@@ -1,0 +1,86 @@
+{
+  "http": {
+    "routers": {
+      "app-landing": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "(Host(`landing.com`) || Host(`landing.net`))",
+        "service": "app-landing",
+        "middlewares": [
+          "app-landing-headers"
+        ],
+        "tls": {
+          "certResolver": "le"
+        }
+      },
+      "app-landing-redirect-2": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "Host(`www.landing.com`)",
+        "service": "app-landing",
+        "middlewares": [
+          "app-landing-redirect-2"
+        ],
+        "tls": {
+          "certResolver": "le"
+        }
+      },
+      "app-landing-redirect-3": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "Host(`www.landing.net`)",
+        "service": "app-landing",
+        "middlewares": [
+          "app-landing-redirect-3"
+        ],
+        "tls": {
+          "certResolver": "le"
+        }
+      }
+    },
+    "services": {
+      "app-landing": {
+        "loadBalancer": {
+          "servers": [
+            {
+              "url": "http://app-landing-r1:80"
+            }
+          ]
+        }
+      }
+    },
+    "middlewares": {
+      "app-landing-headers": {
+        "headers": {
+          "stsSeconds": 31536000,
+          "stsIncludeSubdomains": true,
+          "contentTypeNosniff": true,
+          "customFrameOptionsValue": "SAMEORIGIN",
+          "referrerPolicy": "strict-origin-when-cross-origin",
+          "customResponseHeaders": {
+            "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+            "Server": "",
+            "X-Powered-By": ""
+          }
+        }
+      },
+      "app-landing-redirect-2": {
+        "redirectRegex": {
+          "regex": "^https?://www\\.landing\\.com/(.*)",
+          "replacement": "https://landing.com/${1}",
+          "permanent": true
+        }
+      },
+      "app-landing-redirect-3": {
+        "redirectRegex": {
+          "regex": "^https?://www\\.landing\\.net/(.*)",
+          "replacement": "https://landing.com/${1}",
+          "permanent": true
+        }
+      }
+    }
+  }
+}

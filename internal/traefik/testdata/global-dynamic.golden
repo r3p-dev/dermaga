@@ -1,0 +1,61 @@
+{
+  "http": {
+    "middlewares": {
+      "default-compress": {
+        "compress": {
+          "minResponseBodyBytes": 1024
+        }
+      },
+      "default-rate-limit": {
+        "rateLimit": {
+          "average": 100,
+          "burst": 200,
+          "period": "1s",
+          "sourceCriterion": {
+            "ipStrategy": {
+              "depth": 1
+            }
+          }
+        }
+      },
+      "default-security-headers": {
+        "headers": {
+          "stsSeconds": 31536000,
+          "stsIncludeSubdomains": true,
+          "contentTypeNosniff": true,
+          "customFrameOptionsValue": "SAMEORIGIN",
+          "referrerPolicy": "strict-origin-when-cross-origin",
+          "customResponseHeaders": {
+            "Server": "",
+            "X-Powered-By": ""
+          }
+        }
+      },
+      "secure": {
+        "chain": {
+          "middlewares": [
+            "default-security-headers",
+            "default-rate-limit",
+            "default-compress"
+          ]
+        }
+      }
+    }
+  },
+  "tls": {
+    "options": {
+      "default": {
+        "minVersion": "VersionTLS12",
+        "sniStrict": true,
+        "cipherSuites": [
+          "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256",
+          "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+          "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384",
+          "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+          "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305",
+          "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "http": {
+    "routers": {
+      "app-secure-admin": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "Host(`admin.example.com`)",
+        "service": "app-secure-admin",
+        "middlewares": [
+          "app-secure-admin-headers",
+          "app-secure-admin-allowlist"
+        ],
+        "tls": {
+          "certResolver": "le"
+        }
+      }
+    },
+    "services": {
+      "app-secure-admin": {
+        "loadBalancer": {
+          "servers": [
+            {
+              "url": "http://app-secure-admin-r1:8443"
+            }
+          ]
+        }
+      }
+    },
+    "middlewares": {
+      "app-secure-admin-allowlist": {
+        "ipAllowList": {
+          "sourceRange": [
+            "192.168.1.0/24",
+            "10.0.0.1/32"
+          ]
+        }
+      },
+      "app-secure-admin-headers": {
+        "headers": {
+          "stsSeconds": 31536000,
+          "stsIncludeSubdomains": true,
+          "contentTypeNosniff": true,
+          "customFrameOptionsValue": "SAMEORIGIN",
+          "referrerPolicy": "strict-origin-when-cross-origin",
+          "customResponseHeaders": {
+            "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+            "Server": "",
+            "X-Powered-By": ""
+          }
+        }
+      }
+    }
+  }
+}

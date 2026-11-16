@@ -1,0 +1,46 @@
+{
+  "http": {
+    "routers": {
+      "app-portfolio": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "Host(`portfolio.example.com`)",
+        "service": "app-portfolio",
+        "middlewares": [
+          "app-portfolio-headers"
+        ],
+        "tls": {
+          "certResolver": "le"
+        }
+      }
+    },
+    "services": {
+      "app-portfolio": {
+        "loadBalancer": {
+          "servers": [
+            {
+              "url": "http://app-portfolio-r1:8080"
+            }
+          ]
+        }
+      }
+    },
+    "middlewares": {
+      "app-portfolio-headers": {
+        "headers": {
+          "stsSeconds": 31536000,
+          "stsIncludeSubdomains": true,
+          "contentTypeNosniff": true,
+          "customFrameOptionsValue": "SAMEORIGIN",
+          "referrerPolicy": "strict-origin-when-cross-origin",
+          "customResponseHeaders": {
+            "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+            "Server": "",
+            "X-Powered-By": ""
+          }
+        }
+      }
+    }
+  }
+}
