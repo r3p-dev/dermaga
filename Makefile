@@ -28,7 +28,7 @@ build-all: ui
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="$(LDFLAGS)" -trimpath -o bin/dermaga-linux-arm64 ./cmd/dermaga
 
 # 4. Run Go tests
-test:
+test: ui
 	go test -v ./...
 
 # Run browser tests
@@ -36,7 +36,7 @@ test-browser:
 	cd ui && bunx playwright test
 
 # 5. Format and Lint checks
-lint:
+lint: ui
 	test -z "$$(gofmt -s -l .)"
 	go vet ./...
 	go tool staticcheck ./...
@@ -44,9 +44,9 @@ lint:
 	cd ui && bun run format:check
 
 # 6. Vulnerability scanning
-vulncheck:
+vulncheck: ui
 	go tool govulncheck ./...
-	cd ui && bun audit || echo "WARNING: bun audit found issues (see docs/DEPENDENCIES.md §6)"
+	cd ui && bun run audit:check
 
 # 7. Complete check target required by PLAN.md
 check: lint test vulncheck build-all

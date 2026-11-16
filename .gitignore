@@ -2,7 +2,7 @@
 bin/
 dist/
 build/
-dermaga
+/dermaga
 *.exe
 
 # SvelteKit UI
