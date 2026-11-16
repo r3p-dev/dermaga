@@ -3,6 +3,7 @@ package quadlet
 import (
 	"bytes"
 	"fmt"
+	"strings"
 )
 
 // iniProperty represents a single key-value entry in a section.
@@ -37,16 +38,28 @@ func (s *iniSection) add(key, value string) {
 }
 
 // render formats the INI document into standard systemd unit file syntax.
-func (d *iniDocument) render() []byte {
+func (d *iniDocument) render() ([]byte, error) {
 	var buf bytes.Buffer
 	for i, s := range d.Sections {
+		if strings.ContainsAny(s.Name, "]\r\n\x00") {
+			return nil, fmt.Errorf("invalid section name %q", s.Name)
+		}
 		if i > 0 {
 			buf.WriteByte('\n')
 		}
 		fmt.Fprintf(&buf, "[%s]\n", s.Name)
 		for _, p := range s.Properties {
+			if strings.ContainsAny(p.Key, "=\r\n\x00") {
+				return nil, fmt.Errorf("invalid property key %q", p.Key)
+			}
+			if strings.ContainsAny(p.Value, "\r\n\x00") {
+				return nil, fmt.Errorf("property %q contains newline or null byte", p.Key)
+			}
+			if strings.HasSuffix(strings.TrimRight(p.Value, " \t"), "\\") {
+				return nil, fmt.Errorf("property %q must not end with a backslash", p.Key)
+			}
 			fmt.Fprintf(&buf, "%s=%s\n", p.Key, p.Value)
 		}
 	}
-	return buf.Bytes()
+	return buf.Bytes(), nil
 }

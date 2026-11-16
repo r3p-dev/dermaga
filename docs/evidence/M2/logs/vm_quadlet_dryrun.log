@@ -1,17 +1,25 @@
 === Quadlet Generator Dry-Run Verification on dermaga-vm ===
-Timestamp: 2026-11-16T21:08:14+07:00
-Git commit: 4274867
+Timestamp: 2026-11-17T05:36:15+07:00
+Git commit: 46b94b5
 Working tree status: dirty
- M docs/PLAN.md
- M internal/host/fake.go
- M internal/host/host.go
-?? docs/evidence/M2/
-?? internal/quadlet/
-?? internal/traefik/
-?? test/vm/test_quadlet_dryrun.sh
+ M docs/ARCHITECTURE.md
+ M docs/evidence/M2/logs/vm_quadlet_dryrun.log
+ M docs/evidence/M2/logs/vm_traefik_configs.log
+ M internal/quadlet/ini.go
+ M internal/quadlet/injection_test.go
+ M internal/quadlet/quadlet_test.go
+ M internal/quadlet/render.go
+ M internal/quadlet/validate.go
+ M internal/traefik/injection_test.go
+ M internal/traefik/testdata/basic-auth.golden
+ M internal/traefik/traefik_test.go
+ M test/vm/test_quadlet_dryrun.sh
+ M test/vm/test_traefik_configs.sh
+?? internal/quadlet/testdata/url-escaped-health.golden
+?? internal/traefik/testdata/vps-setup-headers.golden
 Host: dermaga-vm
 
-Created remote directory: /tmp/quadlet-verify-zDcGqn
+Created remote directory: /tmp/quadlet-verify-bUSQoC
 Staging caps-added -> app-caps-added.container
 Staging custom-limits -> app-custom-limits.container
 Staging env-file -> app-env-file.container
@@ -19,15 +27,17 @@ Staging health-cmd -> app-health-cmd.container
 Staging minimal -> app-minimal.container
 Staging network-unit -> web.network
 Staging readonly-root -> app-readonly-root.container
+Staging url-escaped-health -> app-url-escaped-health.container
 
 Executing /usr/lib/systemd/system-generators/podman-system-generator --dryrun --user...
-quadlet-generator[3596]: Loading source unit file /tmp/quadlet-verify-zDcGqn/app-caps-added.container
-quadlet-generator[3596]: Loading source unit file /tmp/quadlet-verify-zDcGqn/app-custom-limits.container
-quadlet-generator[3596]: Loading source unit file /tmp/quadlet-verify-zDcGqn/app-env-file.container
-quadlet-generator[3596]: Loading source unit file /tmp/quadlet-verify-zDcGqn/app-health-cmd.container
-quadlet-generator[3596]: Loading source unit file /tmp/quadlet-verify-zDcGqn/app-minimal.container
-quadlet-generator[3596]: Loading source unit file /tmp/quadlet-verify-zDcGqn/app-readonly-root.container
-quadlet-generator[3596]: Loading source unit file /tmp/quadlet-verify-zDcGqn/web.network
+quadlet-generator[15619]: Loading source unit file /tmp/quadlet-verify-bUSQoC/app-caps-added.container
+quadlet-generator[15619]: Loading source unit file /tmp/quadlet-verify-bUSQoC/app-custom-limits.container
+quadlet-generator[15619]: Loading source unit file /tmp/quadlet-verify-bUSQoC/app-env-file.container
+quadlet-generator[15619]: Loading source unit file /tmp/quadlet-verify-bUSQoC/app-health-cmd.container
+quadlet-generator[15619]: Loading source unit file /tmp/quadlet-verify-bUSQoC/app-minimal.container
+quadlet-generator[15619]: Loading source unit file /tmp/quadlet-verify-bUSQoC/app-readonly-root.container
+quadlet-generator[15619]: Loading source unit file /tmp/quadlet-verify-bUSQoC/app-url-escaped-health.container
+quadlet-generator[15619]: Loading source unit file /tmp/quadlet-verify-bUSQoC/web.network
 ---web-network.service---
 [X-Network]
 NetworkName=web
@@ -36,7 +46,7 @@ NetworkName=web
 DefaultDependencies=false
 
 [Unit]
-SourcePath=/tmp/quadlet-verify-zDcGqn/web.network
+SourcePath=/tmp/quadlet-verify-bUSQoC/web.network
 RequiresMountsFor=%t/containers
 
 [Service]
@@ -48,7 +58,7 @@ RemainAfterExit=yes
 ---app-caps-added.service---
 [Unit]
 Description=dermaga app proxy release 1
-SourcePath=/tmp/quadlet-verify-zDcGqn/app-caps-added.container
+SourcePath=/tmp/quadlet-verify-bUSQoC/app-caps-added.container
 RequiresMountsFor=%t/containers
 
 [X-Container]
@@ -87,7 +97,7 @@ WantedBy=default.target
 ---app-custom-limits.service---
 [Unit]
 Description=dermaga app shop release 2
-SourcePath=/tmp/quadlet-verify-zDcGqn/app-custom-limits.container
+SourcePath=/tmp/quadlet-verify-bUSQoC/app-custom-limits.container
 RequiresMountsFor=%t/containers
 
 [X-Container]
@@ -126,7 +136,7 @@ WantedBy=default.target
 ---app-env-file.service---
 [Unit]
 Description=dermaga app backend release 4
-SourcePath=/tmp/quadlet-verify-zDcGqn/app-env-file.container
+SourcePath=/tmp/quadlet-verify-bUSQoC/app-env-file.container
 RequiresMountsFor=%t/containers
 
 [X-Container]
@@ -157,7 +167,7 @@ Delegate=yes
 Type=notify
 NotifyAccess=all
 SyslogIdentifier=%N
-ExecStart=/usr/bin/podman run --name app-backend-r4 --cidfile=%t/%N.cid --replace --rm --cgroups=split --stop-timeout 10 --pids-limit 128 --network web --sdnotify=conmon -d --security-opt=no-new-privileges --cap-drop all --env-file /home/server/.config/dermaga/env/backend.env localhost/backend:r4
+ExecStart=/usr/bin/podman run --name app-backend-r4 --cidfile=%t/%N.cid --replace --rm --cgroups=split --pids-limit 128 --stop-timeout 10 --network web --sdnotify=conmon -d --security-opt=no-new-privileges --cap-drop all --env-file /home/server/.config/dermaga/env/backend.env localhost/backend:r4
 
 [Install]
 WantedBy=default.target
@@ -165,7 +175,7 @@ WantedBy=default.target
 ---app-health-cmd.service---
 [Unit]
 Description=dermaga app backend-api release 5
-SourcePath=/tmp/quadlet-verify-zDcGqn/app-health-cmd.container
+SourcePath=/tmp/quadlet-verify-bUSQoC/app-health-cmd.container
 RequiresMountsFor=%t/containers
 
 [X-Container]
@@ -197,7 +207,7 @@ Delegate=yes
 Type=notify
 NotifyAccess=all
 SyslogIdentifier=%N
-ExecStart=/usr/bin/podman run --name app-backend-api-r5 --cidfile=%t/%N.cid --replace --rm --cgroups=split --stop-timeout 10 --pids-limit 128 --network web --sdnotify=healthy -d --security-opt=no-new-privileges --cap-drop all --health-cmd "curl -fsS http://localhost:8080/health || exit 1" localhost/backend-api:r5
+ExecStart=/usr/bin/podman run --name app-backend-api-r5 --cidfile=%t/%N.cid --replace --rm --cgroups=split --pids-limit 128 --stop-timeout 10 --network web --sdnotify=healthy -d --security-opt=no-new-privileges --cap-drop all --health-cmd "curl -fsS http://localhost:8080/health || exit 1" localhost/backend-api:r5
 
 [Install]
 WantedBy=default.target
@@ -205,7 +215,7 @@ WantedBy=default.target
 ---app-minimal.service---
 [Unit]
 Description=dermaga app demo release 1
-SourcePath=/tmp/quadlet-verify-zDcGqn/app-minimal.container
+SourcePath=/tmp/quadlet-verify-bUSQoC/app-minimal.container
 RequiresMountsFor=%t/containers
 
 [X-Container]
@@ -235,7 +245,7 @@ Delegate=yes
 Type=notify
 NotifyAccess=all
 SyslogIdentifier=%N
-ExecStart=/usr/bin/podman run --name app-demo-r1 --cidfile=%t/%N.cid --replace --rm --cgroups=split --stop-timeout 10 --pids-limit 128 --network web --sdnotify=conmon -d --security-opt=no-new-privileges --cap-drop all localhost/app-demo:r1
+ExecStart=/usr/bin/podman run --name app-demo-r1 --cidfile=%t/%N.cid --replace --rm --cgroups=split --pids-limit 128 --stop-timeout 10 --network web --sdnotify=conmon -d --security-opt=no-new-privileges --cap-drop all localhost/app-demo:r1
 
 [Install]
 WantedBy=default.target
@@ -243,7 +253,7 @@ WantedBy=default.target
 ---app-readonly-root.service---
 [Unit]
 Description=dermaga app worker release 3
-SourcePath=/tmp/quadlet-verify-zDcGqn/app-readonly-root.container
+SourcePath=/tmp/quadlet-verify-bUSQoC/app-readonly-root.container
 RequiresMountsFor=%t/containers
 
 [X-Container]
@@ -280,5 +290,53 @@ ExecStart=/usr/bin/podman run --name app-worker-r3 --cidfile=%t/%N.cid --replace
 [Install]
 WantedBy=default.target
 
+---app-url-escaped-health.service---
+[Unit]
+Description=dermaga app api-server release 1
+SourcePath=/tmp/quadlet-verify-bUSQoC/app-url-escaped-health.container
+RequiresMountsFor=%t/containers
+
+[X-Container]
+ContainerName=app-api-server-r1
+Image=docker.io/library/api:v1
+Network=web
+PidsLimit=128
+NoNewPrivileges=true
+StopTimeout=10
+HealthCmd=curl -f http://localhost:8080/health%%20check
+Notify=healthy
+
+[X-Quadlet]
+DefaultDependencies=false
+
+[Service]
+Restart=on-failure
+RestartSec=1s
+RestartSteps=3
+RestartMaxDelaySec=8s
+TimeoutStartSec=30
+TimeoutStopSec=20
+Environment=PODMAN_SYSTEMD_UNIT=%n
+KillMode=mixed
+ExecStop=/usr/bin/podman rm -v -f -i --cidfile=%t/%N.cid
+ExecStopPost=-/usr/bin/podman rm -v -f -i --cidfile=%t/%N.cid
+Delegate=yes
+Type=notify
+NotifyAccess=all
+SyslogIdentifier=%N
+ExecStart=/usr/bin/podman run --name app-api-server-r1 --cidfile=%t/%N.cid --replace --rm --cgroups=split --pids-limit 128 --stop-timeout 10 --network web --sdnotify=healthy -d --security-opt=no-new-privileges --health-cmd "curl -f http://localhost:8080/health%%20check" docker.io/library/api:v1
+
+[Install]
+WantedBy=default.target
+
+
+Verifying systemd unit specifier resolution for url-escaped-health...
+Specifier resolution passed: systemd-analyze reported no errors on escaped %20.
+
+--- Negative Control: Deliberately Broken Quadlet Unit ---
+Running podman-system-generator against deliberately broken unit...
+quadlet-generator[15669]: Loading source unit file /tmp/quadlet-neg-dm7gd9/broken.container
+quadlet-generator[15669]: converting "broken.container": unsupported key 'ThisIsAnUnsupportedKey' in group 'Container' in /tmp/quadlet-neg-dm7gd9/broken.container
+Negative control successfully rejected as expected (exit code: 1).
 
 === Quadlet Dry-Run Verification: PASS ===

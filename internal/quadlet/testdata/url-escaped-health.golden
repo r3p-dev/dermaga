@@ -1,0 +1,26 @@
+[Unit]
+Description=dermaga app api-server release 1
+
+[Container]
+ContainerName=app-api-server-r1
+Image=docker.io/library/api:v1
+Network=web
+PidsLimit=128
+NoNewPrivileges=true
+StopTimeout=10
+HealthCmd=curl -f http://localhost:8080/health%%20check
+Notify=healthy
+
+[Quadlet]
+DefaultDependencies=false
+
+[Service]
+Restart=on-failure
+RestartSec=1s
+RestartSteps=3
+RestartMaxDelaySec=8s
+TimeoutStartSec=30
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

@@ -92,7 +92,9 @@ func RenderContainer(spec ContainerSpec) ([]byte, error) {
 	contSec.add("StopTimeout", strconv.Itoa(stopTimeout))
 
 	if spec.Health.Cmd != "" {
-		contSec.add("HealthCmd", spec.Health.Cmd)
+		// Escape '%' to '%%' to prevent unintended systemd specifier expansion (%h, %u, %20)
+		escapedCmd := strings.ReplaceAll(spec.Health.Cmd, "%", "%%")
+		contSec.add("HealthCmd", escapedCmd)
 	}
 	if spec.Health.NotifyHealthy || spec.Health.Cmd != "" {
 		contSec.add("Notify", "healthy")
@@ -115,7 +117,7 @@ func RenderContainer(spec ContainerSpec) ([]byte, error) {
 	instSec := doc.addSection("Install")
 	instSec.add("WantedBy", "default.target")
 
-	return doc.render(), nil
+	return doc.render()
 }
 
 // RenderNetwork renders a validated NetworkSpec into a Quadlet .network unit.
@@ -134,7 +136,7 @@ func RenderNetwork(spec NetworkSpec) ([]byte, error) {
 	quadletSec := doc.addSection("Quadlet")
 	quadletSec.add("DefaultDependencies", "false")
 
-	return doc.render(), nil
+	return doc.render()
 }
 
 // UnitFileName returns the Quadlet filename for an app release container (e.g. "app-demo-r1.container").

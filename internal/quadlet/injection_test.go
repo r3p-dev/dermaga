@@ -73,8 +73,8 @@ func TestQuadletInjectionRejection(t *testing.T) {
 		}
 	}
 
-	// 6. EnvFile injection (newlines, null bytes, relative paths)
-	for _, bad := range []string{"/path/to/env\n[Service]", "relative/env", "/path\x00evil"} {
+	// 6. EnvFile injection (newlines, null bytes, relative paths, trailing backslash, percent)
+	for _, bad := range []string{"/path/to/env\n[Service]", "relative/env", "/path\x00evil", "/path/to/env\\", "/path/to/env\\  ", "/path/%env"} {
 		spec := baseSpec
 		spec.EnvFile = bad
 		if _, err := RenderContainer(spec); err == nil {
@@ -82,8 +82,8 @@ func TestQuadletInjectionRejection(t *testing.T) {
 		}
 	}
 
-	// 7. HealthCmd injection
-	for _, bad := range []string{"curl http://localhost\n[Service]\nExecStart=/bin/evil", "curl\x00evil"} {
+	// 7. HealthCmd injection (newlines, null bytes, trailing backslash)
+	for _, bad := range []string{"curl http://localhost\n[Service]\nExecStart=/bin/evil", "curl\x00evil", "curl http://localhost/\\", "curl http://localhost/\\   "} {
 		spec := baseSpec
 		spec.Health.Cmd = bad
 		if _, err := RenderContainer(spec); err == nil {
@@ -91,8 +91,19 @@ func TestQuadletInjectionRejection(t *testing.T) {
 		}
 	}
 
+	// 7b. HealthCmd legitimate % escaping
+	validSpec := baseSpec
+	validSpec.Health.Cmd = "curl -f http://localhost:8080/path%20test"
+	rendered, err := RenderContainer(validSpec)
+	if err != nil {
+		t.Fatalf("expected Health.Cmd with %% to render successfully, got error: %v", err)
+	}
+	if !strings.Contains(string(rendered), "HealthCmd=curl -f http://localhost:8080/path%%20test") {
+		t.Errorf("expected HealthCmd to escape %% to %%%%, got:\n%s", string(rendered))
+	}
+
 	// 8. NetworkName injection
-	for _, bad := range badStrings {
+	for _, bad := range append(badStrings, "net%work", "net\\work", "net\\") {
 		netSpec := NetworkSpec{NetworkName: "net-" + bad}
 		if _, err := RenderNetwork(netSpec); err == nil {
 			t.Errorf("expected error for bad NetworkName %q, got nil", bad)

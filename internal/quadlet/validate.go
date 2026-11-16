@@ -38,7 +38,7 @@ func ValidateContainerSpec(spec ContainerSpec) error {
 		return fmt.Errorf("invalid image reference %q: contains illegal characters", spec.Image)
 	}
 	if spec.Network != "" {
-		if strings.ContainsAny(spec.Network, " \t\r\n`'\"$;|&<>") {
+		if strings.ContainsAny(spec.Network, " \t\r\n\x00%\\`'\"$;|&<>") {
 			return fmt.Errorf("invalid network name %q", spec.Network)
 		}
 	}
@@ -66,8 +66,11 @@ func ValidateContainerSpec(spec ContainerSpec) error {
 		if !filepath.IsAbs(spec.EnvFile) {
 			return fmt.Errorf("env file path must be absolute: %q", spec.EnvFile)
 		}
-		if strings.ContainsAny(spec.EnvFile, "\r\n\x00") {
-			return fmt.Errorf("env file path contains newline or null byte: %q", spec.EnvFile)
+		if strings.ContainsAny(spec.EnvFile, "\r\n\x00%`'\"$;|&<>") {
+			return fmt.Errorf("env file path contains illegal characters: %q", spec.EnvFile)
+		}
+		if strings.HasSuffix(strings.TrimRight(spec.EnvFile, " \t"), "\\") {
+			return fmt.Errorf("env file path must not end with a backslash")
 		}
 	}
 
@@ -79,8 +82,13 @@ func ValidateContainerSpec(spec ContainerSpec) error {
 			return fmt.Errorf("unsupported health type %q (must be http, cmd, or none)", spec.Health.Type)
 		}
 	}
-	if spec.Health.Cmd != "" && strings.ContainsAny(spec.Health.Cmd, "\r\n\x00") {
-		return fmt.Errorf("health command contains newline or null byte")
+	if spec.Health.Cmd != "" {
+		if strings.ContainsAny(spec.Health.Cmd, "\r\n\x00") {
+			return fmt.Errorf("health command contains newline or null byte")
+		}
+		if strings.HasSuffix(strings.TrimRight(spec.Health.Cmd, " \t"), "\\") {
+			return fmt.Errorf("health command must not end with a backslash")
+		}
 	}
 
 	return nil
@@ -91,7 +99,7 @@ func ValidateNetworkSpec(spec NetworkSpec) error {
 	if spec.NetworkName == "" {
 		return fmt.Errorf("network name must not be empty")
 	}
-	if strings.ContainsAny(spec.NetworkName, " \t\r\n\x00`'\"$;|&<>") {
+	if strings.ContainsAny(spec.NetworkName, " \t\r\n\x00%\\`'\"$;|&<>") {
 		return fmt.Errorf("invalid network name %q", spec.NetworkName)
 	}
 	return nil

@@ -77,6 +77,20 @@ func TestQuadletGolden(t *testing.T) {
 				DropCapabilities: true,
 			},
 		},
+		"url-escaped-health": {
+			contSpec: ContainerSpec{
+				AppName:       "api-server",
+				ReleaseNumber: 1,
+				Image:         "docker.io/library/api:v1",
+				Health: HealthSpec{
+					Type:          "cmd",
+					Cmd:           "curl -f http://localhost:8080/health%20check",
+					TimeoutSec:    30,
+					NotifyHealthy: true,
+				},
+				DropCapabilities: false,
+			},
+		},
 		"network-unit": {
 			isNetwork: true,
 			netSpec: NetworkSpec{
