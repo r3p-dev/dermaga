@@ -11,6 +11,7 @@ import (
 type CommandCall struct {
 	Name string
 	Args []string
+	Env  []string
 }
 
 // FakeHost implements Host for unit testing.
@@ -32,9 +33,14 @@ func NewFakeHost() *FakeHost {
 
 // RunCommand records the call and executes the mock handler if configured.
 func (f *FakeHost) RunCommand(ctx context.Context, name string, args ...string) ([]byte, error) {
+	return f.RunCommandWithEnv(ctx, nil, name, args...)
+}
+
+// RunCommandWithEnv records the call with env and executes the mock handler if configured.
+func (f *FakeHost) RunCommandWithEnv(ctx context.Context, env []string, name string, args ...string) ([]byte, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.Commands = append(f.Commands, CommandCall{Name: name, Args: args})
+	f.Commands = append(f.Commands, CommandCall{Name: name, Args: args, Env: env})
 	if f.CommandMock != nil {
 		return f.CommandMock(name, args...)
 	}

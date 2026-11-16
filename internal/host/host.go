@@ -13,6 +13,7 @@ import (
 // Host abstracts host-level interactions for dependency injection and testability.
 type Host interface {
 	RunCommand(ctx context.Context, name string, args ...string) ([]byte, error)
+	RunCommandWithEnv(ctx context.Context, env []string, name string, args ...string) ([]byte, error)
 	WriteFileAtomic(path string, data []byte, perm os.FileMode) error
 	ReadFile(path string) ([]byte, error)
 	Stat(path string) (os.FileInfo, error)
@@ -30,7 +31,15 @@ func NewRealHost() *RealHost {
 
 // RunCommand executes a command using an argument slice without shell interpolation (SEC-16).
 func (h *RealHost) RunCommand(ctx context.Context, name string, args ...string) ([]byte, error) {
+	return h.RunCommandWithEnv(ctx, nil, name, args...)
+}
+
+// RunCommandWithEnv executes a command with specified environment variables without shell interpolation (SEC-16).
+func (h *RealHost) RunCommandWithEnv(ctx context.Context, env []string, name string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return out, fmt.Errorf("command %s %v failed: %w: %s", name, args, err, string(out))
