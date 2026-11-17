@@ -173,7 +173,7 @@ Read these when a milestone needs them; never assume what they contain.
    health check and runtime from the repo.
 4. **Kapturae**: the second real app. Ask me for its repo URL when a milestone needs it.
 
-## 10. Operational & verification rules (learned from M0)
+## 10. Operational & verification rules (learned from M0–M2)
 
 Future milestones and agents must follow these concrete working rules:
 
@@ -208,4 +208,38 @@ Future milestones and agents must follow these concrete working rules:
 10. **Evidence location:** Store proof for each milestone in `docs/evidence/M{N}/EVIDENCE.md` (e.g. M0
     evidence in `docs/evidence/M0/EVIDENCE.md`), keeping all associated logs, test scripts, and
     screenshots in the same milestone folder.
+11. **Evidence logging and quoting:** Every verification command must run with
+    `2>&1 | tee docs/evidence/<milestone>/logs/<name>.log`, with the exact command line,
+    `git rev-parse --short HEAD` (plus `git status --short` if the working tree is dirty), and an
+    ISO-8601 timestamp at the top. Logs must be committed. Milestone reports and `EVIDENCE.md` must
+    quote only exact text that exists in those committed log files; never reconstruct or summarise output.
+    If tool output was truncated during execution, read the saved log file instead.
+12. **Negative controls:** Every verification script must have at least one negative control that proves
+    its own assertions can fail (e.g. unknown directive, router referencing nonexistent service/middleware,
+    un-reconciled state), explicitly checked by exit code and reported error. A check that has never
+    been shown to fail is not evidence.
+13. **Committed binary for VM checks:** VM runs must execute with a binary built from a known, committed
+    state (a clean throwaway worktree branch is permitted); never override `VERSION` (e.g. via `-X main.Version=...`)
+    to make a dirty or development build masquerade as an official release. If uncommitted changes must
+    be tested, explicitly label the log as dirty.
+14. **Pinned values from real queries:** All pinned values (container image digests, GitHub Actions SHAs,
+    tool versions, checksums, download URLs) must be copied directly from a registry or source query
+    whose raw output is captured in a committed log file, never written from memory.
+15. **Real state verification:** Every command `dermaga` prints for the user, and every value the web UI
+    displays, must come from real system/database state. Follow all printed user instructions yourself
+    end-to-end to verify correctness before calling a feature `PASS`.
+16. **Screenshots and rendered checks:** Open every screenshot produced and describe in one line what
+    it actually shows before calling anything `PASS`. UI contrast and theme checks must run on the
+    rendered page in the browser (the Playwright + axe WCAG AA suite), never on assumed or static CSS colors.
+17. **Commit verification in throwaway worktree:** Suggested commits must each be verified to pass
+    `make check` on its own in a throwaway worktree (with per-commit check logs saved in
+    `docs/evidence/<milestone>/logs/`). Every changed path must belong to exactly one commit. Suggested
+    commands must use the fish shell form: `git add a b; and git commit -m "subject" -m "body"`.
+18. **Owner push CI monitoring:** After every push made by the owner, CI must be verified green. Read the
+    GitHub Actions run output directly (`gh run list`, `gh run view`) if possible; otherwise ask the owner
+    for the log before continuing.
+19. **Test isolation from live services:** Test files and units must never be placed into live service
+    directories (such as the live Traefik dynamic configuration directory `~/.local/share/dermaga/traefik/dynamic`
+    or live Quadlet directory `~/.config/containers/systemd`). Always use throwaway container instances,
+    non-colliding ports, and temporary test directories with complete teardown (§8: idempotent, zero residue).
 
