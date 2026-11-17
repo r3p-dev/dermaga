@@ -48,7 +48,9 @@ explanations.**
 ## 3. Files and directories
 
 - `cmd/dermaga` (entry point), `internal/<package>` (everything else), `ui/` (the SvelteKit app),
-  `install/` (installer, its tests, the user unit), `test/vm/` (VM scenarios), `docs/`.
+  `install/` (installer, its tests, the user unit), `test/vm/` (VM scenarios), `test/ci/` (local
+  rehearsals of CI and release workflow jobs), `scripts/` (repository tooling: evidence, commit and
+  policy checks), `docs/`.
 - One package per concern; tests next to the code (`x_test.go`), golden files in `testdata/`.
 - Generated files (tygo output, golden files) are committed and checked for freshness by `make check`.
 
@@ -65,6 +67,8 @@ explanations.**
   Quadlet/systemd). Atomic writes: temp file in the same directory, `fsync`, `rename`,
   `fsync` the directory.
 - **Secrets**: sealed with the secrets box and their column name; never logged; masked in build logs.
+  All secrets are generated cryptographically randomly, stored with permissions `0600` in gitignored
+  paths, and never printed in chat, logs, or evidence records.
   On webhook HMAC verification failure (`SEC-11`), log only the delivery ID, event, source and
   "signature mismatch" — never log the expected signature, received signature, secret or payload to
   prevent logs from acting as a signature oracle.
@@ -87,7 +91,7 @@ explanations.**
 - Tailwind classes in the markup; no custom CSS files beyond the theme entry point.
 - Colors, spacing and type only from the theme's tokens; new tokens need my approval.
 - Dark and light themes; visible focus; AA contrast (`NFR-7`).
-- Visual design (layout, components, copy, the logo): ask me (`AGENTS.md` §1).
+- Visual design (layout, components, copy, the logo): ask me (`AGENTS.md` "Session start").
 
 ### 5.2 Desktop and narrow screens
 
@@ -113,6 +117,40 @@ explanations.**
   rejected or escaped.
 - **Browser tests** for the main panel journeys (tool chosen in M1, listed in `docs/DEPENDENCIES.md`).
 - Tests that need Podman or systemd run on the VM (`test/vm/`), and in CI where possible.
+
+### 7.1 Verification rules (learned from M0–M2)
+
+- **Control test:** before concluding an external tool or protocol "doesn't support" a capability
+  (e.g. Traefik socket activation or HTTP/3), check known working reference implementations (such
+  as `vps-setup.sh`) and execute an isolated control test. Never write unverified negative
+  conclusions into design or architecture documents.
+- **Script hygiene:** every spike or test script executes non-interactively: explicit timeouts on
+  every network call (`--connect-timeout`, `--max-time`) and wait loop; never call `sudo`
+  non-interactively (use `ss -tuln` without process inspection instead of `sudo ss -tulpn`).
+- **State tracking:** when modifying existing systemd units, configuration files, or Quadlet
+  templates during tests or spikes, record the original baseline and restore the diff upon
+  completion, or explicitly state that a snapshot revert is required before proceeding.
+- **Negative controls:** every verification script has at least one negative control that proves
+  its own assertions can fail (e.g. unknown directive, router referencing a nonexistent
+  service/middleware, un-reconciled state), explicitly checked by exit code and reported error. A
+  check that has never been shown to fail is not evidence.
+- **Isolation from live services:** test files and units are never placed into live service
+  directories (such as the live Traefik dynamic configuration directory
+  `~/.local/share/dermaga/traefik/dynamic` or the live Quadlet directory
+  `~/.config/containers/systemd`). Always use throwaway container instances, non-colliding ports,
+  and temporary test directories with complete teardown (idempotent, zero residue).
+- **Tooling:** `scripts/evidence-run` logs a verification to the gitignored
+  `tmp/evidence/<milestone>/logs/` (screenshots go to `tmp/evidence/<milestone>/screenshots/`); raw
+  artifacts are never committed and `EVIDENCE.md` quotes exact excerpts from those local logs, citing
+  their paths. `scripts/check-commits` checks suggested commits (plan and per-commit logs stay in
+  `tmp/evidence/` or `.check-logs/`; only its summary lines go into `EVIDENCE.md`).
+  `scripts/check-policy` (part of `make check`) checks image digests, forbidden files, raw files
+  under `docs/evidence/` and `.gitignore`. `scripts/selftest` holds the tooling's negative controls.
+  `make check` prints one line per step (full output in `.check-logs/`); `VERBOSE=1` prints
+  everything.
+- **shellcheck:** every shell script (`*.sh`, `scripts/*`) passes `shellcheck`. CI installs it and
+  enforces it (`make shellcheck SHELLCHECK_REQUIRED=1`); locally `make check` runs it when it is
+  installed and prints `SKIP shellcheck (not installed)` otherwise (DEC-27).
 
 ## 8. Comments and documentation
 
@@ -141,6 +179,7 @@ Comments are optional. Write one only when it gives information the code can't.
 
 - Go: `gofmt`, `go vet`, staticcheck (which reports deprecated APIs), govulncheck.
 - UI: Prettier (`format:check`), `svelte-check`, and a lint rule that reports deprecated APIs.
+- Shell scripts: `shellcheck` (enforced in CI, optional locally; §7.1).
 - All part of `make check`. Do not hand-format against the tools.
 
 ## 11. No deprecated code

@@ -1,245 +1,120 @@
 # Working on `dermaga`
 
-**dermaga** turns one fresh Debian 13 VPS into a hardened host and lets its owner deploy web apps
-from GitHub through a web panel, with zero downtime and without memorising commands. v1.0.0 is
-web-UI-only and GitHub-App-only, for stateless apps (`docs/PRD/summary.md` §7). It is built one
-milestone at a time from written specs. **Do not write application code until the active milestone
-is defined in `docs/PLAN.md`.**
+**dermaga** turns one fresh Debian 13 VPS into a hardened host and lets its owner deploy web apps from GitHub through
+a web panel, with zero downtime and without memorising commands (v1.0.0 scope: `docs/PRD/summary.md` §7). Code must
+be explainable: the owner reads it top to bottom and explains every flow to someone else; a feature that works but
+can't be explained is not done. **No application code until `docs/PLAN.md` defines the active milestone.**
 
-The codebase must be easy to read and explain: the owner wants to read it top to bottom and explain
-every flow to someone else. Clarity beats cleverness. A feature that works but can't be explained is
-not done.
+## Never
 
-## 1. Documents
+- `sudo` without asking and getting explicit approval, also on `dermaga-vm`: root changes are hard to undo.
+- `ssh server`, or anything on it: `server` in the owner's SSH config is the production VPS.
+- State-changing git (add, commit, push, tag, rebase, reset, stash, branches): the owner commits; read-only is fine.
+- Pushing to or triggering repos with production CD (e.g. `portfolio`): use `r3p-dev/dermaga-test-app`.
+- Real outside services (GitHub, Let's Encrypt) from tests: tests use fakes, the VM uses Pebble.
+- Invasive workarounds when blocked (process memory, unowned sockets, bypassing permissions, hunting secrets): ask.
+- Secrets (tokens, `master.key`, App keys, `.env`, VM credentials) in chat, logs, evidence or commits: permanent.
+- AI attribution in commit messages (`Co-Authored-By`, "Generated with", Claude or any assistant).
+- Reading or copying Litepod's `ee/`: it is not Apache-2.0.
+- Inventing a value or assuming an owner step happened (GitHub clicks, DNS, snapshot reverts, repo URLs, tags).
 
-Read these at the start of every session:
+## Session start
 
-| Document                              | Defines                                                                                                   | Who writes it               |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------- |
-| `AGENTS.md` (this file)               | How to work: milestone loop, rules, reporting, versioning, git, test environment                          | Owner                       |
-| `docs/PRD/` (start with `summary.md`) | What dermaga does, per area, with requirement IDs                                                         | Owner                       |
-| `docs/CONVENTIONS.md`                 | How code is written: project rules, Go, UI, installer, tests, comments                                    | Owner                       |
-| `docs/ARCHITECTURE.md`                | §1 fixed decisions and security (owner); §2+ components, flows, state machines, decisions log (you)       | Both                        |
-| `docs/SETUP.md`                       | Zero-to-running reproduction (dev machine and test VM) and complete teardown/cleanup steps                | You                         |
-| `docs/PLAN.md`                        | Milestones, versions, acceptance criteria, estimates, status                                              | You (approved by the owner) |
-| `docs/DEPENDENCIES.md`                | Approved Go modules, UI packages, host packages and container images, with reasons                        | You                         |
-| `docs/evidence/M{N}/EVIDENCE.md`      | Proof that a milestone is done                                                                            | You                         |
-| `CHANGELOG.md`                        | Notable changes per version (Keep a Changelog)                                                            | You                         |
+Always read this file and, in `docs/PLAN.md`, the status table and **Active milestone** (its handoff says where the
+last session stopped). When the milestone needs them: the `docs/PRD/` sections of its requirement IDs (glossary and
+scope in `summary.md`); `docs/ARCHITECTURE.md` from the code map (§3) to the sections you touch; the CONVENTIONS
+section for your language, and §7 for tests; DEPENDENCIES before adding a dependency; SETUP when the setup changes.
+Not routinely: old milestones' evidence (summarised in PLAN). Never `cat` long logs: use `grep -n`, `tail`, subagents.
 
-On behavior the PRD wins; on technology and security `docs/ARCHITECTURE.md` §1 wins; on code style
-`docs/CONVENTIONS.md` wins. If two documents conflict, say so in your report instead of choosing
-silently.
+- The owner writes this file, `docs/PRD/`, `docs/CONVENTIONS.md` and ARCHITECTURE §1; you write ARCHITECTURE §2+,
+  `docs/SETUP.md`, `docs/PLAN.md` (owner-approved), `docs/DEPENDENCIES.md`, evidence and `CHANGELOG.md`.
+- The PRD wins on behavior, ARCHITECTURE §1 on technology and security, CONVENTIONS on style; report conflicts.
+- Visual design (layout, components, colors, typography, copy, the logo) and anything left open: ask the owner.
+- Check current stable versions and official docs, not memory; no deprecated APIs; pin images by tag and digest.
 
-**Visual design** (layout, components, colors, typography, copy, the logo) and anything the
-documents leave open: ask me. I will point you to the reference.
+## Milestone loop
 
-Always check the current stable versions and official documentation of every tool and library
-instead of relying on memory, and never use deprecated APIs. Pin exact versions of container images
-(tag and digest).
+1. **Align** with the PLAN status table. If the previous milestone or checkpoint is not confirmed, stop and ask.
+2. **Plan:** before writing code, send a 5–10 line plan (what you'll build, which files) and wait for approval.
+3. **Implement and test** per CONVENTIONS, every criterion covered: unit (packages, state machines, generators),
+   golden (every generated file), fake host (host commands), API (each route: happy path, authentication, the PRD
+   rule by ID), fake GitHub API, browser (main journeys). `make check` passes with no deprecation warnings.
+4. **VM checks** on `dermaga-vm` with a binary built from the commit under review.
+5. **Docs:** ARCHITECTURE §2+ when packages, routes, schema, state machines, generated files or decisions change
+   (every workaround: a short code comment and a decisions-log entry); DEPENDENCIES for every addition; SETUP
+   reproducible; PLAN status. **Demo state:** `test/vm/seed.sh` brings the VM to a usable state for the milestone
+   (once GitHub is connected: the test app with a domain, custom headers, basic auth) and prints what and where.
+6. **Evidence and report** (below), then **stop** and wait for the owner's confirmation.
 
-## 2. Milestone loop
+Slow, reviewable progress: a milestone fits one review sitting. **Stop after every milestone**; one that grows is
+split into checkpoints (`M5a`, `M5b`, …) with a stop at each. At the end of every checkpoint, update the
+**Handoff** in PLAN's Active milestone (done, remaining, new decisions); the next session starts there. Ask before
+decisions that are hard to reverse or contradict the documents; otherwise decide, log the reason in ARCHITECTURE.
 
-1. **Align:** read `docs/PLAN.md` and the existing `docs/evidence/M*/EVIDENCE.md` files to find the
-   active milestone. If the previous milestone has no confirmation from me, stop and ask.
-2. **Implement and test:** follow `docs/CONVENTIONS.md`. Cover the milestone's acceptance criteria
-   with tests: unit tests for packages, state machines and generators; golden tests for every
-   generated file; fake-host tests for everything that runs host commands; API tests for every
-   route (happy path, authentication, and the PRD rule it implements, named by requirement ID);
-   a fake GitHub API for everything that talks to GitHub;
-   browser tests for the main UI journeys. `make check` passes with no deprecation warnings.
-3. **Prove it on the VM:** run the milestone's VM checks on `dermaga-vm` (§8) with a binary built
-   from the commit under review.
-4. **Keep the docs current:** update `docs/ARCHITECTURE.md` §2+ when packages, routes, schema, state
-   machines, generated files or decisions change; every workaround gets a short code comment and a
-   decisions-log entry. Update `docs/DEPENDENCIES.md` for every module, package or image added. Keep
-   `docs/SETUP.md` reproducible. Update the status column in `docs/PLAN.md`.
-5. **Demo state:** keep a script that brings the VM to a usable demo state for the current milestone
-   (`test/vm/seed.sh`): once GitHub is connected, the test app from my test repo with a domain,
-   custom headers and basic auth. It prints what it created and how to reach it.
-6. **Produce evidence:** a milestone is not done until `docs/evidence/M{N}/EVIDENCE.md` exists with
-   the content of the report below (English is fine), with its screenshots and logs in the same
-   folder, and known limitations or deferred items.
-7. **Report and stop** (§4), then wait for my confirmation before the next milestone.
+## Evidence
 
-## 3. Pace
+- Every verification of an acceptance criterion runs through `scripts/evidence-run M<N> <name> -- <cmd…>`: **one
+  log per criterion, not per command**, in gitignored `tmp/evidence/M<N>/logs/` (screenshots: `screenshots/`).
+  Raw artifacts are never committed; `docs/evidence/M<N>/` holds only `EVIDENCE.md` (per `docs/evidence/TEMPLATE.md`).
+- Excerpts: ≤ ~20 lines of exact text from that run's local log (cite its `tmp/` path), from the commit under review.
+- Status is only `PASS`, `FAIL`, `NOT RUN` (with the exact commands for the owner) or `decision recorded`. `PASS`
+  only for what actually ran, with exit 0 and checked output. Every verification script has a negative control.
+- Open every screenshot; describe it in one line in EVIDENCE.md (page, width, theme, what it shows) before `PASS`.
+- Contrast and theme checks run on the rendered page (Playwright + axe, WCAG AA), never on assumed CSS colors.
+- VM binaries come from committed state (a clean throwaway worktree is fine); a dirty build is labelled dirty;
+  `VERSION` is never faked (`-X main.Version=…`).
+- Every command dermaga prints and every value the UI shows comes from real state (no placeholders, hard-coded
+  success text, guessed hosts or ports); follow printed instructions end to end yourself before `PASS`. A
+  feature that exists only in the API is not done.
+- Pinned values (digests, SHAs, versions, checksums, URLs) come from real queries; DEPENDENCIES has command and result.
 
-I want **slow, reviewable progress**. Every milestone is small enough that I can look at the screens,
-read the code and understand how it works in one sitting. **Stop after every milestone.** If a
-milestone grows, split it into checkpoints (`M5a`, `M5b`, …) and stop at each one.
+## Report
 
-## 4. Report format
+To the owner, in Indonesian. Chat holds only **Ringkasan** (what was built, requirement IDs), the `EVIDENCE.md` link,
+**Pertanyaan terbuka**, **Suggested commits** and the next milestone. Only in `EVIDENCE.md` (English, per TEMPLATE):
+run and view (commands, tunnel, URLs, demo state, what to click), screens (desktop and narrow), how it works (UI →
+route → handler → package → host → result, with a sequence), code tour in reading order, decisions and deviations
+(every workaround, anything done as root), proof.
 
-Write the report to me **in Indonesian**, short and concrete:
+## Git
 
-1. **Ringkasan**: what was built, in a few sentences, with the requirement IDs covered.
-2. **Cara menjalankan dan melihat**: exact commands from a clean checkout and on the VM, the SSH
-   tunnel and URLs, the demo state, and what to click to see each new thing.
-3. **Tampilan**: screenshots of every new or changed panel page (desktop and narrow width) in
-   `docs/evidence/M{N}/`, linked.
-4. **Cara kerja**: how each new flow works from the click (or the webhook, or the daemon) to the host
-   and back (UI → API route → handler → package → host command or generated file → result), with a
-   short sequence (text or Mermaid).
-5. **Tur kode**: the new or changed files **in reading order**, one line each, so I can read them in
-   that order.
-6. **Keputusan dan penyimpangan**: decisions taken, deviations from the documents, every workaround
-   added (with its reason).
-7. **Bukti**: the exact verification commands and their real, unedited output.
-8. **Pertanyaan terbuka**, then **Suggested commits** (§7), then the next milestone.
+- Suggested commits: small, ordered, each passing `make check` alone; Conventional Commits (subject ≤ 72
+  characters, imperative, scope where it helps, a short body explaining **why**); every changed path in exactly
+  one commit; no secrets or build output; `.gitignore` kept current, every change to it mentioned.
+- Fish form (no heredocs, no `$'…'`): `git add a b; and git commit -m "type(scope): subject" -m "Body."`
+- Verify with `scripts/check-commits <plan>` (plan in `tmp/evidence/M<N>/`; `--print-fish` prints the commands);
+  only its summary lines go into EVIDENCE.md. The milestone ends with a version bump (`CHANGELOG.md`, Keep a
+  Changelog) and a tag command for the owner. Read tags with `git for-each-ref refs/tags` or `git describe --tags`.
+- After the owner pushes, check CI with `gh run list` / `gh run view`; if you can't, ask the owner for the log.
 
-## 5. Working with me
+## Versioning
 
-- Ask before any decision that is hard to reverse or contradicts the documents. Otherwise decide,
-  record the decision and its reason in the decisions log of `docs/ARCHITECTURE.md`, and continue.
-- Never claim something works without having run it. If you can't run something, write **NOT RUN**
-  and give me the exact commands to run. Evidence output is raw and unedited, from the commit under
-  review, never summarised or reconstructed.
-- **Every step that needs me stops and asks**: GitHub clicks, DNS records, snapshot reverts, repo URLs,
-  tags. Never invent a value and never assume it happened.
-- **The UI shows only what the server returned.** No placeholder results, no hard-coded success
-  text, no guessed hosts or ports. A feature that exists only in the API is not done.
-- Never call real outside services from tests (GitHub, Let's Encrypt). On the VM: Pebble (local ACME
-  test server) for certificates; a real GitHub App only when the milestone says so, created by me, on a
-  test repo I give you. Staging and production certificates stay only for the real VPS at the end.
-- **No production systems**: never connect to `server` (my production VPS) or run anything on it.
-- **Test repositories only**: never push test commits or trigger test deliveries against repositories with production CD (e.g. `portfolio`). Use `r3p-dev/dermaga-test-app`.
+SemVer, from the git tag (embedded at build time, shown by `dermaga version`). Before 1.0.0 each milestone ends
+with a **minor** bump (the version in PLAN); fixes after the owner's review are **patch** bumps (`0.N.1`).
+**1.0.0** = every requirement in the approved PLAN plus the hardening milestone. After it: features minor, fixes
+patch, breaking changes (API, or on-disk state that can't migrate automatically) major. The owner tags.
 
-## 6. Versioning
+## Test environment
 
-**Semantic Versioning.** The version comes from the git tag (embedded at build time and shown by
-`dermaga version`); changes are recorded in `CHANGELOG.md` (Keep a Changelog).
-
-- **Before 1.0.0:** each milestone ends with a **minor** bump (the version in `docs/PLAN.md`). Fixes
-  after my review of that milestone are **patch** bumps (`0.N.1`, …).
-- **1.0.0** = every requirement in the approved `docs/PLAN.md`, plus the hardening milestone. That
-  is the version I can put on my production VPS.
-- **After 1.0.0:** new features → minor, fixes → patch, breaking changes → major. "Breaking" means an
-  API change, or an on-disk state change that can't be migrated automatically.
-- You suggest the bump and the tag command; **I create tags myself**.
-
-## 7. Git: I commit, you suggest
-
-- **Never create commits, push, tag, rebase, reset, stash, or create/switch branches. Don't stage
-  files with `git add` either.** Read-only git (`status`, `diff`, `log`, `show`) is fine. I review
-  and commit everything myself.
-- At the end of every milestone (and at any natural checkpoint inside one), add a **"Suggested
-  commits"** section: an ordered list of small, focused commits, each passing `make check` on its
-  own. For each:
-  - the Conventional Commits message: subject ≤ 72 characters, imperative mood, a scope where it
-    helps (`feat(deploy): …`, `test(webhook): …`, `docs: …`), and a short body explaining **why**;
-  - the exact paths it includes;
-  - a copy-pasteable command for the **fish** shell (no heredocs, no `$'…'`):
-    `git add path/a path/b; and git commit -m "type(scope): subject" -m "Body paragraph."`
-- The last suggested commit of a milestone is the version bump (`CHANGELOG.md`), followed by the tag
-  command for me to run, e.g. `git tag -a v0.3.0 -m "v0.3.0"`.
-- Every changed path appears in exactly one suggested commit. Run `git status --short` at the end
-  and confirm nothing is left out or listed twice.
-- Commit messages contain **no AI attribution**: no `Co-Authored-By`, no "Generated with", no
-  mention of Claude or any assistant.
-- Never put secrets, tokens, `master.key`, GitHub App keys, `.env` files, VM credentials or build
-  output in a suggested commit. Keep `.gitignore` up to date and mention every change to it.
-
-## 8. Test environment
-
-- All VM work runs on **`dermaga-vm`** (`ssh dermaga-vm`: user `server`, port 4222, passwordless
-  sudo), a local libvirt VM. **`server` in my SSH config is my production VPS. Never connect to it.**
-  *(Rule: never invoke `sudo` without asking me first and receiving explicit confirmation, even on `dermaga-vm`).*
-- libvirt snapshots: `fresh` (bare Debian 13 cloud image, only cloud-init's user `debian`) and
-  `vps-setup` (after `vps-setup.sh init`). For `dermaga-vm` only:
-  - allowed without asking: `virsh --connect qemu:///system start|shutdown|reboot|snapshot-list
-    dermaga-vm`, and `virt-xml --connect qemu:///system dermaga-vm --edit --events
-    on_reboot=restart` (run it again after every snapshot revert);
-  - ask me first: `snapshot-revert`, `snapshot-create-as`, `snapshot-delete`;
+- VM work runs on **`dermaga-vm`** (local libvirt; `ssh dermaga-vm`: user `server`, port 4222). Snapshots: `fresh`
+  (bare Debian 13 cloud image, only cloud-init's user `debian`), `vps-setup` (after `vps-setup.sh init`). Only for it:
+  - allowed without asking: `virsh --connect qemu:///system start|shutdown|reboot|snapshot-list dermaga-vm`, and
+    `virt-xml --connect qemu:///system dermaga-vm --edit --events on_reboot=restart` (again after every revert);
+  - ask first: `snapshot-revert`, `snapshot-create-as`, `snapshot-delete`;
   - never: any other domain, libvirt networks, storage pools, `undefine`.
-- The VM is behind NAT: no inbound webhooks and no real certificates. Replay signed deliveries in
-  tests; for real GitHub deliveries to the App's webhook, find a forwarding method that works with
-  GitHub Apps (check current docs) and confirm it with me.
-- VM scenarios live in `test/vm/*.sh`: idempotent, no residue, each printing `date -Is`, `hostname`
-  and `git rev-parse --short HEAD` first.
+- The VM is behind NAT: no inbound webhooks, no real certificates. Pebble for ACME; replay signed deliveries in
+  tests; for real deliveries to the App's webhook, find a forwarding method that works with GitHub Apps (current
+  docs) and confirm it with the owner. A real GitHub App only when the milestone says so, created by the owner, on
+  a test repo the owner gives. Staging and production certificates only on the real VPS at the end.
+- `test/vm/*.sh` scenarios: idempotent, no residue, first printing `date -Is`, `hostname`, `git rev-parse --short HEAD`.
 
-## 9. Reference material
+## Reference material (read when a milestone needs it; never assume what it contains)
 
-Read these when a milestone needs them; never assume what they contain.
-
-1. **`vps-setup.sh`** in `https://github.com/r3p-dev/dotfiles`: my tested Bash script for this kind
-   of server. Reuse its **hardening and Traefik knowledge** (base system, user, sudo, subids, memory,
-   kernel, auto updates, Podman, firewall, fail2ban, SSH, the Traefik static/dynamic/container
-   renderers, its validators and default limits). Do **not** copy its deploy flow (Podlet, compose
-   files, GitHub Actions → GHCR, forced SSH commands); that is what dermaga replaces. Its response
-   headers are the reference for dermaga's defaults.
-2. **Litepod** (`https://github.com/litepodsh/litepod`, Apache-2.0 except `ee/`, which you must not
-   read or copy): inspiration only, for UX and rollout. Adapted logic keeps
-   Apache-2.0 attribution. Do not fork it.
-3. **`https://github.com/r3p-dev/portfolio`**: the first real app. Discover its build, port,
-   health check and runtime from the repo.
-4. **Kapturae**: the second real app. Ask me for its repo URL when a milestone needs it.
-
-## 10. Operational & verification rules (learned from M0–M2)
-
-Future milestones and agents must follow these concrete working rules:
-
-1. **Pass/fail criteria:** Mark `PASS` only for functionality actually exercised and verified on the
-   host or VM with an exit code of 0 and verified expected output. Label decisions and documentation
-   updates as "done" or "decision recorded", never "PASS".
-2. **Control test rule:** Before concluding an external tool or protocol "doesn't support" a capability
-   (e.g. Traefik socket activation or HTTP/3), check known working reference implementations (such as
-   `vps-setup.sh`) and execute an isolated control test. Never write unverified negative conclusions
-   into design or architecture documents.
-3. **Blocked / workaround rule:** When blocked, stop and ask the owner. Never resort to invasive
-   workarounds, such as reading process memory, probing unowned sockets, bypassing permissions, or
-   scraping secrets from unexpected locations.
-4. **Sudo rule:** Never execute commands with `sudo` without asking the owner first and receiving
-   explicit approval, including on `dermaga-vm`.
-5. **Spike and test script hygiene:** Every spike or test script must execute non-interactively: enforce
-   explicit timeouts on every network call (`--connect-timeout`, `--max-time`) and wait loop; never call
-   `sudo` non-interactively (use `ss -tuln` without process inspection instead of `sudo ss -tulpn`).
-6. **Reporting rule:** Every milestone report must explicitly list all significant actions taken,
-   especially any workarounds attempted or applied, and anything modified with root privileges.
-7. **Secrets rule:** All secrets must be generated cryptographically randomly, stored with permissions
-   `0600` in gitignored paths, and never printed in chat, logs, or evidence records. On webhook HMAC
-   verification failure (`SEC-11`), log only the delivery ID, event, source, and "signature mismatch" —
-   never log the expected signature, received signature, secret, or payload, preventing logs from
-   acting as a signature oracle.
-8. **State tracking rule:** When modifying existing systemd units, configuration files, or Quadlet
-   templates during tests or spikes, record the original baseline and restore the diff upon completion,
-   or explicitly state that a snapshot revert is required before proceeding.
-9. **Test repos rule:** Never push test commits to repositories with live production continuous
-   deployment (such as `r3p-dev/portfolio`). Always use the dedicated test repository
-   (`r3p-dev/dermaga-test-app`).
-10. **Evidence location:** Store proof for each milestone in `docs/evidence/M{N}/EVIDENCE.md` (e.g. M0
-    evidence in `docs/evidence/M0/EVIDENCE.md`), keeping all associated logs, test scripts, and
-    screenshots in the same milestone folder.
-11. **Evidence logging and quoting:** Every verification command must run with
-    `2>&1 | tee docs/evidence/<milestone>/logs/<name>.log`, with the exact command line,
-    `git rev-parse --short HEAD` (plus `git status --short` if the working tree is dirty), and an
-    ISO-8601 timestamp at the top. Logs must be committed. Milestone reports and `EVIDENCE.md` must
-    quote only exact text that exists in those committed log files; never reconstruct or summarise output.
-    If tool output was truncated during execution, read the saved log file instead.
-12. **Negative controls:** Every verification script must have at least one negative control that proves
-    its own assertions can fail (e.g. unknown directive, router referencing nonexistent service/middleware,
-    un-reconciled state), explicitly checked by exit code and reported error. A check that has never
-    been shown to fail is not evidence.
-13. **Committed binary for VM checks:** VM runs must execute with a binary built from a known, committed
-    state (a clean throwaway worktree branch is permitted); never override `VERSION` (e.g. via `-X main.Version=...`)
-    to make a dirty or development build masquerade as an official release. If uncommitted changes must
-    be tested, explicitly label the log as dirty.
-14. **Pinned values from real queries:** All pinned values (container image digests, GitHub Actions SHAs,
-    tool versions, checksums, download URLs) must be copied directly from a registry or source query
-    whose raw output is captured in a committed log file, never written from memory.
-15. **Real state verification:** Every command `dermaga` prints for the user, and every value the web UI
-    displays, must come from real system/database state. Follow all printed user instructions yourself
-    end-to-end to verify correctness before calling a feature `PASS`.
-16. **Screenshots and rendered checks:** Open every screenshot produced and describe in one line what
-    it actually shows before calling anything `PASS`. UI contrast and theme checks must run on the
-    rendered page in the browser (the Playwright + axe WCAG AA suite), never on assumed or static CSS colors.
-17. **Commit verification in throwaway worktree:** Suggested commits must each be verified to pass
-    `make check` on its own in a throwaway worktree (with per-commit check logs saved in
-    `docs/evidence/<milestone>/logs/`). Every changed path must belong to exactly one commit. Suggested
-    commands must use the fish shell form: `git add a b; and git commit -m "subject" -m "body"`.
-18. **Owner push CI monitoring:** After every push made by the owner, CI must be verified green. Read the
-    GitHub Actions run output directly (`gh run list`, `gh run view`) if possible; otherwise ask the owner
-    for the log before continuing.
-19. **Test isolation from live services:** Test files and units must never be placed into live service
-    directories (such as the live Traefik dynamic configuration directory `~/.local/share/dermaga/traefik/dynamic`
-    or live Quadlet directory `~/.config/containers/systemd`). Always use throwaway container instances,
-    non-colliding ports, and temporary test directories with complete teardown (§8: idempotent, zero residue).
-
+1. **`vps-setup.sh`** (`https://github.com/r3p-dev/dotfiles`): reuse its hardening and Traefik knowledge (base
+   system, user, sudo, subids, memory, kernel, auto updates, Podman, firewall, fail2ban, SSH, Traefik renderers,
+   validators, limits; its headers are dermaga's defaults). Do **not** copy its deploy flow (Podlet, compose
+   files, Actions → GHCR, forced SSH commands): that is what dermaga replaces.
+2. **Litepod** (`https://github.com/litepodsh/litepod`, Apache-2.0 except `ee/`): UX and rollout inspiration
+   only; adapted logic keeps Apache-2.0 attribution; do not fork it.
+3. **`https://github.com/r3p-dev/portfolio`**, the first real app (discover build, port, health check, runtime),
+   and **Kapturae**, the second (ask the owner for its repo URL when a milestone needs it).

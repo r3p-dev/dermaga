@@ -42,7 +42,8 @@ Dermaga's build and development workflow requires:
 ### 2.1 Virtual Machine Topology
 - **VM Name:** `dermaga-vm`
 - **Guest OS:** Debian GNU/Linux 13 (Trixie), minimal cloud image (`amd64`).
-- **Primary User:** `server` (UID 1001, member of `sudo` group).
+- **Primary User:** `server` (UID 1001, member of `sudo` group, passwordless sudo). Agents still never run `sudo`
+  without the owner's explicit approval (`AGENTS.md` "Never").
 - **Systemd Lingering:** Enabled for user `server` (`loginctl enable-linger server`).
 - **Network Stack:** Rootless Podman 5.4.2 + Netavark bridge network `web` (`10.89.0.0/24`) + Pasta rootless backend.
 - **SSH Port:** OpenSSH server listens on port `4222` (configured per `vps-setup.sh`).

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # test/vm/m1_check.sh - M1 VM verification scenario.
-# Idempotent, leaves no residue. Follows AGENTS.md §8.
+# Idempotent, leaves no residue. Follows AGENTS.md "Test environment".
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"

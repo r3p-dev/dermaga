@@ -11,6 +11,13 @@ Rules (`docs/CONVENTIONS.md` §12):
 - Only stable, actively maintained dependencies. Check before adding that the version you pick isn't
   deprecated.
 - When something is removed, remove it here too.
+- **Pinned values from real queries:** all pinned values (container image digests, GitHub Actions
+  SHAs, tool versions, checksums, download URLs) must be copied directly from a registry or source
+  query, never written from memory. Each entry here records the exact query command and the exact
+  result line (digest, checksum or version) with the date; the full query output stays in a local
+  log under `tmp/evidence/<milestone>/logs/` (`scripts/evidence-run`) and is never committed.
+  `scripts/check-policy` (run by `make check`) fails on a container image without an `@sha256:`
+  digest.
 
 ## 1. Installed
 
@@ -38,8 +45,29 @@ _Filled in as dependencies are added (M1 onward)._
 | `@axe-core/playwright` 4.14.0 | UI (test) | WCAG 2.1 AA checks on the rendered page | M1 |
 
 Versions above equal `go.mod` and `ui/package.json`, which pins every UI package exactly (no `^`
-ranges); `ui/bun.lock` resolves them to the same versions. Queried in
-`docs/evidence/M3/logs/dependency_versions_query.log`.
+ranges); `ui/bun.lock` resolves them to the same versions. Queried 2026-11-17, before the
+`golang.org/x/crypto` update and the exact UI pins (log removed 2026-11-17, see git history before this change). Command: query
+`proxy.golang.org/<module>/@latest` for every direct Go module and tool, and
+`registry.npmjs.org/<pkg>/latest` for every UI package; compare with `go.mod` and `bun.lock`.
+Result lines:
+
+```text
+## Go (module | go.mod | proxy latest | latest time)
+golang.org/x/crypto | v0.0.0-20210817164053-32db794688a5 | v0.59.0 | 2026-11-11T07:23:42Z
+golang.org/x/term | v0.48.0 | v0.48.0 | 2026-11-09T16:29:12Z
+modernc.org/sqlite | v1.62.0 | v1.62.0 | 2026-11-07T09:13:04Z
+github.com/gzuidhof/tygo | v0.2.21 | v0.2.21 | 2026-02-03T10:16:48Z
+golang.org/x/vuln | v1.9.0 | v1.9.0 | 2026-10-11T03:39:53Z
+honnef.co/go/tools | v0.8.2 | v0.8.2 | 2026-10-12T13:34:44Z
+## Go toolchain: go.mod go line and https://go.dev/dl/?mode=json (stable)
+go 1.26.0
+go1.27.4
+## Bun packages (package | package.json | bun.lock resolved | npm latest)
+prettier-plugin-svelte | ^3.3.0 | 3.5.2 | 4.1.1
+## Bun itself: CI pin and latest GitHub release
+bun-v1.4.2
+bun-v1.4.4
+```
 
 ## 2. Approved to add
 
@@ -87,8 +115,31 @@ Pinned by tag **and** digest where they are used.
 | ----------------------------- | ---------------------------------------- | ---- |
 | Traefik v3 (official)         | Reverse proxy; pinned as `traefik.Image` in `internal/traefik/types.go` (tag + multi-arch index digest, DEC-20) | Updates within the pinned major only, shipped with dermaga releases |
 | Debian 13 (official)          | CI job container                         | |
+| socat (`docker.io/alpine/socat:1.8.1.3`) | Throwaway backends in `test/vm/test_reconciliation.sh` and `test/vm/test_traefik_configs.sh` (VM only) | Test only, never shipped; index digest |
+| curl (`docker.io/curlimages/curl:8.12.1`) | Allowlist probe in `test/vm/test_traefik_configs.sh` (VM only) | Test only, never shipped; index digest |
 
 The hook relay runs the dermaga binary on an empty root filesystem (no base image).
+
+Queries for these pins:
+
+- Traefik, 2026-11-17, Docker Hub registry v2 API (DEC-20; log removed 2026-11-17, see git history before this change):
+
+  ```text
+  $ HEAD /v2/library/traefik/manifests/v3.7.19 (Accept: OCI index, Docker manifest list)
+  content-type: application/vnd.oci.image.index.v1+json
+  docker-content-digest: sha256:aa942a00bce033c909bf1f7e861d93761be4b31a035f10d2410d33e38a8f41cf
+  ```
+
+- socat and curl, 2026-11-17, skopeo 1.22.3 on the dev machine (`socat` had no tag; `1.8.1.3` is the
+  tag `latest` pointed to). Full output: `tmp/evidence/M3/logs/process2-test-image-digests.log`.
+
+  ```text
+  == docker.io/alpine/socat: which version tag latest points to; digest = skopeo inspect --raw docker://IMAGE | skopeo manifest-digest /dev/stdin
+  latest sha256:71131702f671a88b3808a70b7330f9679cd9b9933adcafadc191508edfe55bba
+  1.8.1.3 sha256:71131702f671a88b3808a70b7330f9679cd9b9933adcafadc191508edfe55bba
+  == docker.io/curlimages/curl:8.12.1
+  8.12.1 sha256:94e9e444bcba979c2ea12e27ae39bee4cd10bc7041a472c4727a558e213744e6
+  ```
 
 ## 4. Host packages (Debian 13, installed by the installer)
 
@@ -109,7 +160,7 @@ The hook relay runs the dermaga binary on an empty root filesystem (no base imag
 | Go                              | The `go` line in `go.mod` |
 | Bun                             | Pinned in CI and the `Makefile` |
 | Podman (minimum version)        | `doctor.MinPodmanVersion` (5.4.2, Debian 13's); checked by `doctor`, which the installer runs |
-| CI job packages                 | `.github/workflows/ci.yml` and `release.yml` install `zsh fish openssh-client openssh-server` (LAP-1 and installer tests, `sshd -T`) and, for releases, `gh` from Debian trixie (`docs/evidence/M3/logs/debian_packages_query.log`) |
+| CI job packages                 | `.github/workflows/ci.yml` and `release.yml` install `zsh fish openssh-client openssh-server` (LAP-1 and installer tests, `sshd -T`) and, for releases, `gh` from Debian trixie; `ci.yml` also installs `shellcheck` (DEC-27). Queried 2026-11-17 with the Debian madison API (log removed 2026-11-17, see git history before this change): `gh \| 2.46.0-3 \| trixie`, `zsh \| 5.9-8 \| trixie`, `fish \| 4.0.2-1 \| trixie`, `openssh-server \| 1:10.0p1-7+deb13u4 \| trixie`. shellcheck, 2026-11-17: `curl -fsS --connect-timeout 10 --max-time 30 "https://qa.debian.org/madison.php?package=shellcheck&s=trixie&text=on"` → `shellcheck \| 0.10.0-1 \| trixie` (`tmp/evidence/M3/logs/process2-shellcheck-debian-query.log`) |
 | libvirt + a Debian 13 cloud image | The test VM (`docs/SETUP.md`) |
 
 ## 6. Known advisories
