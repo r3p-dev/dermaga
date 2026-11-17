@@ -1,7 +1,3 @@
-Command: make check (Commit 1: fix(quadlet): escape systemd specifiers and reject line continuation)
-Timestamp: 2026-11-17T06:01:52+07:00
-Git commit: 46b94b5
-
 go tool tygo generate
 cd ui && bun install && bun run build
 bun install v1.4.2 (744846f84)
@@ -20,7 +16,7 @@ bun install v1.4.2 (744846f84)
 + typescript@5.9.3
 + vite@8.3.8
 
-74 packages installed [1020.00ms]
+74 packages installed [138.00ms]
 $ vite build
 vite v8.3.8 building ssr environment for production...
 transforming...
@@ -46,7 +42,7 @@ computing gzip size...
 .svelte-kit/output/server/chunks/internal.js                           90.32 kB │ gzip: 24.82 kB │ map: 196.98 kB
 .svelte-kit/output/server/chunks/instance.js                          117.63 kB │ gzip: 31.78 kB │ map: 239.21 kB
 
-✓ built in 349ms
+✓ built in 301ms
 Analysing routes
 Building app
 vite v8.3.8 building client environment for production...
@@ -73,7 +69,7 @@ computing gzip size...
 .svelte-kit/output/client/_app/immutable/chunks/S7n6w-30.js         39.52 kB │ gzip: 14.58 kB
 .svelte-kit/output/client/_app/immutable/chunks/El4PLrF8.js         41.81 kB │ gzip: 16.17 kB
 
-✓ built in 226ms
+✓ built in 194ms
 Prerendering
 
 Run npm run preview to preview your production build locally.
@@ -91,7 +87,7 @@ go vet ./...
 go tool staticcheck ./...
 cd ui && bun run check
 $ svelte-check --tsconfig ./tsconfig.json
-Loading svelte-check in workspace: /tmp/dermaga-wt/ui
+Loading svelte-check in workspace: /tmp/dermaga-test-commits/ui
 Getting Svelte diagnostics...
 
 svelte-check found 0 errors and 0 warnings
@@ -105,7 +101,7 @@ Daemon inactive or unreachable over socket; accessing SQLite database directly (
 Success: Admin password updated and all sessions revoked.
 Daemon inactive or unreachable over socket; accessing SQLite database directly (SRV-2 fallback)...
 Success: TOTP two-factor authentication disabled.
---- PASS: TestCLIAdminSetPassword_DirectFallback (0.21s)
+--- PASS: TestCLIAdminSetPassword_DirectFallback (0.19s)
 === RUN   TestCLIAdminSetPassword_EmptyInputRejected
 --- PASS: TestCLIAdminSetPassword_EmptyInputRejected (0.00s)
 === RUN   TestCLIAdminSetPassword_ShortPasswordRejected
@@ -113,7 +109,7 @@ Success: TOTP two-factor authentication disabled.
 === RUN   TestCLIAdminSetPassword_UnexpectedArgs
 --- PASS: TestCLIAdminSetPassword_UnexpectedArgs (0.00s)
 === RUN   TestCLIPanel_InactiveDaemon
-The dermaga daemon is not reachable at /tmp/TestCLIPanel_InactiveDaemon3183795129/001/run/dermaga/daemon.sock.
+The dermaga daemon is not reachable at /tmp/TestCLIPanel_InactiveDaemon4167253402/001/run/dermaga/daemon.sock.
 Check daemon status or start it with:
   systemctl --user status dermaga
   systemctl --user start dermaga
@@ -127,15 +123,15 @@ Check daemon status or start it with:
 === RUN   TestDeriveSSHConfig_WithoutSSHConnection_DefaultPort
 --- PASS: TestDeriveSSHConfig_WithoutSSHConnection_DefaultPort (0.00s)
 PASS
-ok  	dermaga/cmd/dermaga	0.243s
+ok  	dermaga/cmd/dermaga	0.220s
 === RUN   TestPasswordHashingAndVerification
---- PASS: TestPasswordHashingAndVerification (0.27s)
+--- PASS: TestPasswordHashingAndVerification (0.24s)
 === RUN   TestRateLimiter
 --- PASS: TestRateLimiter (0.00s)
 === RUN   TestRecoveryFunctions
---- PASS: TestRecoveryFunctions (0.13s)
+--- PASS: TestRecoveryFunctions (0.16s)
 PASS
-ok  	dermaga/internal/auth	0.423s
+ok  	dermaga/internal/auth	0.424s
 ?   	dermaga/internal/config	[no test files]
 === RUN   TestMasterKeyLifecycle
 --- PASS: TestMasterKeyLifecycle (0.00s)
@@ -150,15 +146,17 @@ ok  	dermaga/internal/auth	0.423s
 === RUN   TestVerifyHMACSHA256
 --- PASS: TestVerifyHMACSHA256 (0.00s)
 PASS
-ok  	dermaga/internal/crypto	0.005s
+ok  	dermaga/internal/crypto	0.003s
 === RUN   TestRealHost_WriteFileAtomic
 --- PASS: TestRealHost_WriteFileAtomic (0.00s)
 === RUN   TestRealHost_RunCommand
 --- PASS: TestRealHost_RunCommand (0.00s)
 === RUN   TestFakeHost
 --- PASS: TestFakeHost (0.00s)
+=== RUN   TestRealHost_ReadDir
+--- PASS: TestRealHost_ReadDir (0.00s)
 PASS
-ok  	dermaga/internal/host	0.007s
+ok  	dermaga/internal/host	0.006s
 === RUN   TestValidate
 === RUN   TestValidate/valid_short
 === RUN   TestValidate/valid_web
@@ -228,7 +226,7 @@ ok  	dermaga/internal/host	0.007s
 === RUN   TestPrefixes
 --- PASS: TestPrefixes (0.00s)
 PASS
-ok  	dermaga/internal/name	0.005s
+ok  	dermaga/internal/name	0.004s
 === RUN   TestDryRunValidatorWithFakeHost
 --- PASS: TestDryRunValidatorWithFakeHost (0.00s)
 === RUN   TestQuadletInjectionRejection
@@ -236,35 +234,51 @@ ok  	dermaga/internal/name	0.005s
 === RUN   TestDefaultDependenciesGuaranteed
 --- PASS: TestDefaultDependenciesGuaranteed (0.00s)
 === RUN   TestQuadletGolden
+=== RUN   TestQuadletGolden/network-unit
+=== RUN   TestQuadletGolden/caps-added
+=== RUN   TestQuadletGolden/minimal
 === RUN   TestQuadletGolden/custom-limits
 === RUN   TestQuadletGolden/readonly-root
 === RUN   TestQuadletGolden/env-file
 === RUN   TestQuadletGolden/health-cmd
 === RUN   TestQuadletGolden/url-escaped-health
-=== RUN   TestQuadletGolden/network-unit
-=== RUN   TestQuadletGolden/caps-added
-=== RUN   TestQuadletGolden/minimal
 --- PASS: TestQuadletGolden (0.00s)
+    --- PASS: TestQuadletGolden/network-unit (0.00s)
+    --- PASS: TestQuadletGolden/caps-added (0.00s)
+    --- PASS: TestQuadletGolden/minimal (0.00s)
     --- PASS: TestQuadletGolden/custom-limits (0.00s)
     --- PASS: TestQuadletGolden/readonly-root (0.00s)
     --- PASS: TestQuadletGolden/env-file (0.00s)
     --- PASS: TestQuadletGolden/health-cmd (0.00s)
     --- PASS: TestQuadletGolden/url-escaped-health (0.00s)
-    --- PASS: TestQuadletGolden/network-unit (0.00s)
-    --- PASS: TestQuadletGolden/caps-added (0.00s)
-    --- PASS: TestQuadletGolden/minimal (0.00s)
 PASS
-ok  	dermaga/internal/quadlet	0.005s
+ok  	dermaga/internal/quadlet	0.004s
+=== RUN   TestReconcile_OrphanRemoved
+--- PASS: TestReconcile_OrphanRemoved (0.00s)
+=== RUN   TestReconcile_MissingFilesReRendered
+--- PASS: TestReconcile_MissingFilesReRendered (0.00s)
+=== RUN   TestReconcile_StoppedLiveUnitStarted
+--- PASS: TestReconcile_StoppedLiveUnitStarted (0.00s)
+=== RUN   TestReconcile_LeftoverVerifyRouterRemoved
+--- PASS: TestReconcile_LeftoverVerifyRouterRemoved (0.00s)
+=== RUN   TestReconcile_ForeignFilesUntouched
+--- PASS: TestReconcile_ForeignFilesUntouched (0.00s)
+=== RUN   TestReconcile_CombinedScenario
+--- PASS: TestReconcile_CombinedScenario (0.00s)
+PASS
+ok  	dermaga/internal/reconciler	0.022s
 === RUN   TestSEC3_DNSRebindingAndOriginProtection
---- PASS: TestSEC3_DNSRebindingAndOriginProtection (0.22s)
+--- PASS: TestSEC3_DNSRebindingAndOriginProtection (0.18s)
 === RUN   TestAuthFlow_LoginLogoutSession
---- PASS: TestAuthFlow_LoginLogoutSession (0.15s)
+--- PASS: TestAuthFlow_LoginLogoutSession (0.12s)
 === RUN   TestUnixSocketCommands
---- PASS: TestUnixSocketCommands (0.24s)
+--- PASS: TestUnixSocketCommands (0.25s)
 === RUN   TestAUD2_FilterByTime
---- PASS: TestAUD2_FilterByTime (0.05s)
+--- PASS: TestAUD2_FilterByTime (0.04s)
 PASS
-ok  	dermaga/internal/server	0.679s
+ok  	dermaga/internal/server	0.616s
+=== RUN   TestStore_AppsAndDeployments
+--- PASS: TestStore_AppsAndDeployments (0.00s)
 === RUN   TestStoreMigrations_FreshAndRerun
 --- PASS: TestStoreMigrations_FreshAndRerun (0.00s)
 === RUN   TestStoreMigrations_NewerDBRefusal
@@ -276,7 +290,7 @@ ok  	dermaga/internal/server	0.679s
 === RUN   TestAuditLogs
 --- PASS: TestAuditLogs (0.00s)
 PASS
-ok  	dermaga/internal/store	0.023s
+ok  	dermaga/internal/store	0.024s
 === RUN   TestTraefikInjectionRejection
 --- PASS: TestTraefikInjectionRejection (0.00s)
 === RUN   TestACMEOnEveryRouter
@@ -286,29 +300,29 @@ ok  	dermaga/internal/store	0.023s
 === RUN   TestTraefikGolden
 === RUN   TestTraefikGolden/static-config
 === RUN   TestTraefikGolden/global-dynamic
-=== RUN   TestTraefikGolden/minimal
-=== RUN   TestTraefikGolden/aliases-www
-=== RUN   TestTraefikGolden/path-prefix
-=== RUN   TestTraefikGolden/custom-removed-headers
 === RUN   TestTraefikGolden/middleware-toggles
+=== RUN   TestTraefikGolden/path-prefix
 === RUN   TestTraefikGolden/path-prefix-no-strip
 === RUN   TestTraefikGolden/basic-auth
 === RUN   TestTraefikGolden/allowlist
-=== RUN   TestTraefikGolden/body-size
 === RUN   TestTraefikGolden/switch-verify
+=== RUN   TestTraefikGolden/minimal
+=== RUN   TestTraefikGolden/aliases-www
+=== RUN   TestTraefikGolden/body-size
+=== RUN   TestTraefikGolden/custom-removed-headers
 --- PASS: TestTraefikGolden (0.00s)
     --- PASS: TestTraefikGolden/static-config (0.00s)
     --- PASS: TestTraefikGolden/global-dynamic (0.00s)
-    --- PASS: TestTraefikGolden/minimal (0.00s)
-    --- PASS: TestTraefikGolden/aliases-www (0.00s)
-    --- PASS: TestTraefikGolden/path-prefix (0.00s)
-    --- PASS: TestTraefikGolden/custom-removed-headers (0.00s)
     --- PASS: TestTraefikGolden/middleware-toggles (0.00s)
+    --- PASS: TestTraefikGolden/path-prefix (0.00s)
     --- PASS: TestTraefikGolden/path-prefix-no-strip (0.00s)
     --- PASS: TestTraefikGolden/basic-auth (0.00s)
     --- PASS: TestTraefikGolden/allowlist (0.00s)
-    --- PASS: TestTraefikGolden/body-size (0.00s)
     --- PASS: TestTraefikGolden/switch-verify (0.00s)
+    --- PASS: TestTraefikGolden/minimal (0.00s)
+    --- PASS: TestTraefikGolden/aliases-www (0.00s)
+    --- PASS: TestTraefikGolden/body-size (0.00s)
+    --- PASS: TestTraefikGolden/custom-removed-headers (0.00s)
 PASS
 ok  	dermaga/internal/traefik	0.007s
 go tool govulncheck ./...
@@ -325,6 +339,6 @@ cd ui && bun run audit:check
 $ bun ./scripts/audit-check.js
 bun audit passed (only documented advisory GHSA-gcqx-w48m-w2h4 present)
 mkdir -p bin
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=v0.1.4-5-g46b94b5-dirty -X main.Commit=46b94b5" -trimpath -o bin/dermaga-linux-amd64 ./cmd/dermaga
-CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.Version=v0.1.4-5-g46b94b5-dirty -X main.Commit=46b94b5" -trimpath -o bin/dermaga-linux-arm64 ./cmd/dermaga
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=v0.2.0-1-gdabd703 -X main.Commit=dabd703" -trimpath -o bin/dermaga-linux-amd64 ./cmd/dermaga
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.Version=v0.2.0-1-gdabd703 -X main.Commit=dabd703" -trimpath -o bin/dermaga-linux-arm64 ./cmd/dermaga
 === make check passed successfully ===

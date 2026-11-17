@@ -1,29 +1,14 @@
 === Traefik Golden Configurations Verification on dermaga-vm ===
-Timestamp: 2026-11-17T05:35:52+07:00
-Git commit: 46b94b5
-Working tree status: dirty
- M docs/ARCHITECTURE.md
- M docs/evidence/M2/logs/vm_quadlet_dryrun.log
- M docs/evidence/M2/logs/vm_traefik_configs.log
- M internal/quadlet/ini.go
- M internal/quadlet/injection_test.go
- M internal/quadlet/quadlet_test.go
- M internal/quadlet/render.go
- M internal/quadlet/validate.go
- M internal/traefik/injection_test.go
- M internal/traefik/testdata/basic-auth.golden
- M internal/traefik/traefik_test.go
- M test/vm/test_quadlet_dryrun.sh
- M test/vm/test_traefik_configs.sh
-?? internal/quadlet/testdata/url-escaped-health.golden
-?? internal/traefik/testdata/vps-setup-headers.golden
+Timestamp: 2026-11-17T07:21:55+07:00
+Git commit: 3ab2fc1
+Working tree status: clean
 Host: dermaga-vm
 
 Discovered live Traefik container image: docker.io/library/traefik:v3.7
 Discovered live Traefik image digest: sha256:44b61e76a251fe586d17d881fc900452d0a7b4a4b08c97ce6eac86d45b4c8b9d
 Using pinned Traefik image: docker.io/library/traefik:v3.7@sha256:44b61e76a251fe586d17d881fc900452d0a7b4a4b08c97ce6eac86d45b4c8b9d
 
-Creating isolated test directory: /tmp/traefik-verify-lX3zr1
+Creating isolated test directory: /tmp/traefik-verify-Bjy6NY
 Staging dynamic golden configuration files...
   Staging aliases-www.golden -> aliases-www.yml
   Staging allowlist.golden -> allowlist.yml
@@ -36,21 +21,23 @@ Staging dynamic golden configuration files...
   Staging path-prefix.golden -> path-prefix.yml
   Staging path-prefix-no-strip.golden -> path-prefix-no-strip.yml
   Staging switch-verify.golden -> switch-verify.yml
-Creating isolated bridge network test-traefik-net-628221...
-test-traefik-net-628221
-Starting throwaway backend echo responders on test-traefik-net-628221...
-b7ae2691f8606ed33f7da7fc8cef1862a41cc8c5fbe7930d1bb07837fcb5b101
-d180e35654c2fbffb88329c73ac4d95cad057c114c5026efe57eb1f6f4dad194
-4af05cb149f629ec1ee588baa95b43d470a6327e24897e11c8f3226f1c53296f
-1a1787de4803719be37f6086d2364e7a5189f2641db27ecb8690bdd5a1ae560d
-0cc1dce94cc1b67c1a4a5e335b32ecd5f8535734e72e347bb4d8a3176988050f
-113de79387e139b142fb2ed15ca3c886cc1ead3e48c517bbe1c9e7fcc5e6f0c7
-0bf7f37b1163c2488534b7635af93f52cd9cda5e3e1d022d331d82a2d0b095f0
-Starting throwaway Traefik container test-traefik-628221...
-05d70175b5225d782c9af4f7c0eafa4dbe80fe544c2ba90e96ffcc98f8b5d9c1
+Creating isolated primary bridge network test-traefik-net-703424 (subnet 10.99.1.0/24)...
+test-traefik-net-703424
+Creating isolated allowed-source network test-traefik-allow-703424 (subnet 192.168.1.0/24)...
+test-traefik-allow-703424
+Starting throwaway backend echo responders on test-traefik-net-703424...
+d3b101a18dc7845006290d15128efde65f22d935533cf66549cbb42f5c6e10de
+2f0e29316682f9941512a0384bb1beac37441c691f793f9d0aac2f0d890562b4
+33b4ad72cabe23f050b40444cd228d7fdc203a6e00d9fcc30088f300f8211b6c
+747a0c7ea11049a27f46a3d306a7812c8abf8c6cde2e025c02c0124865404c57
+39257ab4d77fbea6902bea988d04f01eab0a406372d1ef44148c51b5707889b0
+0d9f2c7e4e4ada13b8091eec3f26dfa5bfd401d4e6a266db02986b5d1cd70f7a
+a9668f847b948ae9e33cdf7d5771441836782030d0f7e0a9b3e9f3b7cc259c91
+Starting throwaway Traefik container test-traefik-703424...
+2bb567b095f309847e46302aa9c6bd2e717d89380f8fa645ea270862f6afb93f
 
 Polling Traefik API (http://127.0.0.1:18088/api/http/routers) until dynamic configs load...
-Traefik loaded all dynamic routers after 200 ms.
+Traefik loaded all dynamic routers after 100 ms.
 
 --- Asserting API Router Status ---
 Router app-portfolio@file: status=enabled, errors=0 -> OK
@@ -74,7 +61,8 @@ Router app-web-app-verify@file: status=enabled, errors=0 -> OK
 4. Alias www redirect (www.landing.com/about -> 301 to https://landing.com/about): PASS (301 https://landing.com/about)
 5a. Basic Auth without credentials: PASS (HTTP 401 Unauthorized)
 5b. Basic Auth with valid credentials (admin:secret): PASS (HTTP 200 OK)
-6. IP Allowlist rejection from non-allowed client (127.0.0.1): PASS (HTTP 403 Forbidden)
+6a. IP Allowlist rejection from non-allowed client (10.99.1.1 via host port): PASS (HTTP 403 Forbidden)
+6b. IP Allowlist acceptance from allowed client (192.168.1.50 in 192.168.1.0/24): PASS (HTTP 200 OK)
 7a. Request buffering with allowed body size (1 KiB <= 10 MiB): PASS (HTTP 200 OK)
 7b. Request buffering exceeding max request body size (11 MiB > 10 MiB limit): PASS (HTTP 413 Payload Too Large)
 8a. Default security headers verification (portfolio.example.com): PASS (all 5 default security headers present, Server and X-Powered-By stripped)
@@ -82,22 +70,21 @@ Router app-web-app-verify@file: status=enabled, errors=0 -> OK
 9a. Standard request routes to production release 1: PASS (production release 1 served)
 9b. Request with X-Dermaga-Verify token routes to candidate release 2: PASS (candidate release 2 served)
 
---- Negative Control: Deliberately Broken Traefik Configuration ---
-Polling API for broken router error detection...
-Negative control router successfully flagged with error:
-{"entryPoints":["websecure"],"middlewares":["nonexistent-middleware@file"],"service":"nonexistent-service","rule":"Host(`broken.example.com`)","priority":26,"tls":{"options":"default","certResolver":"le"},"observability":{"accessLogs":true,"metrics":true,"tracing":true,"traceVerbosity":"minimal"},"error":["the service \"nonexistent-service@file\" does not exist"],"status":"disabled","using":["websecure"],"name":"app-broken-router@file","provider":"file","priorityStr":"26"}
-Negative control PASSED: router referencing missing middleware was flagged by Traefik API.
+--- Negative Controls: Missing Middleware and Missing Service Detection ---
+Negative control 1 (missing middleware detection): PASS (router disabled, error: middleware "nonexistent-middleware@file" does not exist)
+Negative control 2 (missing service detection): PASS (router disabled, error: the service "nonexistent-service@file" does not exist)
 
 === All Traefik Golden Configurations Verified: PASS ===
 
 Cleaning up throwaway test containers and network on dermaga-vm...
-test-backend-p3000-628221
-test-backend-p9000-628221
-test-backend-p4000-628221
-test-traefik-628221
-test-backend-p80-628221
-test-backend-cand-628221
-test-backend-main-628221
-test-backend-p8443-628221
-test-traefik-net-628221
+test-backend-p80-703424
+test-backend-p8443-703424
+test-backend-cand-703424
+test-backend-p4000-703424
+test-backend-p9000-703424
+test-backend-p3000-703424
+test-backend-main-703424
+test-traefik-703424
+test-traefik-net-703424
+test-traefik-allow-703424
 Cleanup complete (§8: idempotent, no residue).
