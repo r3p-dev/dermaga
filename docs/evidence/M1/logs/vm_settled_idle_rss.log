@@ -1,9 +1,0 @@
-# Command: Settled idle RSS measurement after 10 minutes without requests
-# Commit: ee1cdbf
-# Timestamp: 2026-11-16T18:45:32+07:00
-PID: 2624
-VmSize:	 1336900 kB
-VmHWM:	   80188 kB
-VmRSS:	   16976 kB
-VmData:	  141228 kB
-VmStk:	     132 kB

@@ -1,7 +1,0 @@
-# Command: grep -oE '(fill|stroke)="[^"]+"' ui/static/logo.svg | sort -u
-# Commit: 9a0ad2c
-# Timestamp: 2026-11-16T19:35:55+07:00
-fill="#1A1B36"
-fill="#5B58A8"
-fill="#7C78EE"
-fill="#C9C5FB"

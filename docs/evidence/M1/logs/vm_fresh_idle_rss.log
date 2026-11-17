@@ -1,9 +1,0 @@
-# Command: Fresh-start idle RSS measurement
-# Commit: ee1cdbf
-# Timestamp: 2026-11-16T18:35:28+07:00
-PID: 2624
-VmSize:	 1270632 kB
-VmHWM:	   13184 kB
-VmRSS:	   13184 kB
-VmData:	   74960 kB
-VmStk:	     132 kB
