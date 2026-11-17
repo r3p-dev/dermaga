@@ -30,7 +30,7 @@ in M3a is a VM result; every VM item is **NOT RUN** until M3b.
 | INST-7 plan before changes | PASS: `.../plan_declined` | NOT RUN |
 | INST-8 :80/:443 busy → refuse | PASS: `.../port_80_busy` | NOT RUN |
 | INST-9, SEC-22 checksum-verified binary | PASS: `TestInstallRefusesUnverifiedBinary` (mismatch, missing) | NOT RUN |
-| INST-10 GitHub SSH host keys pinned | PASS: `TestInstallFreshServer`, `TestInstallGitHubKeyMismatch` | NOT RUN |
+| INST-10 GitHub SSH host keys pinned | removed from v1.0.0 (owner decision, DEC-23); code, fixture and tests deleted | — |
 | INST-11 user service, linger, doctor | PASS: `internal/doctor` tests, reconciler Traefik tests | NOT RUN |
 | INST-12 laptop command, link, "Lost this?" | PASS (link: see §9 question 2) | NOT RUN |
 | HOST-1 one login user `server` | PASS: `AllowUsers server` in `TestSSHDFinalWithRealSSHD` | NOT RUN |
@@ -149,7 +149,6 @@ Connection from 192.168.122.1 port 37160 on 192.168.122.217 port 4222 rdomain ""
 Accepted publickey for server from 192.168.122.1 port 37160 ssh2: ED25519 SHA256:V+KZKBpZYT+xiu/DXAsTjf2LTerWPN+DYUlih/Z1U9A
 ```
 
-GitHub's published SSH host keys ([`logs/github_meta_fixture.log`](logs/github_meta_fixture.log)).
 
 ## 6. Local checks outside `go test`
 
@@ -191,7 +190,7 @@ deleted.
 ## 8. Per-commit checks
 
 Each suggested commit was checked with `make check` alone in a throwaway worktree:
-`logs/commit1_check.log` … `logs/commit7_check.log`.
+`logs/commit1_check.log` … `logs/commit7_check.log` (M3a), `logs/commit8_check.log` onward (§10).
 
 ## 9. Known limitations and open items
 
@@ -203,3 +202,117 @@ Each suggested commit was checked with `make check` alone in a throwaway worktre
 - Without `ACME_EMAIL`, Traefik's account behaviour is verified with Pebble in M4.
 - `ssh.socket` setups are refused (Debian 13 uses `ssh.service`).
 - UDP 443 is not port-scanned; the rules are checked from `/etc/nftables.conf`.
+
+## 10. Fixes after the M3a review (before M3b)
+
+### 10.1 The `v0.3.0-rc` release failed
+
+[`logs/release_rc1_failure.log`](logs/release_rc1_failure.log) (the Actions run of tag `v0.3.0-rc`):
+
+```text
+Build and publish | Run make check | success
+Build and publish | Assemble release files | failure
+Build and publish | Publish the release | skipped
+```
+```text
+2026-11-17T01:57:54.5302152Z fatal: detected dubious ownership in repository at '/__w/dermaga/dermaga'
+```
+```text
+$ gh release view v0.3.0-rc
+release not found
+exit=1
+```
+
+Cause: "Run make check" gives the workspace to `server` and adds `safe.directory` only to
+`server`'s git config; "Assemble release files" then ran `git rev-parse` as root. The fix (DEC-24):
+`make release` assembles `dist/` and refuses a dirty build or a tag that differs from `git describe`;
+CI runs `make check release` as `server` on every push; the release workflow runs the same command
+the same way, and its root-only publish step calls no git.
+
+`make release` refuses what must never be released
+([`logs/make_release_negative_controls.log`](logs/make_release_negative_controls.log)):
+
+```text
+refusing to assemble a release from version v0.3.0-rc-dirty
+make: *** [Makefile:59: release] Error 1
+exit=2
+```
+```text
+tag v9.9.9 but the build version is v0.0.1
+make: *** [Makefile:60: release] Error 1
+exit=2
+```
+
+The release job simulated as root in the same image (`test/ci/simulate_release.sh`). Negative
+control, the workflow of `c7c4671`
+([`logs/release_sim_c7c4671.log`](logs/release_sim_c7c4671.log)):
+
+```text
+::: step: Assemble release files
+fatal: detected dubious ownership in repository at '/__w/dermaga/dermaga'
+	git config --global --add safe.directory /__w/dermaga/dermaga
+::: step failed: Assemble release files
+exit=1
+```
+
+The fixed workflow on the working tree, committed in a throwaway clone and tagged `v0.3.0-rc.2`
+there ([`logs/release_sim_fixed.log`](logs/release_sim_fixed.log)):
+
+```text
+::: step: Run make check and assemble the release files
+=== make check passed successfully ===
+```
+```text
+::: step: Publish the release
+SIMULATED (not published): gh release create v0.3.0-rc.2 dist/dermaga-linux-amd64 dist/dermaga-linux-arm64 dist/install.sh dist/checksums.txt --verify-tag --title v0.3.0-rc.2 --notes See CHANGELOG.md. Install: curl -fsSL https://github.com/r3p-dev/dermaga/releases/download/v0.3.0-rc.2/install.sh | sudo bash --prerelease
+```
+```text
+::: all steps passed
+exit=0
+```
+
+### 10.2 Dependencies
+
+[`logs/dependency_versions_query.log`](logs/dependency_versions_query.log):
+
+```text
+golang.org/x/crypto | v0.0.0-20210817164053-32db794688a5 | v0.59.0 | 2026-11-11T07:23:42Z
+```
+```text
+{"peerDependencies":{"vite":"^8.0.12","svelte":"^5.57.1","typescript":"^6.0.0","@opentelemetry/api":"^1.0.0","@sveltejs/vite-plugin-svelte":"^7.0.0"}}
+```
+
+[`logs/dependency_update.log`](logs/dependency_update.log):
+
+```text
+go: upgraded golang.org/x/crypto v0.0.0-20210817164053-32db794688a5 => v0.59.0
+```
+```text
+typescript 6.0.3 | bun.lock: 6.0.3
+```
+
+How the 2021 version got in: the tool `github.com/gzuidhof/tygo` v0.2.21 requires
+`github.com/spf13/cobra` v1.3.0, which requires `github.com/spf13/viper` v1.10.0, which requires
+`golang.org/x/crypto v0.0.0-20210817164053-32db794688a5`. Tool dependencies share the module graph,
+so when `internal/auth` first imported `golang.org/x/crypto/argon2` (commit `ade8963`),
+`go mod tidy` kept the version already selected in that graph instead of fetching the latest. The
+M1 row in `docs/DEPENDENCIES.md` said v0.59.0 without being checked against `go.mod`.
+`gopkg.in/yaml.v2`, used by one M2 test, was shown as `// indirect` for the same reason; `go mod
+tidy` now lists it as a direct (test-only) requirement. It is not in the binary
+([`logs/binary_modules.log`](logs/binary_modules.log)):
+
+```text
+	dep	golang.org/x/crypto	v0.59.0	h1:xS2jhqYbzNrpvkWP2YTDf4TJwBy3ykR03i8vFDxEc7c=
+	dep	golang.org/x/term	v0.48.0	h1:G6UU1eiSB8nl3DzeUGt7Mg+2SctI8tPS6Z5/mBt6cOk=
+	dep	modernc.org/sqlite	v1.62.0	h1:gMaCjSM1qpl+iOjiWhR1LYP3zqrYDI+5GYLGt6veP2g=
+yaml linked: 0
+```
+
+### 10.3 INST-10 removed
+
+Removed (owner decision, DEC-23): `pin_github_keys` in `install/install.sh` and its call, `jq` from
+the installer's packages and the CI jobs, `install/testdata/github_meta.json`,
+`docs/evidence/M3/logs/github_meta_fixture.log`, `TestInstallGitHubKeyMismatch`, the INST-10
+assertions and the `meta` download stub in `install/install_test.go`. The installer tests' sample
+key was GitHub's ed25519 host key from that fixture; it is now a key generated for the tests.
+

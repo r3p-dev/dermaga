@@ -126,9 +126,11 @@ Acceptance criteria:
 
 Acceptance criteria:
 
-- INST-1–INST-12, HOST-1–HOST-7, LOCK-1–LOCK-5, LAP-1–LAP-2, SEC-22 (installer side).
-- VM from `fresh`, each run separately (needs a `v0.3.0-rc` pre-release tag from me): (a) provider key
-  present → only Enter pressed; (b) no key → guided paste; (c) wrong key → confirmation can't complete,
+- INST-1–INST-12 (INST-10 removed from v1.0.0, owner decision DEC-23), HOST-1–HOST-7, LOCK-1–LOCK-5,
+  LAP-1–LAP-2, SEC-22 (installer side).
+- VM from `fresh`, each run separately (needs a `v0.3.0-rc.2` pre-release tag from me; `v0.3.0-rc`
+  stays without a release): (a) provider key present → only Enter at every choice, plus typing the
+  sudo password when passwd asks for it; (b) no key → guided paste; (c) wrong key → confirmation can't complete,
   old access works, re-run succeeds; (d) confirmation window closed → old access works; (e) a port scan
   during the whole install never shows 7070; (f) laptop command pasted twice in bash and in fish → one
   block; (g) re-run is a no-op; (h) reboot → the daemon and Traefik are back.
@@ -142,7 +144,7 @@ Open items / decisions for M3:
   Implemented in M3a: `internal/access`, DEC-21.
 
 Checkpoints: **M3a** installer and hardening code with unit and fake-host tests, local checks only;
-**M3b** scenarios a–h on `dermaga-vm` from `fresh` with the `v0.3.0-rc` pre-release.
+**M3b** scenarios a–h on `dermaga-vm` from `fresh` with the `v0.3.0-rc.2` pre-release.
 
 ## M4 (0.4.0): First-run setup and panel access
 
@@ -152,6 +154,10 @@ Acceptance criteria:
 - From a fresh install: `ssh dermaga` + browser → `/setup` → panel, without any command typed on the
   server; token reuse, expiry and use after setup refused; a password change ends other sessions; TOTP
   changes require re-auth.
+- INST-12 completed (owner decision DEC-23): once SETUP-1 exists, the installer prints the first-run
+  link; the `dermaga admin set-password` hint from M3 becomes the fallback only.
+- ACME without an e-mail (DEC-20, owner agreed): with Pebble, check how Traefik registers and reuses
+  its ACME account when `email` is empty, and record the result.
 
 ## M5 (0.5.0): Connect GitHub
 
