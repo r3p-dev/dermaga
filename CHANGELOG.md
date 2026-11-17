@@ -6,6 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-17
+
+### Fixed
+- **Explicit ownership markers for DEP-10**: Added machine-readable ownership markers (`# managed by dermaga; app=<name>`, `# managed by dermaga; network=<name>`, `# managed by dermaga; global`) to all generated Quadlet units and Traefik dynamic configurations. Reconciler strictly ignores and reports files matching naming patterns without the marker as foreign, preventing accidental deletion of user-created units in `~/.config/containers/systemd/`.
+- **Safe default against empty database**: Reconciler refuses to delete existing managed units and configs if active app count is 0, protecting against unmounted or incorrectly specified databases; added `--prune` CLI flag to override when empty-database pruning is explicitly intended (`DEC-17`).
+- **Traefik negative controls**: Added separate negative test cases for missing middleware and missing service in `test/vm/test_traefik_configs.sh`, explicitly asserting disabled router status and error messages via Python JSON parsing.
+- **Allowed-source IP allowlist simulation**: Added allowed source IP simulation in `test/vm/test_traefik_configs.sh` verifying that clients originating from within `192.168.1.0/24` receive HTTP 200 while outside clients receive HTTP 403.
+- **Reconciliation negative controls**: Replaced masked `|| true` exit codes with explicit exit code assertions in `test/vm/test_reconciliation.sh`, verified that assertions fail on un-reconciled states, and verified non-zero exit on inaccessible database.
+- **Architectural decision references**: Documented `DEC-17` in `docs/ARCHITECTURE.md` and verified all decision citations across documentation.
+
 ## [0.2.0] - 2026-11-17
 
 ### Added
@@ -17,7 +27,7 @@ All notable changes to this project are documented here. The format follows
   - `test/vm/test_quadlet_dryrun.sh`: dry-run validation of generated Quadlet units against Podman 5's `podman-user-generator` and `systemd-analyze --user verify` on `dermaga-vm`, including negative controls with malformed syntax.
   - `test/vm/test_traefik_configs.sh`: dynamic validation using a throwaway Traefik container pinned to `docker.io/library/traefik:v3.7@sha256:44b61e76a251fe586d17d881fc900452d0a7b4a4b08c97ce6eac86d45b4c8b9d` on non-colliding ports (`18080`, `18443`, `18088`), asserting API router/middleware status and behavioral curl responses (host routing, strip prefix, 301 redirects, basic auth 401/200, IP allowlist 403, body size 200/413, security headers, verify router isolation), with negative controls.
   - `test/vm/test_reconciliation.sh`: scenario test on `dermaga-vm` verifying real orphan removal, missing file re-rendering, stopped unit activation, leftover verify router cleanup, foreign file preservation, and database access failure negative control.
-- **Architectural decisions**: recorded `DEC-15` (systemd unit syntax injection escaping and validation) and `DEC-16` (startup reconciliation mechanics and file boundaries) in `docs/ARCHITECTURE.md`.
+- **Architectural decisions**: recorded `DEC-15` (systemd unit syntax injection escaping and validation), `DEC-16` (switch routing with priority 10000 and universal ACME), and `DEC-17` (explicit ownership markers and safe startup reconciliation) in `docs/ARCHITECTURE.md`.
 
 ### Changed
 - Hardened Quadlet INI rendering against systemd unit syntax injection: escapes `%` to `%%` in free-text fields (such as `HealthCmd`) to prevent specifier expansion, and strictly rejects trailing backslashes `\` across all keys to prevent line continuation. Rejects newlines, carriage returns, and null bytes across all fields (`SEC-16`–`SEC-19`).
