@@ -1,0 +1,141 @@
+#!/usr/bin/env bash
+# Negative controls for the repository tooling: proves each check can fail (CONVENTIONS §7.1).
+#
+#   scripts/selftest evidence-run | check-policy | check-commits | make-check
+#
+# Each case prints `ok: …` per assertion and exits 1 on the first one that does not hold. Nothing is
+# written to the repository: fixtures live in temporary directories and detached worktrees.
+set -Eeuo pipefail
+
+root=$(git rev-parse --show-toplevel)
+cd "$root" || exit
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/selftest-XXXXXX")
+trap 'git worktree remove --force "$tmp/wt" >/dev/null 2>&1 || true; rm -rf "$tmp"' EXIT
+
+ok() { echo "ok: $*"; }
+die() {
+  echo "NOT OK: $*"
+  exit 1
+}
+# expect STATUS DESCRIPTION -- COMMAND…: runs COMMAND, output in $out, checks its exit status
+expect() {
+  local want=$1 what=$2
+  shift 3
+  local got=0
+  out=$("$@" 2>&1) || got=$?
+  [[ $got == "$want" ]] || die "$what: exit $got, want $want; output:"$'\n'"$out"
+}
+contains() { grep -qF -- "$1" <<<"$out" || die "output lacks '$1':"$'\n'"$out"; }
+in_dir() { (cd "$1" && shift && "$@"); }
+
+worktree() {
+  git worktree add --detach --quiet "$tmp/wt" HEAD
+  cp -a Makefile .gitignore "$tmp/wt/"
+  mkdir -p "$tmp/wt/scripts"
+  cp -a scripts/. "$tmp/wt/scripts/"
+}
+
+case ${1:-} in
+  evidence-run)
+    worktree
+    cd "$tmp/wt" || exit
+    expect 1 "-- false" -- scripts/evidence-run M9 neg -- false
+    contains "FAIL exit=1 log=tmp/evidence/M9/logs/neg.log"
+    ok "'-- false' exits 1 and prints FAIL"
+    log=tmp/evidence/M9/logs/neg.log
+    for field in "# Command: false" "# Timestamp: " "# Host: " "# Commit: " "# Status: dirty" "# Exit: 1"; do
+      grep -qF -- "$field" "$log" || die "log header lacks '$field'"
+    done
+    ok "log header has command, timestamp, host, commit, dirty status, exit code"
+    expect 3 "exit code passthrough" -- scripts/evidence-run M9 three -- bash -c 'echo hidden; exit 3'
+    [[ $(head -n 1 <<<"$out") == "FAIL exit=3 log=tmp/evidence/M9/logs/three.log" ]] || die "first line: $out"
+    grep -qx hidden tmp/evidence/M9/logs/three.log || die "command output missing from the log"
+    ok "exit code 3 passed through; output goes to the log"
+    expect 0 "-- true" -- scripts/evidence-run M9 pos -- bash -c 'echo quiet'
+    [[ $out == "PASS exit=0 log=tmp/evidence/M9/logs/pos.log" ]] || die "stdout is not one PASS line: $out"
+    ok "'-- true' prints exactly one PASS line, no command output"
+    [[ ! -e docs/evidence/M9 ]] || die "evidence-run wrote under docs/evidence/M9"
+    git check-ignore -q tmp/evidence/M9/logs/pos.log || die "tmp/evidence logs are not ignored"
+    ok "logs land in ignored tmp/evidence/, nothing under docs/"
+    ;;
+  check-policy)
+    fixture=$tmp/fixture
+    mkdir -p "$fixture/.github/workflows"
+    git init --quiet "$fixture"
+    cp .gitignore "$fixture/"
+    image=docker.io; image+=/library/debian:trixie-slim # built in two parts so check-policy does not flag this file
+    printf 'jobs:\n  a:\n    container:\n      image: %s\n' "$image" >"$fixture/.github/workflows/ci.yml"
+    expect 1 "unpinned image" -- scripts/check-policy "$fixture"
+    contains ".github/workflows/ci.yml: $image"
+    ok "an image without a digest fails"
+    digest=sha256:$(printf '%064d' 0)
+    sed -i "s|trixie-slim$|trixie-slim@$digest|" "$fixture/.github/workflows/ci.yml"
+    expect 0 "pinned image" -- scripts/check-policy "$fixture"
+    ok "the same image with a digest passes"
+    printf 'x' >"$fixture/.webhook_secret"
+    rm "$fixture/.gitignore"
+    expect 1 "no .gitignore" -- scripts/check-policy "$fixture"
+    contains ".webhook_secret"
+    contains ".gitignore does not ignore master.key"
+    ok "an unignored secret and a missing .gitignore fail"
+    mkdir -p "$fixture/docs/evidence/M9"
+    touch "$fixture/docs/evidence/M9/x.png" "$fixture/docs/evidence/M9/NOTES.md" "$fixture/docs/evidence/M9/EVIDENCE.md"
+    expect 1 "raw evidence" -- scripts/check-policy "$fixture"
+    contains "  docs/evidence/M9/x.png"
+    contains "  docs/evidence/M9/NOTES.md"
+    ! grep -qF "docs/evidence/M9/EVIDENCE.md" <<<"$out" || die "EVIDENCE.md was flagged"
+    ok "a screenshot and a stray markdown file under docs/evidence/ fail; EVIDENCE.md passes"
+    ;;
+  check-commits)
+    git status --porcelain=v1 --untracked-files=all | grep -q . || die "needs a dirty working tree"
+    mapfile -t changed < <(git status --porcelain=v1 -z --untracked-files=all | tr '\0' '\n' | cut -c4-)
+    {
+      echo "subject: docs: an otherwise valid commit"
+      echo "body: Lists every change but the first."
+      for f in "${changed[@]:1}"; do echo "path: $f"; done
+    } >"$tmp/missing.plan"
+    expect 1 "missing path" -- scripts/check-commits "$tmp/missing.plan"
+    contains "FAIL ${changed[0]} is changed but in no commit"
+    ok "a plan missing ${changed[0]} fails"
+    {
+      echo "subject: docs: update the docs with Claude"
+      echo "body: Explains why."
+      for f in "${changed[@]}"; do echo "path: $f"; done
+    } >"$tmp/ai.plan"
+    expect 1 "AI attribution" -- scripts/check-commits "$tmp/ai.plan"
+    contains "FAIL commit 1: message contains AI attribution"
+    ok "a subject naming an assistant fails"
+    {
+      echo "subject: Updated stuff in the docs and many other places so that the subject is too long"
+      for f in "${changed[@]}"; do echo "path: $f"; done
+      echo "path: README.md"
+    } >"$tmp/bad.plan"
+    expect 1 "bad subject" -- scripts/check-commits "$tmp/bad.plan"
+    contains "subject is not a Conventional Commit"
+    contains "max 72"
+    git diff --quiet -- README.md && contains "README.md has no changes"
+    ok "a long, non-conventional subject and an unchanged path fail"
+    fixture=$tmp/fixture
+    mkdir -p "$fixture/scripts" "$fixture/docs/evidence/M9"
+    git init --quiet "$fixture"
+    cp scripts/check-commits scripts/check-policy "$fixture/scripts/"
+    touch "$fixture/docs/evidence/M9/x.log"
+    printf 'subject: docs(m9): add a log\npath: scripts/\npath: docs/evidence/M9/x.log\n' >"$tmp/log.plan"
+    expect 1 "raw evidence in a plan" -- in_dir "$fixture" scripts/check-commits "$tmp/log.plan"
+    contains "FAIL docs/evidence/M9/x.log: raw evidence is never committed (tmp/evidence/)"
+    ok "a plan adding docs/evidence/M9/x.log fails"
+    ;;
+  make-check)
+    worktree
+    printf '\nfunc  selftestBadFormat( ) {}\n' >>"$tmp/wt/cmd/dermaga/main.go"
+    expect 2 "make check with a gofmt violation" -- make -C "$tmp/wt" --no-print-directory check
+    contains "FAIL lint (full log: .check-logs/lint.log)"
+    contains "gofmt -s would change:"
+    contains "cmd/dermaga/main.go"
+    ok "make check fails at lint and prints the offending file"
+    ;;
+  *)
+    echo "usage: scripts/selftest evidence-run|check-policy|check-commits|make-check" >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# Runs one verification command and keeps its full output as evidence (AGENTS.md "Evidence").
+#
+#   scripts/evidence-run MILESTONE NAME -- COMMAND [ARG...]
+#
+# Writes tmp/evidence/MILESTONE/logs/NAME.log (gitignored, never committed): a header (timestamp,
+# exact command line, host, commit, and `git status --short` when the tree is dirty), the command's
+# stdout and stderr, and its exit code. Prints only `PASS|FAIL exit=N log=PATH`, plus the last 40
+# log lines on failure, and exits with the command's exit code. The command runs without a shell
+# and with stdin from /dev/null; for pipelines use `-- bash -c '...'`, for the VM
+# `-- ssh dermaga-vm '...'`. EVIDENCE.md quotes excerpts of the log and cites its path.
+set -Eeuo pipefail
+
+usage() {
+  echo "usage: scripts/evidence-run MILESTONE NAME -- COMMAND [ARG...]" >&2
+  exit 2
+}
+
+[[ $# -ge 4 && $3 == -- ]] || usage
+milestone=$1
+name=$2
+shift 3
+[[ $milestone =~ ^M[0-9]+$ ]] || { echo "milestone must look like M3 (checkpoints share the folder)" >&2; exit 2; }
+[[ $name =~ ^[A-Za-z0-9._-]+$ ]] || { echo "name may contain only letters, digits, '.', '_' and '-'" >&2; exit 2; }
+
+root=$(git rev-parse --show-toplevel)
+log=tmp/evidence/$milestone/logs/$name.log
+mkdir -p "$root/tmp/evidence/$milestone/logs"
+
+changes=$(git -C "$root" status --short)
+{
+  echo "# Command: $(printf '%q ' "$@")"
+  echo "# Directory: $PWD"
+  echo "# Timestamp: $(date -Is)"
+  echo "# Host: $(uname -n)"
+  echo "# Commit: $(git -C "$root" rev-parse --short HEAD)"
+  if [[ -n $changes ]]; then
+    echo "# Status: dirty"
+    sed 's/^/#   /' <<<"$changes"
+  else
+    echo "# Status: clean"
+  fi
+  echo
+} >"$root/$log"
+
+status=0
+"$@" >>"$root/$log" 2>&1 </dev/null || status=$?
+echo "# Exit: $status" >>"$root/$log"
+
+if ((status == 0)); then
+  echo "PASS exit=0 log=$log"
+else
+  echo "FAIL exit=$status log=$log"
+  tail -n 40 "$root/$log"
+fi
+exit "$status"

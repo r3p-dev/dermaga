@@ -1,0 +1,180 @@
+#!/usr/bin/env bash
+# Checks a list of suggested commits without creating any commit (AGENTS.md "Git").
+#
+#   scripts/check-commits PLAN_FILE                 static checks, then `make check` per commit
+#   scripts/check-commits --print-fish PLAN_FILE    static checks, then print the fish commands
+#
+# PLAN_FILE has one block per commit, in commit order. Lines start with a keyword; `#` lines and
+# blank lines are ignored:
+#
+#   subject: docs(agents): slim down the session-start reading set
+#   body: Why the change is needed, one paragraph per body line.
+#   body: A second paragraph.
+#   path: AGENTS.md
+#   path: scripts/            (a directory covers every changed file under it)
+#
+# Static checks: every path in `git status --porcelain` is covered by exactly one listed path and
+# every listed path covers a change; subjects are Conventional Commits of at most 72 characters;
+# no AI attribution; no forbidden file (scripts/check-policy --forbidden); no added or modified
+# non-markdown file under docs/evidence/ (deleting one is fine). Keep the plan file itself in
+# tmp/evidence/<milestone>/, never under docs/.
+# Then, in a detached throwaway worktree of HEAD, commit k's files are applied on top of commits
+# 1..k-1 (copied from the working tree, deleted files removed) and `make check` runs. Full logs:
+# .check-logs/commits/commitK.log. One line per commit on stdout; exit 1 on any failure.
+set -Eeuo pipefail
+
+print_fish=0
+if [[ ${1:-} == --print-fish ]]; then
+  print_fish=1
+  shift
+fi
+[[ $# -eq 1 && -f $1 ]] || { echo "usage: scripts/check-commits [--print-fish] PLAN_FILE" >&2; exit 2; }
+plan=$(realpath "$1")
+root=$(git rev-parse --show-toplevel)
+cd "$root" || exit
+
+# commit k: subjects[k], bodies[k] and paths[k] (both joined by \x1f)
+subjects=() bodies=() paths=()
+n=-1
+while IFS= read -r line || [[ -n $line ]]; do
+  case $line in
+    '' | '#'*) ;;
+    subject:*)
+      n=$((n + 1))
+      subjects[n]=${line#subject: }
+      bodies[n]=''
+      paths[n]=''
+      ;;
+    body:* | path:*)
+      ((n >= 0)) || { echo "plan: '$line' before the first subject" >&2; exit 2; }
+      if [[ $line == body:* ]]; then
+        bodies[n]+=${line#body: }$'\x1f'
+      else
+        p=${line#path: }
+        paths[n]+=${p%/}$'\x1f'
+      fi
+      ;;
+    *) echo "plan: unknown line: $line" >&2; exit 2 ;;
+  esac
+done <"$plan"
+((n >= 0)) || { echo "plan: no commits" >&2; exit 2; }
+
+failed=0
+fail() {
+  echo "FAIL $*"
+  failed=1
+}
+
+# Changed paths; a staged rename needs both its old and new path.
+changed=()
+while IFS= read -r -d '' entry; do
+  changed+=("${entry:3}")
+  if [[ ${entry:0:1} == R || ${entry:0:1} == C ]]; then
+    IFS= read -r -d '' old
+    changed+=("$old")
+  fi
+done < <(git status --porcelain=v1 -z --untracked-files=all)
+
+covers() { [[ $2 == "$1" || $2 == "$1"/* ]]; }
+
+declare -A owner=()
+for k in $(seq 0 "$n"); do
+  c=$((k + 1))
+  subject=${subjects[k]}
+  ((${#subject} <= 72)) || fail "commit $c: subject is ${#subject} characters (max 72)"
+  [[ $subject =~ ^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-z0-9._/-]+\))?!?:\ [^[:space:]] ]] ||
+    fail "commit $c: subject is not a Conventional Commit: $subject"
+  if grep -qiE 'co-authored-by|generated (with|by)|claude|anthropic|chatgpt|copilot|assistant' <<<"$subject"$'\n'"${bodies[k]//$'\x1f'/$'\n'}"; then
+    fail "commit $c: message contains AI attribution"
+  fi
+  [[ -n ${paths[k]} ]] || fail "commit $c: lists no paths"
+  IFS=$'\x1f' read -r -a listed <<<"${paths[k]}"
+  for p in "${listed[@]}"; do
+    matched=0
+    for f in "${changed[@]}"; do
+      covers "$p" "$f" || continue
+      matched=1
+      if [[ -n ${owner[$f]:-} ]]; then
+        fail "$f is in commit ${owner[$f]} and commit $c"
+      else
+        owner[$f]=$c
+      fi
+    done
+    ((matched)) || fail "commit $c: $p has no changes"
+  done
+done
+for f in "${changed[@]}"; do
+  [[ -n ${owner[$f]:-} ]] || fail "$f is changed but in no commit"
+done
+
+existing=()
+for f in "${changed[@]}"; do [[ -e $f ]] && existing+=("$f"); done
+if forbidden=$(scripts/check-policy --forbidden "${existing[@]}"); then :; else
+  fail "forbidden files listed: $(tr '\n' ' ' <<<"$forbidden")"
+fi
+for f in "${existing[@]}"; do
+  if [[ $f == docs/evidence/* && $f != *.md ]]; then
+    fail "$f: raw evidence is never committed (tmp/evidence/)"
+  fi
+done
+
+if ((failed)); then
+  exit 1
+fi
+echo "PASS static checks: $((n + 1)) commits, ${#changed[@]} paths"
+
+fish_quote() {
+  if [[ $1 =~ ^[A-Za-z0-9._/@+=:,-]+$ ]]; then
+    printf '%s' "$1"
+  else
+    local s=${1//\\/\\\\}
+    s=${s//\"/\\\"}
+    s=${s//\$/\\\$}
+    printf '"%s"' "$s"
+  fi
+}
+
+if ((print_fish)); then
+  for k in $(seq 0 "$n"); do
+    # The listed paths, not their expansion: `git add DIR` stages exactly the changes the check covered.
+    line="git add"
+    IFS=$'\x1f' read -r -a listed <<<"${paths[k]}"
+    for p in "${listed[@]}"; do
+      line+=" $(fish_quote "$p")"
+    done
+    line+="; and git commit -m $(fish_quote "${subjects[k]}")"
+    IFS=$'\x1f' read -r -a paragraphs <<<"${bodies[k]}"
+    for para in "${paragraphs[@]}"; do
+      [[ -n $para ]] && line+=" -m $(fish_quote "$para")"
+    done
+    echo "$line"
+  done
+  exit 0
+fi
+
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/check-commits-XXXXXX")
+trap 'git worktree remove --force "$tmp/wt" >/dev/null 2>&1 || true; rm -rf "$tmp"' EXIT
+git worktree add --detach --quiet "$tmp/wt" HEAD
+logdir=$root/.check-logs/commits
+mkdir -p "$logdir"
+
+for k in $(seq 0 "$n"); do
+  c=$((k + 1))
+  for f in "${changed[@]}"; do
+    [[ ${owner[$f]} == "$c" ]] || continue
+    if [[ -e $f || -L $f ]]; then
+      mkdir -p "$tmp/wt/$(dirname "$f")"
+      cp -a "$f" "$tmp/wt/$f"
+    else
+      rm -f "$tmp/wt/$f"
+    fi
+  done
+  log=$logdir/commit$c.log
+  if (cd "$tmp/wt" && make check VERBOSE=1) >"$log" 2>&1 </dev/null; then
+    echo "PASS commit $c: ${subjects[k]} (log: .check-logs/commits/commit$c.log)"
+  else
+    echo "FAIL commit $c: ${subjects[k]} (log: .check-logs/commits/commit$c.log)"
+    tail -n 40 "$log"
+    exit 1
+  fi
+done
