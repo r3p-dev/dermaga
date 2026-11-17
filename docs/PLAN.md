@@ -2,7 +2,7 @@
 
 Milestones in order. **Slow, reviewable progress**: each milestone is small enough to review the
 screens, read the code and understand how it works in one sitting. The implementer stops after every
-milestone and waits for confirmation (`AGENTS.md` §3). A milestone that grows is split into
+milestone and waits for confirmation (`AGENTS.md` "Milestone loop"). A milestone that grows is split into
 checkpoints (`M6a`, `M6b`, …), each with its own stop.
 
 Requirement IDs refer to `docs/PRD/` and `docs/ARCHITECTURE.md` §1.2. In M0 the implementer completes
@@ -13,31 +13,81 @@ and may propose a different split; the plan is final once approved.
 deploys, domains with automatic HTTPS, headers and middleware, server care and updates. Databases with
 backups come in v1.1.
 
-| #   | Version | Milestone                                        | Status      | Hours |
-| --- | ------- | ------------------------------------------------ | ----------- | ----- |
-| M0  | –       | Spikes and plan                                  | completed   | 28    |
-| M1  | 0.1.0   | Foundation: daemon, login, panel shell           | completed   | 36    |
-| M2  | 0.2.0   | Generators and reconciliation                    | completed   | 28    |
-| M3  | 0.3.0   | Installer, hardening, lockout guard              | in progress (M3a done, M3b next) | 24    |
-| M4  | 0.4.0   | First-run setup and panel access                 | not started | 20    |
-| M5  | 0.5.0   | Connect GitHub                                   | not started | 28    |
-| M6  | 0.6.0   | First deploy: wizard, build, env, logs           | not started | 36    |
-| M7  | 0.7.0   | Zero downtime: push-to-deploy, redeploy, rollback | not started | 32    |
-| M8  | 0.8.0   | Domains, HTTPS, headers, middleware              | not started | 28    |
-| M9  | 0.9.0   | Server care: app status, disk, dashboard, doctor | not started | 24    |
-| M10 | 0.10.0  | Updating dermaga, migration guide                | not started | 24    |
-| M11 | 1.0.0   | Hardening and release                            | not started | 32    |
-|     |         | **Total**                                        |             | **330** |
+| #   | Version | Milestone                                        | Status      | Confirmed | Hours |
+| --- | ------- | ------------------------------------------------ | ----------- | --------- | ----- |
+| M0  | –       | Spikes and plan                                  | completed   | yes: confirmed by owner, 2026-11-17 (next milestone started) | 28    |
+| M1  | 0.1.0   | Foundation: daemon, login, panel shell           | completed   | yes: confirmed by owner, 2026-11-17 (owner tags v0.1.0–v0.1.4; M2 started) | 36    |
+| M2  | 0.2.0   | Generators and reconciliation                    | completed   | yes: confirmed by owner, 2026-11-17 (owner tags v0.2.0, v0.2.1; M3 started) | 28    |
+| M3  | 0.3.0   | Installer, hardening, lockout guard              | in progress (M3a done, M3b next) | M3a yes: confirmed by owner, 2026-11-17 (owner tags v0.3.0-rc, v0.3.0-rc.2; M3b started); M3b: – | 24    |
+| M4  | 0.4.0   | First-run setup and panel access                 | not started | –         | 20    |
+| M5  | 0.5.0   | Connect GitHub                                   | not started | –         | 28    |
+| M6  | 0.6.0   | First deploy: wizard, build, env, logs           | not started | –         | 36    |
+| M7  | 0.7.0   | Zero downtime: push-to-deploy, redeploy, rollback | not started | –         | 32    |
+| M8  | 0.8.0   | Domains, HTTPS, headers, middleware              | not started | –         | 28    |
+| M9  | 0.9.0   | Server care: app status, disk, dashboard, doctor | not started | –         | 24    |
+| M10 | 0.10.0  | Updating dermaga, migration guide                | not started | –         | 24    |
+| M11 | 1.0.0   | Hardening and release                            | not started | –         | 32    |
+|     |         | **Total**                                        |             |           | **330** |
 
 Hours are the implementer's estimate for building, testing and writing the evidence of each
-milestone; review time is not included.
+milestone; review time is not included. **Confirmed** is filled only from a written record of the
+owner's confirmation; `?` means no such record exists. The owner confirmed M0–M2 and M3a on
+2026-11-17; the tags and the start of each next milestone are the supporting records.
 
-**Every milestone** also meets the general acceptance criteria of `AGENTS.md` §2: tests for its
+Earlier milestones, so their evidence never needs to be opened to start a session:
+
+- M0: completed (spikes, architecture, setup, plan); evidence in `docs/evidence/M0`.
+- M1: completed through v0.1.4 (daemon, login, panel shell, brand and dark theme fixes); evidence in
+  `docs/evidence/M1`.
+- M2: completed through v0.2.1 (generators, reconciliation, ownership markers, empty-database safe
+  default); evidence in `docs/evidence/M2`.
+- M3a: done (installer and hardening code, unit and fake-host tests, local checks, fixes after the
+  review); evidence in `docs/evidence/M3`.
+
+## Active milestone
+
+**M3b** (checkpoint of M3, 0.3.0): scenarios a–h on `dermaga-vm` from `fresh` with the
+`v0.3.0-rc.2` pre-release.
+
+- **Requirement IDs (VM side):** INST-1–INST-12 (INST-10 removed, DEC-23), HOST-1–HOST-7,
+  LOCK-1–LOCK-5, LAP-1–LAP-2, SEC-22 (installer side).
+- **Likely touched:** `test/vm/` (`m3_check.sh`, `port_scan.sh`, `drive_install.py`, `seed.sh`),
+  `docs/evidence/M3/EVIDENCE.md` (logs and screenshots in `tmp/evidence/M3/`), `docs/SETUP.md` §7, this file; `install/install.sh`
+  only if a scenario finds a bug.
+- **Acceptance criteria:** the eight scenarios of M3 below, each run separately from `fresh`: (a)
+  provider key present, only Enter plus the sudo password; (b) no key, guided paste; (c) wrong key,
+  confirmation can't complete, old access works, re-run succeeds; (d) confirmation window closed, old
+  access works; (e) a port scan during the whole install never shows 7070; (f) laptop command pasted
+  twice in bash and in fish gives one block; (g) re-run is a no-op; (h) after a reboot the daemon and
+  Traefik are back.
+- **Out of scope:** the first-run link and `SETUP-1` (M4); ACME without an e-mail, checked with Pebble
+  (M4, DEC-20); the upgrades of DEC-25 (`prettier-plugin-svelte` 4.x, Go 1.27, Bun 1.4.4: a separate
+  change between M3 and M4); `doctor` checks for DNS, GitHub, TOTP and certificates (M4–M9); M3a code
+  changes not required by a failing scenario.
+- **Handoff** (2026-11-17):
+  - Done: M3a and the fixes after its review (DEC-23, DEC-24, DEC-25). `v0.3.0-rc.2` is published:
+    CI and Release runs succeeded and the downloaded assets pass `sha256sum -c`
+    (local logs `tmp/evidence/M3/logs/release_rc2_check.log`, `release_rc2_assets_verify.log`).
+    `test/vm/drive_install.py` drives the installer over `ssh -tt`; only its local self-test against a
+    mock ran (`tmp/evidence/M3/logs/drive_install_selftest.log`, dirty tree). The M3b logs moved from
+    `docs/evidence/M3/logs/` to `tmp/evidence/M3/logs/` and are not committed (DEC-26).
+  - Remaining: scenarios a–h, none run yet; each starts with a `snapshot-revert` to `fresh`, which
+    needs the owner's approval. The socat and curl images in `test/vm/test_reconciliation.sh` and
+    `test/vm/test_traefik_configs.sh` are now pinned by tag and digest but not yet exercised on the VM.
+    Then EVIDENCE.md, the report and the version bump to 0.3.0.
+  - New decisions: DEC-25 (upgrades after M3, `test/ci/`), DEC-26 (only EVIDENCE.md is committed;
+    raw artifacts in `tmp/evidence/`), DEC-27 (shellcheck enforced in CI, optional locally). Process:
+    session-start reading set, evidence and check scripts slimmed down (`docs/evidence/M3/EVIDENCE.md`,
+    "Process checkpoint"); the open questions of that checkpoint are resolved by the owner; no
+    application behavior changed.
+
+**Every milestone** also meets the general acceptance criteria of `AGENTS.md` "Milestone loop": tests for its
 criteria (unit, golden, fake-host, fake-GitHub, API with authentication and the PRD rule, browser tests
 for the main journeys, named by requirement ID), `make check` passes without deprecation warnings, the
 VM checks run on `dermaga-vm` with a binary from the commit under review, the demo state updated,
 `docs/ARCHITECTURE.md`, `docs/DEPENDENCIES.md`, `docs/SETUP.md` and `CHANGELOG.md` current,
-`docs/evidence/M{N}/EVIDENCE.md` with screenshots (desktop and narrow) and logs in the same folder.
+`docs/evidence/M{N}/EVIDENCE.md` with excerpts and screenshot descriptions (desktop and narrow); the raw
+logs and screenshots stay in `tmp/evidence/M{N}/` (DEC-26).
 **Every feature ships in the panel** (`UI-1`).
 
 Until the installer exists (M3), development runs on the VM's `vps-setup` snapshot, with the daemon,
@@ -145,6 +195,9 @@ Open items / decisions for M3:
 
 Checkpoints: **M3a** installer and hardening code with unit and fake-host tests, local checks only;
 **M3b** scenarios a–h on `dermaga-vm` from `fresh` with the `v0.3.0-rc.2` pre-release.
+
+**Between M3 and M4** (owner decision DEC-25): one separate change upgrades `prettier-plugin-svelte`
+to 4.x, Go to 1.27 and Bun to 1.4.4, each version and checksum taken from a logged query.
 
 ## M4 (0.4.0): First-run setup and panel access
 
