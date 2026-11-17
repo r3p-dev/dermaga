@@ -116,73 +116,36 @@ func TestCLIPanel_InactiveDaemon(t *testing.T) {
 	}
 }
 
-func TestDeriveSSHConfig_WithSSHConnection_PublicIP(t *testing.T) {
-	env := "203.0.113.10 54321 198.51.100.50 2200"
-	info := deriveSSHConfig(env, nil)
+// INST-6 / INST-12: what the installer records is what `dermaga panel` prints.
+func TestCLIInstallSettingsFeedsLaptopCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("XDG_RUNTIME_DIR", filepath.Join(tmpDir, "run"))
 
-	if info.HostName != "198.51.100.50" {
-		t.Errorf("expected HostName 198.51.100.50, got %q", info.HostName)
+	fp := "SHA256:V+KZKBpZYT+xiu/DXAsTjf2LTerWPN+DYUlih/Z1U9A"
+	if err := runInstallSettings([]string{"--ssh-address", "192.168.122.217", "--ssh-port", "4222", "--login-key-fingerprint", fp}); err != nil {
+		t.Fatal(err)
 	}
-	if info.Port != "2200" {
-		t.Errorf("expected Port 2200, got %q", info.Port)
+	st, err := store.Open(config.ResolvePaths().DBPath)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !info.Reliable {
-		t.Errorf("expected Reliable=true for public routable IP")
+	defer st.Close()
+	tg, err := accessTarget(context.Background(), st)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if info.Notice != "" {
-		t.Errorf("expected empty notice for public IP, got %q", info.Notice)
+	if tg.Address != "192.168.122.217" || tg.Port != 4222 || tg.KeyFingerprint != fp {
+		t.Errorf("stored target = %+v", tg)
 	}
-}
 
-func TestDeriveSSHConfig_WithSSHConnection_PrivateIP(t *testing.T) {
-	env := "192.168.122.1 58338 192.168.122.217 4222"
-	info := deriveSSHConfig(env, nil)
-
-	if info.HostName != "192.168.122.217" {
-		t.Errorf("expected HostName 192.168.122.217, got %q", info.HostName)
-	}
-	if info.Port != "4222" {
-		t.Errorf("expected Port 4222, got %q", info.Port)
-	}
-	if info.Reliable {
-		t.Errorf("expected Reliable=false for private IP")
-	}
-	if !strings.Contains(info.Notice, "private or local network address") {
-		t.Errorf("expected notice explaining private address, got %q", info.Notice)
-	}
-}
-
-func TestDeriveSSHConfig_WithoutSSHConnection_CustomPort(t *testing.T) {
-	sshdConfig := `# OpenSSH Daemon Configuration
-Port 4222
-PermitRootLogin no
-`
-	info := deriveSSHConfig("", strings.NewReader(sshdConfig))
-
-	if info.HostName != "<your-server-ip-or-hostname>" {
-		t.Errorf("expected placeholder HostName, got %q", info.HostName)
-	}
-	if info.Port != "4222" {
-		t.Errorf("expected Port 4222 parsed from sshd_config, got %q", info.Port)
-	}
-	if info.Reliable {
-		t.Errorf("expected Reliable=false without active SSH connection")
-	}
-	if !strings.Contains(info.Notice, "No active SSH session detected") {
-		t.Errorf("expected notice for no active session, got %q", info.Notice)
-	}
-}
-
-func TestDeriveSSHConfig_WithoutSSHConnection_DefaultPort(t *testing.T) {
-	info := deriveSSHConfig("", nil)
-
-	if info.HostName != "<your-server-ip-or-hostname>" {
-		t.Errorf("expected placeholder HostName, got %q", info.HostName)
-	}
-	if info.Port != "22" {
-		t.Errorf("expected default Port 22, got %q", info.Port)
-	}
-	if info.Reliable {
-		t.Errorf("expected Reliable=false")
+	for _, bad := range [][]string{
+		{"--ssh-address", "1.2.3.4'; id", "--ssh-port", "4222"},
+		{"--ssh-address", "1.2.3.4", "--ssh-port", "0"},
+		{"--ssh-address", "1.2.3.4", "--ssh-port", "22", "--login-key-fingerprint", "MD5:x"},
+	} {
+		if err := runInstallSettings(bad); err == nil {
+			t.Errorf("accepted %v", bad)
+		}
 	}
 }

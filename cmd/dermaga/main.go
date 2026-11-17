@@ -13,16 +13,19 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
+	"os/user"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"golang.org/x/term"
 
+	"dermaga/internal/access"
 	"dermaga/internal/auth"
 	"dermaga/internal/config"
 	"dermaga/internal/crypto"
+	"dermaga/internal/doctor"
 	"dermaga/internal/host"
 	"dermaga/internal/reconciler"
 	"dermaga/internal/server"
@@ -53,6 +56,10 @@ func main() {
 		err = runAdmin(args, os.Stdin)
 	case "panel":
 		err = runPanel(args)
+	case "doctor":
+		err = runDoctor()
+	case "install-settings":
+		err = runInstallSettings(args)
 	case "reconcile":
 		err = runReconcile(args)
 	case "version", "--version", "-v":
@@ -85,11 +92,13 @@ Commands:
   admin totp disable   Disable TOTP two-factor authentication (recovery)
   panel                Display laptop connection instructions and setup link
   reconcile            Reconcile live units and routing configuration per DEP-10
+  doctor               Run the host health checks (DOC-1)
   version              Print version information
 
 Internal Helpers:
   hook-relay           Forward TCP webhook traffic to local Unix domain socket
   probe                Perform internal HTTP health probe via custom DNS
+  install-settings     Record the SSH address, port and login key (used by the installer)
 `, Version)
 }
 
@@ -127,6 +136,8 @@ func runDaemon(args []string) error {
 	rec := reconciler.New(host.NewRealHost(), st, reconciler.Config{
 		QuadletDir:        paths.QuadletDir,
 		TraefikDynamicDir: paths.TraefikDynamicDir,
+		UserUnitDir:       paths.UserUnitDir,
+		TraefikDir:        paths.TraefikDir,
 	})
 	if recReport, err := rec.Reconcile(context.Background()); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: startup reconciliation encountered error: %v\n", err)
@@ -294,79 +305,73 @@ func runAdmin(args []string, in io.Reader) error {
 	}
 }
 
-type SSHConnectionInfo struct {
-	HostName string
-	Port     string
-	Notice   string
-	Reliable bool
+// accessTarget reads the server address, SSH port and login key that the installer stored (INST-6).
+func accessTarget(ctx context.Context, st *store.Store) (access.Target, error) {
+	var t access.Target
+	var err error
+	if t.Address, err = st.GetSetting(ctx, access.SettingAddress); err != nil {
+		return t, fmt.Errorf("the server address is not recorded yet; run the installer again: %w", err)
+	}
+	port, err := st.GetSetting(ctx, access.SettingPort)
+	if err != nil {
+		return t, fmt.Errorf("the SSH port is not recorded yet; run the installer again: %w", err)
+	}
+	if t.Port, err = strconv.Atoi(port); err != nil {
+		return t, fmt.Errorf("stored SSH port %q is not a number", port)
+	}
+	t.KeyFingerprint, _ = st.GetSetting(ctx, access.SettingKeyFingerprint) // optional
+	if t.ServerHostname, err = shortHostname(); err != nil {
+		return t, err
+	}
+	return t, t.Validate()
 }
 
-func isCarrierGradeNAT(ip net.IP) bool {
-	ip4 := ip.To4()
-	if ip4 == nil {
-		return false
+// shortHostname is the lowercase first label of the hostname, used in the dermaga-<hostname> alias.
+func shortHostname() (string, error) {
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "", fmt.Errorf("reading the hostname: %w", err)
 	}
-	return ip4[0] == 100 && (ip4[1]&0xc0) == 64
+	return strings.ToLower(strings.SplitN(hostname, ".", 2)[0]), nil
 }
 
-func deriveSSHConfig(sshConnectionEnv string, sshdConfigReader io.Reader) SSHConnectionInfo {
-	tokens := strings.Fields(sshConnectionEnv)
-	if len(tokens) >= 4 {
-		serverIP := tokens[2]
-		serverPort := tokens[3]
-		ip := net.ParseIP(serverIP)
-		if ip != nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || isCarrierGradeNAT(ip)) {
-			return SSHConnectionInfo{
-				HostName: serverIP,
-				Port:     serverPort,
-				Reliable: false,
-				Notice:   fmt.Sprintf("Note: The detected connection address (%s) is a private or local network address that may sit behind NAT or a VM bridge.\nIf connecting from outside this local network, replace it with the public IP or hostname you normally use to SSH to this server.", serverIP),
-			}
-		}
-		return SSHConnectionInfo{
-			HostName: serverIP,
-			Port:     serverPort,
-			Reliable: true,
-			Notice:   "",
-		}
+// runInstallSettings is called by the installer (as user server) to record what it asked (INST-6).
+func runInstallSettings(args []string) error {
+	paths := config.ResolvePaths()
+	fs := flag.NewFlagSet("install-settings", flag.ContinueOnError)
+	address := fs.String("ssh-address", "", "public IP or DNS name of the server")
+	port := fs.Int("ssh-port", 0, "SSH port")
+	fingerprint := fs.String("login-key-fingerprint", "", "SHA256 fingerprint of the login key")
+	if err := fs.Parse(args); err != nil {
+		return err
 	}
-
-	// No active SSH session: detect configured sshd port
-	port := "22"
-	if sshdConfigReader != nil {
-		scanner := bufio.NewScanner(sshdConfigReader)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if strings.HasPrefix(line, "#") {
-				continue
-			}
-			parts := strings.Fields(line)
-			if len(parts) >= 2 && strings.EqualFold(parts[0], "Port") {
-				port = parts[1]
-				break
-			}
+	hostname, err := shortHostname()
+	if err != nil {
+		return err
+	}
+	t := access.Target{Address: *address, Port: *port, ServerHostname: hostname, KeyFingerprint: *fingerprint}
+	if err := t.Validate(); err != nil {
+		return err
+	}
+	st, err := store.Open(paths.DBPath)
+	if err != nil {
+		return fmt.Errorf("opening database: %w", err)
+	}
+	defer st.Close()
+	ctx := context.Background()
+	for key, value := range map[string]string{
+		access.SettingAddress:        *address,
+		access.SettingPort:           strconv.Itoa(*port),
+		access.SettingKeyFingerprint: *fingerprint,
+	} {
+		if err := st.SetSetting(ctx, key, value); err != nil {
+			return fmt.Errorf("saving %s: %w", key, err)
 		}
 	}
-
-	return SSHConnectionInfo{
-		HostName: "<your-server-ip-or-hostname>",
-		Port:     port,
-		Reliable: false,
-		Notice:   "Note: No active SSH session detected (SSH_CONNECTION environment variable not set).\nUse the hostname or IP address you normally use to SSH to this server.",
-	}
+	return nil
 }
 
-func openSSHDConfig() (*os.File, error) {
-	files, _ := filepath.Glob("/etc/ssh/sshd_config.d/*.conf")
-	files = append(files, "/etc/ssh/sshd_config")
-	for _, p := range files {
-		if f, err := os.Open(p); err == nil {
-			return f, nil
-		}
-	}
-	return nil, os.ErrNotExist
-}
-
+// runPanel prints the laptop command (LAP-1) and where to open the panel (INST-12, SRV-1).
 func runPanel(args []string) error {
 	paths := config.ResolvePaths()
 
@@ -380,35 +385,28 @@ func runPanel(args []string) error {
 		return nil
 	}
 
-	var sshdReader io.Reader
-	if f, err := openSSHDConfig(); err == nil {
-		defer f.Close()
-		sshdReader = f
+	st, err := store.Open(paths.DBPath)
+	if err != nil {
+		return fmt.Errorf("opening database: %w", err)
 	}
-	info := deriveSSHConfig(os.Getenv("SSH_CONNECTION"), sshdReader)
+	defer st.Close()
+	t, err := accessTarget(context.Background(), st)
+	if err != nil {
+		return err
+	}
+	cmd, err := access.LaptopCommand(t)
+	if err != nil {
+		return err
+	}
 
-	fmt.Println("=== dermaga Panel Access ===")
+	fmt.Println("On your laptop, paste this command once (bash, zsh or fish):")
 	fmt.Println()
-	fmt.Println("1. On your laptop, add or verify this configuration in ~/.ssh/config:")
+	fmt.Println(cmd)
 	fmt.Println()
-	fmt.Println("   Host dermaga")
-	fmt.Printf("       HostName %s\n", info.HostName)
-	fmt.Println("       User server")
-	fmt.Printf("       Port %s\n", info.Port)
-	fmt.Println("       LocalForward 7070 127.0.0.1:7070")
-	fmt.Println("       ServerAliveInterval 30")
-	fmt.Println("       ServerAliveCountMax 3")
+	fmt.Printf("It adds a \"Host dermaga\" entry for server@%s port %d to ~/.ssh/config.\n", t.Address, t.Port)
+	fmt.Printf("From then on: ssh dermaga, then open %s in your browser.\n", access.PanelURL)
 	fmt.Println()
-	if info.Notice != "" {
-		fmt.Println(info.Notice)
-		fmt.Println()
-	}
-	fmt.Println("2. Connect from your laptop:")
-	fmt.Println("   ssh dermaga")
-	fmt.Println()
-	fmt.Println("3. Open the panel in your browser:")
-	fmt.Println("   http://localhost:7070")
-	fmt.Println()
+	fmt.Println("Lost this? Run `dermaga panel` on the server.")
 	return nil
 }
 
@@ -535,6 +533,20 @@ func runProbe(args []string) error {
 	return fmt.Errorf("health probe returned non-2xx status: %d", resp.StatusCode)
 }
 
+// runDoctor prints the health checks and fails when one of them fails (INST-11).
+func runDoctor() error {
+	u, err := user.Current()
+	if err != nil {
+		return fmt.Errorf("reading the current user: %w", err)
+	}
+	results := doctor.Checker{Host: host.NewRealHost(), User: u.Username, Home: u.HomeDir}.Run(context.Background())
+	fmt.Print(doctor.Print(results))
+	if doctor.Failed(results) {
+		return errors.New("some checks failed; see the hints above")
+	}
+	return nil
+}
+
 func runReconcile(args []string) error {
 	paths := config.ResolvePaths()
 
@@ -542,6 +554,8 @@ func runReconcile(args []string) error {
 	dbPath := fs.String("db", paths.DBPath, "Path to SQLite database")
 	quadletDir := fs.String("quadlet-dir", paths.QuadletDir, "Path to Quadlet units directory")
 	traefikDir := fs.String("traefik-dir", paths.TraefikDynamicDir, "Path to Traefik dynamic configuration directory")
+	userUnitDir := fs.String("user-unit-dir", paths.UserUnitDir, "Path to systemd user units (Traefik sockets); empty skips the Traefik step")
+	traefikConfigDir := fs.String("traefik-config-dir", paths.TraefikDir, "Path to Traefik static config and acme.json; empty skips the Traefik step")
 	prune := fs.Bool("prune", false, "Allow pruning of orphan units even if database contains 0 active apps")
 	_ = fs.Parse(args)
 
@@ -555,6 +569,8 @@ func runReconcile(args []string) error {
 		QuadletDir:        *quadletDir,
 		TraefikDynamicDir: *traefikDir,
 		AllowEmptyDBPrune: *prune,
+		UserUnitDir:       *userUnitDir,
+		TraefikDir:        *traefikConfigDir,
 	})
 
 	report, err := rec.Reconcile(context.Background())

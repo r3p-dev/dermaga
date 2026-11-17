@@ -1,0 +1,68 @@
+# Command: podman run --rm -v <tmp>:/w:Z docker.io/library/debian:trixie-slim@sha256:a72b44... bash /w/run.sh  (LAP-1 command from internal/access, pasted twice in zsh and dash with a throwaway HOME)
+# Commit: a88fe9f
+# Status: dirty (M3a work in progress)
+# Timestamp: 2026-11-17T08:42:28+07:00
+sh is: /usr/bin/dash
+zsh 5.9 (x86_64-debian-linux-gnu)
+OpenSSH_10.0p2 Debian-7+deb13u4, OpenSSL 3.5.7 9 Jun 2026
+=== zsh, existing unmarked Host dermaga, pasted twice
+Your previous ssh config is saved as /tmp/tmp.hTeQu0aarx/.ssh/config.dermaga-backup
+Saved. From now on: ssh dermaga-dermaga-vm, then open http://localhost:7070
+Already saved. From now on: ssh dermaga-dermaga-vm, then open http://localhost:7070
+--- resulting ~/.ssh/config
+# dermaga laptop access: server@192.168.122.217 port 4222 as dermaga-dermaga-vm
+Host dermaga-dermaga-vm
+    HostName 192.168.122.217
+    Port 4222
+    User server
+    LocalForward 7070 127.0.0.1:7070
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
+    IdentityFile "/tmp/tmp.hTeQu0aarx/.ssh/id_ed25519"
+    IdentitiesOnly yes
+# end of dermaga laptop access
+
+Host *
+
+Host dermaga
+    HostName 198.51.100.7
+--- ssh -G dermaga-dermaga-vm
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+user server
+hostname 192.168.122.217
+port 4222
+identitiesonly yes
+localforward 7070 [127.0.0.1]:7070
+identityfile /tmp/tmp.hTeQu0aarx/.ssh/id_ed25519
+--- blocks: 1, backup: Host dermaga
+=== sh, existing unmarked Host dermaga, pasted twice
+Your previous ssh config is saved as /tmp/tmp.OepzPvmkbw/.ssh/config.dermaga-backup
+Saved. From now on: ssh dermaga-dermaga-vm, then open http://localhost:7070
+Already saved. From now on: ssh dermaga-dermaga-vm, then open http://localhost:7070
+--- resulting ~/.ssh/config
+# dermaga laptop access: server@192.168.122.217 port 4222 as dermaga-dermaga-vm
+Host dermaga-dermaga-vm
+    HostName 192.168.122.217
+    Port 4222
+    User server
+    LocalForward 7070 127.0.0.1:7070
+    ServerAliveInterval 30
+    ServerAliveCountMax 3
+    IdentityFile "/tmp/tmp.OepzPvmkbw/.ssh/id_ed25519"
+    IdentitiesOnly yes
+# end of dermaga laptop access
+
+Host *
+
+Host dermaga
+    HostName 198.51.100.7
+--- ssh -G dermaga-dermaga-vm
+Pseudo-terminal will not be allocated because stdin is not a terminal.
+user server
+hostname 192.168.122.217
+port 4222
+identitiesonly yes
+localforward 7070 [127.0.0.1]:7070
+identityfile /tmp/tmp.OepzPvmkbw/.ssh/id_ed25519
+--- blocks: 1, backup: Host dermaga
+exit=0
