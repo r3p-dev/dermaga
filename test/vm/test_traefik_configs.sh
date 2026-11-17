@@ -11,9 +11,10 @@ GOLDEN_DIR="$PROJECT_ROOT/internal/traefik/testdata"
 echo "=== Traefik Golden Configurations Verification on dermaga-vm ==="
 echo "Timestamp: $(date -Is)"
 echo "Git commit: $(git -C "$PROJECT_ROOT" rev-parse --short HEAD)"
-if [[ -n "$(git -C "$PROJECT_ROOT" status --short)" ]]; then
+STATUS_OUTPUT="$(git -C "$PROJECT_ROOT" status --short -- ':!docs/evidence/M2/logs')"
+if [[ -n "$STATUS_OUTPUT" ]]; then
     echo "Working tree status: dirty"
-    git -C "$PROJECT_ROOT" status --short
+    echo "$STATUS_OUTPUT"
 else
     echo "Working tree status: clean"
 fi
@@ -32,6 +33,7 @@ echo
 # 2. Setup isolated remote environment on dermaga-vm
 REMOTE_TMP=$(ssh dermaga-vm 'mktemp -d /tmp/traefik-verify-XXXXXX')
 NET_NAME="test-traefik-net-$$"
+NET_ALLOW="test-traefik-allow-$$"
 TRAEFIK_CONT="test-traefik-$$"
 BACKEND_MAIN="test-backend-main-$$"
 BACKEND_CANDIDATE="test-backend-cand-$$"
@@ -46,7 +48,7 @@ cleanup() {
     echo "Cleaning up throwaway test containers and network on dermaga-vm..."
     ssh dermaga-vm "
         podman rm -f $TRAEFIK_CONT $BACKEND_MAIN $BACKEND_CANDIDATE $BACKEND_PORT80 $BACKEND_PORT3000 $BACKEND_PORT4000 $BACKEND_PORT9000 $BACKEND_PORT8443 2>/dev/null || true
-        podman network rm $NET_NAME 2>/dev/null || true
+        podman network rm $NET_NAME $NET_ALLOW 2>/dev/null || true
         rm -rf $REMOTE_TMP
     "
     echo "Cleanup complete (§8: idempotent, no residue)."
@@ -100,6 +102,32 @@ EOF
 chmod +x $REMOTE_TMP/responder_candidate.sh
 "
 
+ssh dermaga-vm "cat > $REMOTE_TMP/check_router_error.py" << 'EOF'
+import json, sys, time, urllib.request
+
+router = sys.argv[1]
+expected_substr = sys.argv[2]
+url = f"http://127.0.0.1:18088/api/http/routers/{router}@file"
+
+for _ in range(40):
+    try:
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req) as resp:
+            data = json.loads(resp.read().decode())
+            is_disabled = (data.get("status") == "disabled")
+            errors = data.get("error", [])
+            has_err = any(expected_substr in e for e in errors)
+            if is_disabled and has_err:
+                print("; ".join(errors))
+                sys.exit(0)
+    except Exception:
+        pass
+    time.sleep(0.1)
+
+print(f"FAIL: router {router} was not disabled or did not report error containing {expected_substr}")
+sys.exit(1)
+EOF
+
 # 4. Generate static config on non-colliding ports with local ACME stub (never real Let's Encrypt)
 ssh dermaga-vm "cat << 'EOF' > $REMOTE_TMP/traefik.json
 {
@@ -147,9 +175,14 @@ for f in "$GOLDEN_DIR"/*.golden; do
     scp -q "$f" "dermaga-vm:$REMOTE_TMP/dynamic/$base.yml"
 done
 
-# 6. Create test bridge network on dermaga-vm
-echo "Creating isolated bridge network $NET_NAME..."
-ssh dermaga-vm "podman network create $NET_NAME"
+# 6. Create test bridge networks on dermaga-vm
+# Primary network uses 10.99.1.0/24 so host port forwarding (from gateway 10.99.1.1) is outside the allowlist.
+echo "Creating isolated primary bridge network $NET_NAME (subnet 10.99.1.0/24)..."
+ssh dermaga-vm "podman network create --subnet 10.99.1.0/24 $NET_NAME"
+
+# Allowed-source network uses 192.168.1.0/24 to simulate an allowed client per allowlist.golden
+echo "Creating isolated allowed-source network $NET_ALLOW (subnet 192.168.1.0/24)..."
+ssh dermaga-vm "podman network create --subnet 192.168.1.0/24 $NET_ALLOW"
 
 # 7. Start backend responders with network aliases matching the services in the golden files
 echo "Starting throwaway backend echo responders on $NET_NAME..."
@@ -220,6 +253,8 @@ ssh dermaga-vm "
       -p 18080:18080 -p 18443:18443 -p 18088:18088 \
       $PINNED_IMAGE \
       --configfile=/etc/traefik/traefik.json
+
+    podman network connect $NET_ALLOW $TRAEFIK_CONT
 "
 
 # 9. Poll API until configurations are loaded (polling, no arbitrary sleep)
@@ -337,12 +372,22 @@ else
 fi
 
 # F. IP Allowlist
-echo -n "6. IP Allowlist rejection from non-allowed client (127.0.0.1): "
+echo -n "6a. IP Allowlist rejection from non-allowed client (10.99.1.1 via host port): "
 ALLOW_CODE=$(ssh dermaga-vm "curl -k -s -o /dev/null -w '%{http_code}' --resolve admin.example.com:18443:127.0.0.1 https://admin.example.com:18443/")
 if [[ "$ALLOW_CODE" == "403" ]]; then
     echo "PASS (HTTP 403 Forbidden)"
 else
     echo "FAIL (HTTP $ALLOW_CODE, expected 403)"
+    exit 1
+fi
+
+echo -n "6b. IP Allowlist acceptance from allowed client (192.168.1.50 in 192.168.1.0/24): "
+TRAEFIK_ALLOW_IP=$(ssh dermaga-vm "podman inspect $TRAEFIK_CONT --format '{{range \$net, \$conf := .NetworkSettings.Networks}}{{if eq \$net \"$NET_ALLOW\"}}{{\$conf.IPAddress}}{{end}}{{end}}'")
+ALLOW_OK_CODE=$(ssh dermaga-vm "podman run --rm --network $NET_ALLOW --ip 192.168.1.50 docker.io/curlimages/curl:8.12.1 -k -s -o /dev/null -w '%{http_code}' --resolve admin.example.com:18443:$TRAEFIK_ALLOW_IP https://admin.example.com:18443/")
+if [[ "$ALLOW_OK_CODE" == "200" ]]; then
+    echo "PASS (HTTP 200 OK)"
+else
+    echo "FAIL (HTTP $ALLOW_OK_CODE, expected 200)"
     exit 1
 fi
 
@@ -419,40 +464,63 @@ else
     exit 1
 fi
 
-# 11. Negative Control: Deliberately Broken Traefik Configuration
+# 11. Negative Controls: Missing Middleware and Missing Service Detection
 echo
-echo "--- Negative Control: Deliberately Broken Traefik Configuration ---"
-ssh dermaga-vm "cat << 'EOF' > $REMOTE_TMP/dynamic/broken-router.yml
+echo "--- Negative Controls: Missing Middleware and Missing Service Detection ---"
+
+# Negative Case 1: Router referencing missing middleware with valid service
+echo -n "Negative control 1 (missing middleware detection): "
+ssh dermaga-vm "cat > $REMOTE_TMP/dynamic/broken-middleware.yml" << 'EOF'
+# managed by dermaga; app=broken-middleware
 {
-  \"http\": {
-    \"routers\": {
-      \"app-broken-router\": {
-        \"entryPoints\": [\"websecure\"],
-        \"rule\": \"Host(\`broken.example.com\`)\",
-        \"service\": \"nonexistent-service\",
-        \"middlewares\": [\"nonexistent-middleware\"],
-        \"tls\": {\"certResolver\": \"le\"}
+  "http": {
+    "routers": {
+      "app-broken-middleware": {
+        "entryPoints": ["websecure"],
+        "rule": "Host(`broken-mid.example.com`)",
+        "service": "app-portfolio",
+        "middlewares": ["nonexistent-middleware"],
+        "tls": {"certResolver": "le"}
       }
     }
   }
 }
-EOF"
+EOF
 
-echo "Polling API for broken router error detection..."
-ssh dermaga-vm "bash -c '
-for i in {1..30}; do
-  status=\$(curl -s http://127.0.0.1:18088/api/http/routers/app-broken-router@file || true)
-  if echo \"\$status\" | grep -q \"nonexistent-middleware@file\"; then
-    echo \"Negative control router successfully flagged with error:\"
-    echo \"\$status\"
-    exit 0
-  fi
-  sleep 0.1
-done
-echo \"ERROR: Traefik failed to flag broken router as errored!\"
-exit 1
-'"
-echo "Negative control PASSED: router referencing missing middleware was flagged by Traefik API."
+ERR1=$(ssh dermaga-vm "python3 $REMOTE_TMP/check_router_error.py app-broken-middleware nonexistent-middleware")
+if [[ $? -eq 0 && -n "$ERR1" ]]; then
+    echo "PASS (router disabled, error: $ERR1)"
+else
+    echo "FAIL: $ERR1"
+    exit 1
+fi
+
+# Negative Case 2: Router referencing missing service with valid middleware
+echo -n "Negative control 2 (missing service detection): "
+ssh dermaga-vm "cat > $REMOTE_TMP/dynamic/broken-service.yml" << 'EOF'
+# managed by dermaga; app=broken-service
+{
+  "http": {
+    "routers": {
+      "app-broken-service": {
+        "entryPoints": ["websecure"],
+        "rule": "Host(`broken-svc.example.com`)",
+        "service": "nonexistent-service",
+        "middlewares": ["app-portfolio-headers"],
+        "tls": {"certResolver": "le"}
+      }
+    }
+  }
+}
+EOF
+
+ERR2=$(ssh dermaga-vm "python3 $REMOTE_TMP/check_router_error.py app-broken-service nonexistent-service")
+if [[ $? -eq 0 && -n "$ERR2" ]]; then
+    echo "PASS (router disabled, error: $ERR2)"
+else
+    echo "FAIL: $ERR2"
+    exit 1
+fi
 
 echo
 echo "=== All Traefik Golden Configurations Verified: PASS ==="

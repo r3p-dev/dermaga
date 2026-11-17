@@ -11,9 +11,10 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 echo "=== DEP-10 Reconciliation Verification on dermaga-vm ==="
 echo "Timestamp: $(date -Is)"
 echo "Git commit: $(git -C "$PROJECT_ROOT" rev-parse --short HEAD)"
-if [[ -n "$(git -C "$PROJECT_ROOT" status --short)" ]]; then
+STATUS_OUTPUT="$(git -C "$PROJECT_ROOT" status --short -- ':!docs/evidence/M2/logs')"
+if [[ -n "$STATUS_OUTPUT" ]]; then
     echo "Working tree status: dirty"
-    git -C "$PROJECT_ROOT" status --short
+    echo "$STATUS_OUTPUT"
 else
     echo "Working tree status: clean"
 fi
@@ -25,8 +26,14 @@ TMP_BIN=$(mktemp /tmp/dermaga-reconcile-bin-XXXXXX)
 trap 'rm -f "$TMP_BIN"' EXIT
 
 echo "Building dermaga binary for remote VM..."
+if [ ! -d "$PROJECT_ROOT/internal/server/dist" ]; then
+    echo "Building UI assets..."
+    (cd "$PROJECT_ROOT" && make ui)
+fi
+COMMIT=$(git -C "$PROJECT_ROOT" rev-parse --short HEAD 2>/dev/null || echo "unknown")
+VERSION=$(git -C "$PROJECT_ROOT" describe --tags --always 2>/dev/null || echo "dev")
 (cd "$PROJECT_ROOT" && CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-    -ldflags "-X main.Version=dev -X main.Commit=$(git -C "$PROJECT_ROOT" rev-parse --short HEAD)" \
+    -ldflags "-s -w -X main.Version=${VERSION} -X main.Commit=${COMMIT}" \
     -o "$TMP_BIN" ./cmd/dermaga)
 echo "Build complete."
 
@@ -100,14 +107,34 @@ ssh dermaga-vm "
 # Case 5: Foreign files that dermaga does not own
 echo "Staging scenario files in dermaga's directories..."
 ssh dermaga-vm "
-    # Case 1: Orphan files (belong to non-existent apps)
-    echo 'orphan container' > $QUADLET_DIR/app-orphan-r1.container
-    echo 'orphan traefik' > $TRAEFIK_DIR/app-orphan.yml
+    # Case 1: Orphan files (belong to non-existent apps, WITH Dermaga marker)
+    echo -e '# managed by dermaga; app=orphan\n[Container]\nContainerName=app-orphan-r1\nImage=localhost/orphan:r1' > $QUADLET_DIR/app-orphan-r1.container
+    echo -e '# managed by dermaga; app=orphan\n{\"http\":{}}' > $TRAEFIK_DIR/app-orphan.yml
 
-    # Case 4: Leftover verify router from interrupted deploy
-    echo 'leftover verify router' > $TRAEFIK_DIR/app-demo-verify.yml
+    # Case 4: Leftover verify router from interrupted deploy (WITH Dermaga marker)
+    echo -e '# managed by dermaga; app=demo\n{\"http\":{}}' > $TRAEFIK_DIR/app-demo-verify.yml
 
     # Case 5: Foreign files that dermaga does not own
+    # 5a. Foreign unit that matches app-*.container naming but lacks Dermaga marker!
+    cat << 'EOF' > $QUADLET_DIR/app-custom-vpn.container
+[Unit]
+Description=Unmanaged custom VPN with dermaga-like prefix
+
+[Container]
+ContainerName=custom-vpn
+Image=docker.io/alpine/socat:latest
+EOF
+
+    # 5b. Foreign config that matches app-*.yml naming but lacks Dermaga marker!
+    cat << 'EOF' > $TRAEFIK_DIR/app-custom-metrics.yml
+http:
+  services:
+    custom-metrics:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:9090"
+EOF
+
     cat << 'EOF' > $QUADLET_DIR/custom-vpn.container
 [Unit]
 Description=Unmanaged custom VPN
@@ -126,6 +153,20 @@ http:
           - url: "http://127.0.0.1:9090"
 EOF
 "
+
+# --- Negative Control 1: Proof that Acceptance Assertions Fail Before Reconciliation ---
+echo
+echo "--- Negative Control 1: Verification that assertions fail on un-reconciled state ---"
+set +e
+ssh dermaga-vm "[ ! -f $QUADLET_DIR/app-orphan-r1.container ] && [ -f $QUADLET_DIR/app-demo-r1.container ]"
+PRE_CHECK_EXIT=$?
+set -e
+if [ "$PRE_CHECK_EXIT" -ne 0 ]; then
+    echo "Negative control 1 PASSED: assertion block correctly reports failure on un-reconciled state (exit code: $PRE_CHECK_EXIT)."
+else
+    echo "FAIL: Expected assertions to fail before reconciliation, but they passed!"
+    exit 1
+fi
 
 # 6. Run reconciliation command on dermaga-vm
 echo
@@ -223,9 +264,26 @@ else
     exit 1
 fi
 
-echo -n "5d. Foreign files reported in output: "
+echo -n "5d. Foreign file with dermaga-like naming untouched (app-custom-vpn.container): "
+if ssh dermaga-vm "grep -q 'Description=Unmanaged custom VPN with dermaga-like prefix' $QUADLET_DIR/app-custom-vpn.container"; then
+    echo "PASS (app-custom-vpn.container untouched)"
+else
+    echo "FAIL: app-custom-vpn.container was modified or deleted!"
+    exit 1
+fi
+
+echo -n "5e. Foreign config with dermaga-like naming untouched (app-custom-metrics.yml): "
+if ssh dermaga-vm "grep -q 'custom-metrics' $TRAEFIK_DIR/app-custom-metrics.yml"; then
+    echo "PASS (app-custom-metrics.yml untouched)"
+else
+    echo "FAIL: app-custom-metrics.yml was modified or deleted!"
+    exit 1
+fi
+
+echo -n "5f. Foreign files reported in output: "
 if echo "$RECONCILE_OUTPUT" | grep -q "custom-vpn.container" && \
-   echo "$RECONCILE_OUTPUT" | grep -q "custom-metrics.yml" && \
+   echo "$RECONCILE_OUTPUT" | grep -q "app-custom-vpn.container" && \
+   echo "$RECONCILE_OUTPUT" | grep -q "app-custom-metrics.yml" && \
    echo "$RECONCILE_OUTPUT" | grep -q "traefik.container"; then
     echo "PASS (All foreign files accurately reported)"
 else
@@ -233,18 +291,58 @@ else
     exit 1
 fi
 
-# 8. Negative Control: Deliberately Broken Inaccessible Database
+# 8. Negative Control 2: Inaccessible Database Non-Zero Exit
 echo
-echo "--- Negative Control: Deliberately Broken Inaccessible Database ---"
-NEG_OUTPUT=$(ssh dermaga-vm "$REMOTE_BIN reconcile --db /nonexistent/dir/corrupt.db --quadlet-dir $QUADLET_DIR --traefik-dir $TRAEFIK_DIR 2>&1 || true")
+echo "--- Negative Control 2: Inaccessible Database Non-Zero Exit ---"
+set +e
+NEG_OUTPUT=$(ssh dermaga-vm "$REMOTE_BIN reconcile --db /nonexistent/dir/corrupt.db --quadlet-dir $QUADLET_DIR --traefik-dir $TRAEFIK_DIR 2>&1")
+NEG_EXIT=$?
+set -e
 echo "Negative control execution output:"
 echo "$NEG_OUTPUT"
-if echo "$NEG_OUTPUT" | grep -qi "error"; then
-    echo "Negative control PASSED: reconciler failed with non-zero exit on inaccessible database."
+if [ "$NEG_EXIT" -ne 0 ]; then
+    echo "Negative control 2 PASSED: reconciler exited with non-zero code ($NEG_EXIT) on inaccessible database."
 else
-    echo "FAIL: Negative control expected failure but succeeded!"
+    echo "FAIL: Negative control expected non-zero exit but got 0!"
     exit 1
 fi
+
+# 9. Verification of Safe Default on Empty Database
+echo
+echo "--- Verification of Safe Default on Empty Database ---"
+EMPTY_DIR=$(ssh dermaga-vm 'mktemp -d /tmp/empty-db-XXXXXX')
+ssh dermaga-vm "python3 - << 'EOF'
+import sqlite3
+conn = sqlite3.connect('$EMPTY_DIR/empty.db')
+with open('$REMOTE_TMP/schema.sql') as f:
+    conn.executescript(f.read())
+conn.cursor().execute('INSERT INTO schema_migrations (version) VALUES (1);')
+conn.commit()
+conn.close()
+EOF
+"
+
+# Stage managed files that would be pruned if safe default didn't protect them
+ssh dermaga-vm "
+    echo -e '# managed by dermaga; app=legacy\n[Container]\nContainerName=app-legacy-r1\nImage=localhost/legacy:r1' > $QUADLET_DIR/app-legacy-r1.container
+    echo -e '# managed by dermaga; app=legacy\n{\"http\":{}}' > $TRAEFIK_DIR/app-legacy.yml
+"
+
+SAFE_OUT=$(ssh dermaga-vm "$REMOTE_BIN reconcile --db $EMPTY_DIR/empty.db --quadlet-dir $QUADLET_DIR --traefik-dir $TRAEFIK_DIR 2>&1")
+echo "$SAFE_OUT"
+
+if ssh dermaga-vm "[ -f $QUADLET_DIR/app-legacy-r1.container ] && [ -f $TRAEFIK_DIR/app-legacy.yml ]"; then
+    echo 'Safe default PASSED: managed units preserved when database active app count is 0.'
+else
+    echo 'FAIL: Safe default failed: managed units were pruned on empty database!'
+    exit 1
+fi
+
+# Cleanup temporary empty db and legacy files
+ssh dermaga-vm "
+    rm -f $QUADLET_DIR/app-legacy-r1.container $TRAEFIK_DIR/app-legacy.yml
+    rm -rf $EMPTY_DIR
+"
 
 echo
 echo "=== All DEP-10 Reconciliation Acceptance Cases Verified: PASS ==="
