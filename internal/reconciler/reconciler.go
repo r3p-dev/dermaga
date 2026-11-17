@@ -23,6 +23,10 @@ type Config struct {
 	QuadletDir        string
 	TraefikDynamicDir string
 	AllowEmptyDBPrune bool
+	// UserUnitDir (~/.config/systemd/user) and TraefikDir (~/.local/share/dermaga/traefik) hold
+	// the Traefik sockets and static config. When either is empty the Traefik step is skipped.
+	UserUnitDir string
+	TraefikDir  string
 }
 
 // Report records the outcome of a reconciliation pass (DEP-10).
@@ -113,6 +117,10 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 			// web.network exists without dermaga marker: foreign!
 			report.ForeignFilesReported = append(report.ForeignFilesReported, fname)
 			continue
+		}
+
+		if fname == quadlet.TraefikContainerFile && r.traefikEnabled() {
+			continue // handled by ensureTraefik
 		}
 
 		if strings.HasPrefix(fname, name.AppPrefix) && strings.HasSuffix(fname, ".container") {
@@ -211,10 +219,38 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 		}
 	}
 
+	// 2b'. Traefik units and static config (HOST-6)
+	traefikOwned, traefikChanged := false, false
+	if r.traefikEnabled() {
+		traefikOwned, traefikChanged, err = r.ensureTraefik(report)
+		if err != nil {
+			return nil, err
+		}
+		if traefikChanged {
+			daemonReloadNeeded = true
+		}
+	}
+
 	// 2c. Reload systemd daemon if Quadlet units changed
 	if daemonReloadNeeded {
 		if _, err := r.host.RunCommand(ctx, "systemctl", "--user", "daemon-reload"); err != nil {
 			return nil, fmt.Errorf("reloading systemd user daemon: %w", err)
+		}
+	}
+
+	// 2d. Start Traefik without blocking: the first start pulls the image and the daemon must
+	// not wait on systemctl start (CONVENTIONS §4).
+	if traefikOwned {
+		if _, err := r.host.RunCommand(ctx, "systemctl", "--user", "enable", "--now",
+			quadlet.TraefikHTTPSocketFile, quadlet.TraefikHTTPSSocketFile); err != nil {
+			return nil, fmt.Errorf("enabling traefik sockets: %w", err)
+		}
+		action := "start"
+		if traefikChanged {
+			action = "restart"
+		}
+		if _, err := r.host.RunCommand(ctx, "systemctl", "--user", action, "--no-block", quadlet.TraefikServiceName); err != nil {
+			return nil, fmt.Errorf("starting traefik: %w", err)
 		}
 	}
 
@@ -357,6 +393,71 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 	}
 
 	return report, nil
+}
+
+func (r *Reconciler) traefikEnabled() bool {
+	return r.cfg.UserUnitDir != "" && r.cfg.TraefikDir != ""
+}
+
+// ensureTraefik writes the Traefik container unit, its two sockets and its static config when
+// they are missing, or when dermaga owns them and their content is out of date (a new dermaga
+// release can pin a new image). A file without dermaga's marker is foreign: reported, never
+// touched, and Traefik is then not started by dermaga (e.g. vps-setup.sh's own Traefik).
+func (r *Reconciler) ensureTraefik(report *Report) (owned, changed bool, err error) {
+	container, err := quadlet.RenderTraefik(quadlet.TraefikSpec{
+		Image:      traefik.Image,
+		ConfigDir:  r.cfg.TraefikDir,
+		DynamicDir: r.cfg.TraefikDynamicDir,
+	})
+	if err != nil {
+		return false, false, fmt.Errorf("rendering traefik unit: %w", err)
+	}
+	httpSocket, err := quadlet.RenderSocket(quadlet.TraefikHTTPSocketFile, quadlet.TraefikHTTPSocket())
+	if err != nil {
+		return false, false, fmt.Errorf("rendering traefik http socket: %w", err)
+	}
+	httpsSocket, err := quadlet.RenderSocket(quadlet.TraefikHTTPSSocketFile, quadlet.TraefikHTTPSSocket())
+	if err != nil {
+		return false, false, fmt.Errorf("rendering traefik https socket: %w", err)
+	}
+	static, err := traefik.RenderStatic(traefik.StaticSpec{ACMEStorage: "/etc/traefik/acme.json"})
+	if err != nil {
+		return false, false, fmt.Errorf("rendering traefik static config: %w", err)
+	}
+
+	files := []struct {
+		path  string
+		data  []byte
+		owned func(string) bool
+	}{
+		{filepath.Join(r.cfg.QuadletDir, quadlet.TraefikContainerFile), container,
+			func(c string) bool { return quadlet.HasUnitMarker(c, quadlet.TraefikContainerFile) }},
+		{filepath.Join(r.cfg.UserUnitDir, quadlet.TraefikHTTPSocketFile), httpSocket,
+			func(c string) bool { return quadlet.HasUnitMarker(c, quadlet.TraefikHTTPSocketFile) }},
+		{filepath.Join(r.cfg.UserUnitDir, quadlet.TraefikHTTPSSocketFile), httpsSocket,
+			func(c string) bool { return quadlet.HasUnitMarker(c, quadlet.TraefikHTTPSSocketFile) }},
+		{filepath.Join(r.cfg.TraefikDir, "traefik.yml"), static,
+			func(c string) bool { first, _, _ := strings.Cut(c, "\n"); return first == traefik.StaticMarker() }},
+	}
+
+	owned = true
+	for _, f := range files {
+		current, readErr := r.host.ReadFile(f.path)
+		switch {
+		case readErr == nil && string(current) == string(f.data):
+			continue
+		case readErr == nil && !f.owned(string(current)):
+			report.ForeignFilesReported = append(report.ForeignFilesReported, filepath.Base(f.path))
+			owned = false
+			continue
+		}
+		if err := r.host.WriteFileAtomic(f.path, f.data, 0644); err != nil {
+			return false, false, fmt.Errorf("writing %s: %w", f.path, err)
+		}
+		report.FilesReRendered = append(report.FilesReRendered, filepath.Base(f.path))
+		changed = true
+	}
+	return owned, changed, nil
 }
 
 // parseContainerFilename parses app-<name>-r<num>.container.

@@ -14,6 +14,8 @@ type Paths struct {
 	DaemonSock        string
 	HookSock          string
 	QuadletDir        string
+	UserUnitDir       string
+	TraefikDir        string
 	TraefikDynamicDir string
 }
 
@@ -51,6 +53,8 @@ func ResolvePaths() Paths {
 		DaemonSock:        filepath.Join(socketDir, "daemon.sock"),
 		HookSock:          filepath.Join(socketDir, "hooks.sock"),
 		QuadletDir:        filepath.Join(configHome, "containers", "systemd"),
+		UserUnitDir:       filepath.Join(configHome, "systemd", "user"),
+		TraefikDir:        filepath.Join(dataHome, "dermaga", "traefik"),
 		TraefikDynamicDir: filepath.Join(dataHome, "dermaga", "traefik", "dynamic"),
 	}
 }

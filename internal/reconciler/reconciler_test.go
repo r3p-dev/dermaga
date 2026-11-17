@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"dermaga/internal/host"
@@ -526,5 +527,122 @@ func TestReconcile_EmptyDBWithPruneFlag(t *testing.T) {
 	}
 	if _, err := fh.ReadFile(managedTraefik); err == nil {
 		t.Errorf("managedTraefik still exists on disk")
+	}
+}
+
+func traefikTestConfig(t *testing.T) (*store.Store, *host.FakeHost, reconciler.Config) {
+	st, fh, cfg := setupTestEnvironment(t)
+	cfg.UserUnitDir = "/home/server/.config/systemd/user"
+	cfg.TraefikDir = "/home/server/.local/share/dermaga/traefik"
+	return st, fh, cfg
+}
+
+func systemctlCalls(fh *host.FakeHost) []string {
+	var calls []string
+	for _, c := range fh.Commands {
+		if c.Name == "systemctl" {
+			calls = append(calls, strings.Join(c.Args, " "))
+		}
+	}
+	return calls
+}
+
+// HOST-6 / NFR-3: a fresh host gets Traefik's units and static config, and Traefik is started
+// without blocking the daemon.
+func TestReconcile_TraefikInstalledAndStarted(t *testing.T) {
+	st, fh, cfg := traefikTestConfig(t)
+	report, err := reconciler.New(fh, st, cfg).Reconcile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{
+		filepath.Join(cfg.QuadletDir, "traefik.container"),
+		filepath.Join(cfg.UserUnitDir, "traefik-http.socket"),
+		filepath.Join(cfg.UserUnitDir, "traefik-https.socket"),
+		filepath.Join(cfg.TraefikDir, "traefik.yml"),
+	} {
+		if _, err := fh.ReadFile(p); err != nil {
+			t.Errorf("%s not written: %v", p, err)
+		}
+	}
+	static, _ := fh.ReadFile(filepath.Join(cfg.TraefikDir, "traefik.yml"))
+	if !strings.Contains(string(static), `"storage": "/etc/traefik/acme.json"`) || strings.Contains(string(static), `"email"`) {
+		t.Errorf("unexpected static config:\n%s", static)
+	}
+	want := []string{
+		"--user daemon-reload",
+		"--user enable --now traefik-http.socket traefik-https.socket",
+		"--user restart --no-block traefik.service",
+	}
+	if got := systemctlCalls(fh); strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("systemctl calls = %q, want %q", got, want)
+	}
+	if len(report.ForeignFilesReported) != 0 {
+		t.Errorf("unexpected foreign files: %v", report.ForeignFilesReported)
+	}
+
+	// A second pass changes nothing and only makes sure Traefik is started.
+	fh.Commands = nil
+	report, err = reconciler.New(fh, st, cfg).Reconcile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(report.FilesReRendered) != 0 {
+		t.Errorf("second pass re-rendered %v", report.FilesReRendered)
+	}
+	want = []string{
+		"--user enable --now traefik-http.socket traefik-https.socket",
+		"--user start --no-block traefik.service",
+	}
+	if got := systemctlCalls(fh); strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Errorf("second pass systemctl calls = %q, want %q", got, want)
+	}
+}
+
+// An owned but outdated unit (e.g. an older pinned image) is replaced and Traefik restarted.
+func TestReconcile_TraefikOutdatedUnitReplaced(t *testing.T) {
+	st, fh, cfg := traefikTestConfig(t)
+	if _, err := reconciler.New(fh, st, cfg).Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	unit := filepath.Join(cfg.QuadletDir, "traefik.container")
+	old, _ := fh.ReadFile(unit)
+	_ = fh.WriteFileAtomic(unit, []byte(strings.Replace(string(old), "v3.7.19", "v3.7.18", 1)), 0644)
+	fh.Commands = nil
+
+	report, err := reconciler.New(fh, st, cfg).Reconcile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(report.FilesReRendered, ",") != "traefik.container" {
+		t.Errorf("FilesReRendered = %v", report.FilesReRendered)
+	}
+	if got := systemctlCalls(fh); len(got) != 3 || got[2] != "--user restart --no-block traefik.service" {
+		t.Errorf("systemctl calls = %q", got)
+	}
+}
+
+// DEP-10: vps-setup.sh's own Traefik unit has no marker; dermaga reports it, never touches it,
+// and does not start its own Traefik next to it.
+func TestReconcile_ForeignTraefikUntouched(t *testing.T) {
+	st, fh, cfg := traefikTestConfig(t)
+	unit := filepath.Join(cfg.QuadletDir, "traefik.container")
+	foreign := []byte("# Managed by vps-setup.sh\n[Container]\nImage=docker.io/library/traefik:v3.7\n")
+	_ = fh.WriteFileAtomic(unit, foreign, 0644)
+
+	report, err := reconciler.New(fh, st, cfg).Reconcile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := fh.ReadFile(unit); string(got) != string(foreign) {
+		t.Error("foreign traefik.container was modified")
+	}
+	if !strings.Contains(strings.Join(report.ForeignFilesReported, ","), "traefik.container") {
+		t.Errorf("foreign unit not reported: %v", report.ForeignFilesReported)
+	}
+	for _, c := range systemctlCalls(fh) {
+		if strings.Contains(c, "traefik") {
+			t.Errorf("traefik must not be started next to a foreign one: %q", c)
+		}
 	}
 }
