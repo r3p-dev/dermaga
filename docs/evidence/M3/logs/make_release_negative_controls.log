@@ -1,0 +1,28 @@
+# Command: make release (dirty tree) ; make release RELEASE_TAG=v9.9.9 VERSION=v0.0.1 COMMIT=x (tag mismatch)   (negative controls: both must refuse, exit != 0)
+# Commit: c7c4671
+# Status (dirty):
+ M .github/workflows/ci.yml
+ M .github/workflows/release.yml
+ M Makefile
+ D docs/evidence/M3/logs/github_meta_fixture.log
+ M go.mod
+ M go.sum
+ M install/install.sh
+ M install/install_test.go
+ D install/testdata/github_meta.json
+ M ui/bun.lock
+ M ui/package.json
+?? docs/evidence/M3/logs/dependency_update.log
+?? docs/evidence/M3/logs/dependency_versions_query.log
+?? docs/evidence/M3/logs/make_release_negative_controls.log
+?? docs/evidence/M3/logs/release_rc1_failure.log
+?? test/ci/
+# Timestamp: 2026-11-17T09:23:28+07:00
+$ make release
+refusing to assemble a release from version v0.3.0-rc-dirty
+make: *** [Makefile:59: release] Error 1
+exit=2
+$ make release VERSION=v0.0.1 RELEASE_TAG=v9.9.9
+tag v9.9.9 but the build version is v0.0.1
+make: *** [Makefile:60: release] Error 1
+exit=2

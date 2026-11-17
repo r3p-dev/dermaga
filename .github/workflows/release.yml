@@ -27,7 +27,6 @@ jobs:
             make \
             unzip \
             file \
-            jq \
             zsh \
             fish \
             openssh-client \
@@ -60,7 +59,10 @@ jobs:
         with:
           fetch-depth: 0 # git describe needs the tag to name the version
 
-      - name: Run make check
+      - name: Run make check and assemble the release files
+        # The same commands as CI, as user server, where safe.directory is set for every git call.
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
           chown -R server:server "$GITHUB_WORKSPACE"
           su server -c "
@@ -68,30 +70,17 @@ jobs:
             export PATH=\"/usr/local/go/bin:/usr/local/bin:\$PATH\"
             cd \"$GITHUB_WORKSPACE\"
             git config --global --add safe.directory \"$GITHUB_WORKSPACE\"
-            make check
+            make check release RELEASE_TAG=\"$TAG\"
           "
 
-      - name: Assemble release files
-        env:
-          TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          # The binaries must carry exactly this tag, never a dirty or describe-suffixed version.
-          bin/dermaga-linux-amd64 version | grep -qxF "dermaga version $TAG (commit $(git rev-parse --short HEAD))"
-          mkdir dist
-          cp bin/dermaga-linux-amd64 bin/dermaga-linux-arm64 dist/
-          [ "$(grep -c '__DERMAGA_VERSION__' install/install.sh)" = 1 ]
-          sed "s/__DERMAGA_VERSION__/$TAG/" install/install.sh > dist/install.sh
-          cd dist && sha256sum dermaga-linux-amd64 dermaga-linux-arm64 install.sh > checksums.txt
-          cat checksums.txt
-
       - name: Publish the release
+        # Runs as root and calls no git; GH_REPO names the repository for gh.
         env:
           TAG: ${{ github.ref_name }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          set -euo pipefail
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          set -eu
           prerelease=""
           case "$TAG" in *-*) prerelease="--prerelease" ;; esac
-          gh release create "$TAG" dist/* --verify-tag --title "$TAG" --notes "See CHANGELOG.md. Install: curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/$TAG/install.sh | sudo bash" $prerelease
+          gh release create "$TAG" dist/dermaga-linux-amd64 dist/dermaga-linux-arm64 dist/install.sh dist/checksums.txt --verify-tag --title "$TAG" --notes "See CHANGELOG.md. Install: curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/$TAG/install.sh | sudo bash" $prerelease
