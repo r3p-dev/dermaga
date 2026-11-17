@@ -3,8 +3,9 @@ module dermaga
 go 1.26.0
 
 require (
-	golang.org/x/crypto v0.0.0-20210817164053-32db794688a5
+	golang.org/x/crypto v0.59.0
 	golang.org/x/term v0.48.0
+	gopkg.in/yaml.v2 v2.4.0
 	modernc.org/sqlite v1.62.0
 )
 
@@ -27,7 +28,6 @@ require (
 	golang.org/x/telemetry v0.0.0-20261010193011-f71dc92da45e // indirect
 	golang.org/x/tools v0.52.0 // indirect
 	golang.org/x/vuln v1.9.0 // indirect
-	gopkg.in/yaml.v2 v2.4.0 // indirect
 	honnef.co/go/tools v0.8.2 // indirect
 	modernc.org/libc v1.80.1 // indirect
 	modernc.org/mathutil v1.7.1 // indirect

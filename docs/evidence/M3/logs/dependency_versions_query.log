@@ -1,0 +1,49 @@
+# Command: query proxy.golang.org/<module>/@latest for every direct Go module and tool, and registry.npmjs.org/<pkg>/latest for every UI package; compare with go.mod and bun.lock
+# Commit: c7c4671
+# Timestamp: 2026-11-17T09:19:08+07:00
+
+## Go (module | go.mod | proxy latest | latest time)
+golang.org/x/crypto | v0.0.0-20210817164053-32db794688a5 | v0.59.0 | 2026-11-11T07:23:42Z
+golang.org/x/term | v0.48.0 | v0.48.0 | 2026-11-09T16:29:12Z
+modernc.org/sqlite | v1.62.0 | v1.62.0 | 2026-11-07T09:13:04Z
+github.com/gzuidhof/tygo | v0.2.21 | v0.2.21 | 2026-02-03T10:16:48Z
+golang.org/x/vuln | v1.9.0 | v1.9.0 | 2026-10-11T03:39:53Z
+honnef.co/go/tools | v0.8.2 | v0.8.2 | 2026-10-12T13:34:44Z
+
+## Go toolchain: go.mod go line and https://go.dev/dl/?mode=json (stable)
+go 1.26.0
+go1.27.4
+
+## Bun packages (package | package.json | bun.lock resolved | npm latest)
+@axe-core/playwright | 4.14.0 | 4.14.0 | 4.14.0
+@playwright/test | ^1.65.1 | 1.65.1 | 1.65.1
+@sveltejs/adapter-static | 4.0.1 | 4.0.1 | 4.0.1
+@sveltejs/kit | 3.2.0 | 3.2.0 | 3.2.0
+@sveltejs/vite-plugin-svelte | ^7.0.0 | 7.3.1 | 7.3.1
+@tailwindcss/vite | 4.3.5 | 4.3.5 | 4.3.5
+prettier | ^3.5.0 | 3.10.1 | 3.10.1
+prettier-plugin-svelte | ^3.3.0 | 3.5.2 | 4.1.1
+svelte | 5.57.3 | 5.57.3 | 5.57.3
+svelte-check | ^4.1.0 | 4.7.8 | 4.7.8
+tailwindcss | 4.3.5 | 4.3.5 | 4.3.5
+typescript | ^5.7.0 | 5.9.3 | 7.0.2
+vite | ^8.0.0 | 8.3.8 | 8.3.8
+
+## Bun itself: CI pin and latest GitHub release
+bun-v1.4.2
+bun-v1.4.4
+
+## Go 1.26 patch releases on go.dev/dl (include=all), newest first
+go1.26.11
+go1.26.10
+go1.26.9
+
+## typescript peer range required by @sveltejs/kit 3.2.0 and svelte-check 4.7.8
+{"peerDependencies":{"vite":"^8.0.12","svelte":"^5.57.1","typescript":"^6.0.0","@opentelemetry/api":"^1.0.0","@sveltejs/vite-plugin-svelte":"^7.0.0"}}
+{"peerDependencies":{"svelte":"^4.0.0 || ^5.0.0-next.0","typescript":"^5.0.0 || ^6.0.0"}}
+{"peerDependencies":{"svelte":"^5.0.0","prettier":"^3.0.0"}}
+
+## newest typescript 6.x and prettier-plugin-svelte 3.x on npm
+6.0.2
+6.0.3
+3.5.2
