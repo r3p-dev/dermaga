@@ -542,6 +542,7 @@ func runReconcile(args []string) error {
 	dbPath := fs.String("db", paths.DBPath, "Path to SQLite database")
 	quadletDir := fs.String("quadlet-dir", paths.QuadletDir, "Path to Quadlet units directory")
 	traefikDir := fs.String("traefik-dir", paths.TraefikDynamicDir, "Path to Traefik dynamic configuration directory")
+	prune := fs.Bool("prune", false, "Allow pruning of orphan units even if database contains 0 active apps")
 	_ = fs.Parse(args)
 
 	st, err := store.Open(*dbPath)
@@ -553,6 +554,7 @@ func runReconcile(args []string) error {
 	rec := reconciler.New(host.NewRealHost(), st, reconciler.Config{
 		QuadletDir:        *quadletDir,
 		TraefikDynamicDir: *traefikDir,
+		AllowEmptyDBPrune: *prune,
 	})
 
 	report, err := rec.Reconcile(context.Background())
@@ -566,5 +568,8 @@ func runReconcile(args []string) error {
 	fmt.Printf("Units started:          %d %v\n", len(report.UnitsStarted), report.UnitsStarted)
 	fmt.Printf("Verify routers cleaned: %d %v\n", len(report.VerifyRoutersCleaned), report.VerifyRoutersCleaned)
 	fmt.Printf("Foreign files reported: %d %v\n", len(report.ForeignFilesReported), report.ForeignFilesReported)
+	if report.SafeDefaultTriggered {
+		fmt.Println("Safe default active:    preserved managed units/configs because database has 0 active apps")
+	}
 	return nil
 }

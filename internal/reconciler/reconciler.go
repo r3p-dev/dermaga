@@ -18,10 +18,11 @@ import (
 	"dermaga/internal/traefik"
 )
 
-// Config configures file directories for reconciliation.
+// Config configures file directories and safety parameters for reconciliation.
 type Config struct {
 	QuadletDir        string
 	TraefikDynamicDir string
+	AllowEmptyDBPrune bool
 }
 
 // Report records the outcome of a reconciliation pass (DEP-10).
@@ -31,6 +32,7 @@ type Report struct {
 	UnitsStarted         []string `json:"units_started"`
 	VerifyRoutersCleaned []string `json:"verify_routers_cleaned"`
 	ForeignFilesReported []string `json:"foreign_files_reported"`
+	SafeDefaultTriggered bool     `json:"safe_default_triggered,omitempty"`
 }
 
 // Reconciler inspects the persistent store and host filesystem to achieve self-healing.
@@ -103,21 +105,42 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 		filePath := filepath.Join(r.cfg.QuadletDir, fname)
 
 		if fname == fmt.Sprintf("%s.network", name.BridgeNetworkName()) {
-			hasNetworkUnit = true
+			content, err := r.host.ReadFile(filePath)
+			if err == nil && quadlet.HasNetworkMarker(string(content), name.BridgeNetworkName()) {
+				hasNetworkUnit = true
+				continue
+			}
+			// web.network exists without dermaga marker: foreign!
+			report.ForeignFilesReported = append(report.ForeignFilesReported, fname)
 			continue
 		}
 
 		if strings.HasPrefix(fname, name.AppPrefix) && strings.HasSuffix(fname, ".container") {
-			// This is a dermaga container unit
+			appName, relNum, ok := parseContainerFilename(fname)
+			if !ok {
+				report.ForeignFilesReported = append(report.ForeignFilesReported, fname)
+				continue
+			}
+			content, err := r.host.ReadFile(filePath)
+			if err != nil || !quadlet.HasContainerMarker(string(content), appName) {
+				// Foreign file: matches name pattern but lacks explicit ownership marker!
+				// DEP-10: reported, never touched.
+				report.ForeignFilesReported = append(report.ForeignFilesReported, fname)
+				continue
+			}
+
+			// This is an authentic dermaga-managed container unit
 			if _, isActive := activeUnits[fname]; isActive {
 				foundUnitsOnDisk[fname] = true
 			} else {
-				// Orphan unit! Stop unit and remove file
-				appName, relNum, ok := parseContainerFilename(fname)
-				if ok {
-					serviceName := name.AppServiceName(appName, relNum)
-					_, _ = r.host.RunCommand(ctx, "systemctl", "--user", "stop", serviceName)
+				// Candidate orphan unit!
+				// Safe default: if DB has 0 active apps, do NOT prune managed units!
+				if len(activeApps) == 0 && !r.cfg.AllowEmptyDBPrune {
+					report.SafeDefaultTriggered = true
+					continue
 				}
+				serviceName := name.AppServiceName(appName, relNum)
+				_, _ = r.host.RunCommand(ctx, "systemctl", "--user", "stop", serviceName)
 				if err := r.host.Remove(filePath); err == nil {
 					report.OrphansRemoved = append(report.OrphansRemoved, fname)
 					daemonReloadNeeded = true
@@ -225,12 +248,25 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 		filePath := filepath.Join(r.cfg.TraefikDynamicDir, fname)
 
 		if fname == "00-global.yml" {
-			hasGlobalConfig = true
+			content, err := r.host.ReadFile(filePath)
+			if err == nil && traefik.HasGlobalMarker(string(content)) {
+				hasGlobalConfig = true
+				continue
+			}
+			// Foreign global config!
+			report.ForeignFilesReported = append(report.ForeignFilesReported, fname)
 			continue
 		}
 
 		// Leftover verify router check: app-*-verify.yml
 		if strings.HasPrefix(fname, name.AppPrefix) && strings.HasSuffix(fname, "-verify.yml") {
+			appName := strings.TrimSuffix(strings.TrimPrefix(fname, name.AppPrefix), "-verify.yml")
+			content, err := r.host.ReadFile(filePath)
+			if err != nil || !traefik.HasAppMarker(string(content), appName) {
+				// Foreign file matching name pattern without ownership marker!
+				report.ForeignFilesReported = append(report.ForeignFilesReported, fname)
+				continue
+			}
 			if err := r.host.Remove(filePath); err == nil {
 				report.VerifyRoutersCleaned = append(report.VerifyRoutersCleaned, fname)
 			}
@@ -240,10 +276,21 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 		// App routing config check: app-<name>.yml
 		if strings.HasPrefix(fname, name.AppPrefix) && strings.HasSuffix(fname, ".yml") {
 			appName := strings.TrimSuffix(strings.TrimPrefix(fname, name.AppPrefix), ".yml")
+			content, err := r.host.ReadFile(filePath)
+			if err != nil || !traefik.HasAppMarker(string(content), appName) {
+				// Foreign file matching name pattern without ownership marker!
+				report.ForeignFilesReported = append(report.ForeignFilesReported, fname)
+				continue
+			}
 			if _, isActive := activeAppNames[appName]; isActive {
 				foundConfigsOnDisk[fname] = true
 			} else {
-				// Orphan config! Remove it
+				// Candidate orphan config!
+				// Safe default: if DB has 0 active apps, do NOT prune managed configs!
+				if len(activeApps) == 0 && !r.cfg.AllowEmptyDBPrune {
+					report.SafeDefaultTriggered = true
+					continue
+				}
 				if err := r.host.Remove(filePath); err == nil {
 					report.OrphansRemoved = append(report.OrphansRemoved, fname)
 				}

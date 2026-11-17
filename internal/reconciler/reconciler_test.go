@@ -91,19 +91,19 @@ func TestReconcile_OrphanRemoved(t *testing.T) {
 	netUnit := filepath.Join(cfg.QuadletDir, "web.network")
 	globalTraefik := filepath.Join(cfg.TraefikDynamicDir, "00-global.yml")
 
-	_ = fh.WriteFileAtomic(activeContainer, []byte("active-container"), 0644)
-	_ = fh.WriteFileAtomic(activeTraefik, []byte("active-traefik"), 0644)
-	_ = fh.WriteFileAtomic(netUnit, []byte("web-network"), 0644)
-	_ = fh.WriteFileAtomic(globalTraefik, []byte("00-global"), 0644)
+	_ = fh.WriteFileAtomic(activeContainer, []byte("# managed by dermaga; app=active-app\n[Container]\n"), 0644)
+	_ = fh.WriteFileAtomic(activeTraefik, []byte("# managed by dermaga; app=active-app\n{}\n"), 0644)
+	_ = fh.WriteFileAtomic(netUnit, []byte("# managed by dermaga; network=web\n"), 0644)
+	_ = fh.WriteFileAtomic(globalTraefik, []byte("# managed by dermaga; global\n"), 0644)
 
-	// Stage orphan files (app-orphan-r1.container, app-orphan.yml, app-active-app-r0.container)
+	// Stage orphan files (app-orphan-r1.container, app-orphan.yml, app-active-app-r2.container)
 	orphanContainer := filepath.Join(cfg.QuadletDir, "app-orphan-r1.container")
-	oldReleaseContainer := filepath.Join(cfg.QuadletDir, "app-active-app-r0.container")
+	oldReleaseContainer := filepath.Join(cfg.QuadletDir, "app-active-app-r2.container")
 	orphanTraefik := filepath.Join(cfg.TraefikDynamicDir, "app-orphan.yml")
 
-	_ = fh.WriteFileAtomic(orphanContainer, []byte("orphan"), 0644)
-	_ = fh.WriteFileAtomic(oldReleaseContainer, []byte("old-rel"), 0644)
-	_ = fh.WriteFileAtomic(orphanTraefik, []byte("orphan-traefik"), 0644)
+	_ = fh.WriteFileAtomic(orphanContainer, []byte("# managed by dermaga; app=orphan\n[Container]\n"), 0644)
+	_ = fh.WriteFileAtomic(oldReleaseContainer, []byte("# managed by dermaga; app=active-app\n[Container]\n"), 0644)
+	_ = fh.WriteFileAtomic(orphanTraefik, []byte("# managed by dermaga; app=orphan\n{}\n"), 0644)
 
 	// Mock systemctl is-active for active app
 	fh.CommandMock = func(name string, args ...string) ([]byte, error) {
@@ -211,10 +211,10 @@ func TestReconcile_StoppedLiveUnitStarted(t *testing.T) {
 	seedActiveApp(t, st, "api", 1, 8080, "api.example.com")
 
 	// Pre-create all files
-	_ = fh.WriteFileAtomic(filepath.Join(cfg.QuadletDir, "web.network"), []byte("web"), 0644)
-	_ = fh.WriteFileAtomic(filepath.Join(cfg.QuadletDir, "app-api-r1.container"), []byte("container"), 0644)
-	_ = fh.WriteFileAtomic(filepath.Join(cfg.TraefikDynamicDir, "00-global.yml"), []byte("global"), 0644)
-	_ = fh.WriteFileAtomic(filepath.Join(cfg.TraefikDynamicDir, "app-api.yml"), []byte("traefik"), 0644)
+	_ = fh.WriteFileAtomic(filepath.Join(cfg.QuadletDir, "web.network"), []byte("# managed by dermaga; network=web\n"), 0644)
+	_ = fh.WriteFileAtomic(filepath.Join(cfg.QuadletDir, "app-api-r1.container"), []byte("# managed by dermaga; app=api\n[Container]\n"), 0644)
+	_ = fh.WriteFileAtomic(filepath.Join(cfg.TraefikDynamicDir, "00-global.yml"), []byte("# managed by dermaga; global\n"), 0644)
+	_ = fh.WriteFileAtomic(filepath.Join(cfg.TraefikDynamicDir, "app-api.yml"), []byte("# managed by dermaga; app=api\n{}\n"), 0644)
 
 	// Mock systemctl is-active -> returns "inactive\n"
 	startedUnits := []string{}
@@ -250,14 +250,14 @@ func TestReconcile_LeftoverVerifyRouterRemoved(t *testing.T) {
 
 	seedActiveApp(t, st, "webapp", 1, 8080, "webapp.example.com")
 
-	_ = fh.WriteFileAtomic(filepath.Join(cfg.QuadletDir, "web.network"), []byte("web"), 0644)
-	_ = fh.WriteFileAtomic(filepath.Join(cfg.QuadletDir, "app-webapp-r1.container"), []byte("container"), 0644)
-	_ = fh.WriteFileAtomic(filepath.Join(cfg.TraefikDynamicDir, "00-global.yml"), []byte("global"), 0644)
-	_ = fh.WriteFileAtomic(filepath.Join(cfg.TraefikDynamicDir, "app-webapp.yml"), []byte("traefik"), 0644)
+	_ = fh.WriteFileAtomic(filepath.Join(cfg.QuadletDir, "web.network"), []byte("# managed by dermaga; network=web\n"), 0644)
+	_ = fh.WriteFileAtomic(filepath.Join(cfg.QuadletDir, "app-webapp-r1.container"), []byte("# managed by dermaga; app=webapp\n[Container]\n"), 0644)
+	_ = fh.WriteFileAtomic(filepath.Join(cfg.TraefikDynamicDir, "00-global.yml"), []byte("# managed by dermaga; global\n"), 0644)
+	_ = fh.WriteFileAtomic(filepath.Join(cfg.TraefikDynamicDir, "app-webapp.yml"), []byte("# managed by dermaga; app=webapp\n{}\n"), 0644)
 
 	// Stage leftover verify router from crashed deployment
 	leftoverVerify := filepath.Join(cfg.TraefikDynamicDir, "app-webapp-verify.yml")
-	_ = fh.WriteFileAtomic(leftoverVerify, []byte("leftover-verify-router"), 0644)
+	_ = fh.WriteFileAtomic(leftoverVerify, []byte("# managed by dermaga; app=webapp\nleftover-verify-router"), 0644)
 
 	fh.CommandMock = func(name string, args ...string) ([]byte, error) {
 		return []byte("active\n"), nil
@@ -285,10 +285,10 @@ func TestReconcile_ForeignFilesUntouched(t *testing.T) {
 
 	seedActiveApp(t, st, "portal", 1, 8080, "portal.example.com")
 
-	_ = fh.WriteFileAtomic(filepath.Join(cfg.QuadletDir, "web.network"), []byte("web"), 0644)
-	_ = fh.WriteFileAtomic(filepath.Join(cfg.QuadletDir, "app-portal-r1.container"), []byte("container"), 0644)
-	_ = fh.WriteFileAtomic(filepath.Join(cfg.TraefikDynamicDir, "00-global.yml"), []byte("global"), 0644)
-	_ = fh.WriteFileAtomic(filepath.Join(cfg.TraefikDynamicDir, "app-portal.yml"), []byte("traefik"), 0644)
+	_ = fh.WriteFileAtomic(filepath.Join(cfg.QuadletDir, "web.network"), []byte("# managed by dermaga; network=web\n"), 0644)
+	_ = fh.WriteFileAtomic(filepath.Join(cfg.QuadletDir, "app-portal-r1.container"), []byte("# managed by dermaga; app=portal\n[Container]\n"), 0644)
+	_ = fh.WriteFileAtomic(filepath.Join(cfg.TraefikDynamicDir, "00-global.yml"), []byte("# managed by dermaga; global\n"), 0644)
+	_ = fh.WriteFileAtomic(filepath.Join(cfg.TraefikDynamicDir, "app-portal.yml"), []byte("# managed by dermaga; app=portal\n{}\n"), 0644)
 
 	// Stage foreign files
 	foreignContainer := filepath.Join(cfg.QuadletDir, "custom-vpn.container")
@@ -342,8 +342,8 @@ func TestReconcile_CombinedScenario(t *testing.T) {
 	seedActiveApp(t, st, "demo", 2, 4000, "demo.example.com")
 
 	// 1. Orphan file
-	_ = fh.WriteFileAtomic(filepath.Join(cfg.QuadletDir, "app-oldapp-r1.container"), []byte("orphan"), 0644)
-	_ = fh.WriteFileAtomic(filepath.Join(cfg.TraefikDynamicDir, "app-oldapp.yml"), []byte("orphan"), 0644)
+	_ = fh.WriteFileAtomic(filepath.Join(cfg.QuadletDir, "app-oldapp-r1.container"), []byte("# managed by dermaga; app=oldapp\n[Container]\n"), 0644)
+	_ = fh.WriteFileAtomic(filepath.Join(cfg.TraefikDynamicDir, "app-oldapp.yml"), []byte("# managed by dermaga; app=oldapp\n{}\n"), 0644)
 
 	// 2. Missing file: app-demo-r2.container and app-demo.yml NOT staged
 
@@ -356,9 +356,9 @@ func TestReconcile_CombinedScenario(t *testing.T) {
 	}
 
 	// 4. Leftover verify router
-	_ = fh.WriteFileAtomic(filepath.Join(cfg.TraefikDynamicDir, "app-demo-verify.yml"), []byte("verify"), 0644)
+	_ = fh.WriteFileAtomic(filepath.Join(cfg.TraefikDynamicDir, "app-demo-verify.yml"), []byte("# managed by dermaga; app=demo\nverify"), 0644)
 
-	// 5. Foreign files
+	// 5. Foreign files (one matches naming pattern but lacks marker; other is non-pattern)
 	_ = fh.WriteFileAtomic(filepath.Join(cfg.QuadletDir, "unmanaged-app.container"), []byte("vpn"), 0644)
 	_ = fh.WriteFileAtomic(filepath.Join(cfg.TraefikDynamicDir, "traefik-custom.yml"), []byte("ext"), 0644)
 
@@ -382,5 +382,149 @@ func TestReconcile_CombinedScenario(t *testing.T) {
 	}
 	if len(report.ForeignFilesReported) != 2 {
 		t.Errorf("ForeignFilesReported mismatch: %v", report.ForeignFilesReported)
+	}
+}
+
+// 7. Foreign file named like managed one (e.g. app-custom-r1.container without marker) is untouched
+func TestReconcile_ForeignFileNamedLikeManagedUntouched(t *testing.T) {
+	st, fh, cfg := setupTestEnvironment(t)
+	ctx := context.Background()
+
+	// Seed active app
+	seedActiveApp(t, st, "active-app", 1, 8080, "active.example.com")
+
+	// Pre-create active files with proper ownership markers
+	_ = fh.WriteFileAtomic(filepath.Join(cfg.QuadletDir, "web.network"), []byte("# managed by dermaga; network=web\n"), 0644)
+	_ = fh.WriteFileAtomic(filepath.Join(cfg.QuadletDir, "app-active-app-r1.container"), []byte("# managed by dermaga; app=active-app\n"), 0644)
+	_ = fh.WriteFileAtomic(filepath.Join(cfg.TraefikDynamicDir, "00-global.yml"), []byte("# managed by dermaga; global\n"), 0644)
+	_ = fh.WriteFileAtomic(filepath.Join(cfg.TraefikDynamicDir, "app-active-app.yml"), []byte("# managed by dermaga; app=active-app\n"), 0644)
+
+	// Stage files that match Dermaga naming patterns (app-*.container, app-*.yml) but DO NOT have Dermaga marker
+	foreignNamedContainer := filepath.Join(cfg.QuadletDir, "app-custom-r1.container")
+	foreignNamedTraefik := filepath.Join(cfg.TraefikDynamicDir, "app-custom.yml")
+	foreignNamedVerify := filepath.Join(cfg.TraefikDynamicDir, "app-custom-verify.yml")
+
+	unmarkedContainerContent := "[Unit]\nDescription=User unmanaged container unit\n[Container]\nImage=user/custom:latest\n"
+	unmarkedTraefikContent := "{\"http\":{\"routers\":{\"user-custom\":{}}}}\n"
+	unmarkedVerifyContent := "{\"http\":{\"routers\":{\"user-verify\":{}}}}\n"
+
+	_ = fh.WriteFileAtomic(foreignNamedContainer, []byte(unmarkedContainerContent), 0644)
+	_ = fh.WriteFileAtomic(foreignNamedTraefik, []byte(unmarkedTraefikContent), 0644)
+	_ = fh.WriteFileAtomic(foreignNamedVerify, []byte(unmarkedVerifyContent), 0644)
+
+	fh.CommandMock = func(name string, args ...string) ([]byte, error) {
+		return []byte("active\n"), nil
+	}
+
+	rec := reconciler.New(fh, st, cfg)
+	report, err := rec.Reconcile(ctx)
+	if err != nil {
+		t.Fatalf("Reconcile failed: %v", err)
+	}
+
+	// OrphansRemoved must be EMPTY!
+	if len(report.OrphansRemoved) != 0 {
+		t.Fatalf("expected 0 orphans removed, got %d: %v", len(report.OrphansRemoved), report.OrphansRemoved)
+	}
+	if len(report.VerifyRoutersCleaned) != 0 {
+		t.Fatalf("expected 0 verify routers cleaned, got %d: %v", len(report.VerifyRoutersCleaned), report.VerifyRoutersCleaned)
+	}
+
+	// All 3 foreign-named files must be reported in ForeignFilesReported
+	for _, expectedFile := range []string{"app-custom-r1.container", "app-custom.yml", "app-custom-verify.yml"} {
+		found := false
+		for _, f := range report.ForeignFilesReported {
+			if f == expectedFile {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected %s in ForeignFilesReported, got: %v", expectedFile, report.ForeignFilesReported)
+		}
+	}
+
+	// Verify byte-for-byte untouched on disk
+	cContent, err := fh.ReadFile(foreignNamedContainer)
+	if err != nil || string(cContent) != unmarkedContainerContent {
+		t.Errorf("foreignNamedContainer was modified or deleted: %v", err)
+	}
+	tContent, err := fh.ReadFile(foreignNamedTraefik)
+	if err != nil || string(tContent) != unmarkedTraefikContent {
+		t.Errorf("foreignNamedTraefik was modified or deleted: %v", err)
+	}
+	vContent, err := fh.ReadFile(foreignNamedVerify)
+	if err != nil || string(vContent) != unmarkedVerifyContent {
+		t.Errorf("foreignNamedVerify was modified or deleted: %v", err)
+	}
+}
+
+// 8. Empty DB safe default: existing managed units are preserved when DB has 0 active apps
+func TestReconcile_EmptyDBSafeDefault(t *testing.T) {
+	st, fh, cfg := setupTestEnvironment(t)
+	ctx := context.Background()
+
+	// Notice: 0 apps seeded in store (empty database!)
+
+	// Pre-create managed files with valid Dermaga ownership markers
+	managedContainer := filepath.Join(cfg.QuadletDir, "app-legacy-r1.container")
+	managedTraefik := filepath.Join(cfg.TraefikDynamicDir, "app-legacy.yml")
+
+	_ = fh.WriteFileAtomic(managedContainer, []byte("# managed by dermaga; app=legacy\n[Container]\n"), 0644)
+	_ = fh.WriteFileAtomic(managedTraefik, []byte("# managed by dermaga; app=legacy\n{}\n"), 0644)
+
+	rec := reconciler.New(fh, st, cfg) // AllowEmptyDBPrune is false by default
+	report, err := rec.Reconcile(ctx)
+	if err != nil {
+		t.Fatalf("Reconcile failed: %v", err)
+	}
+
+	// Safe default must be triggered!
+	if !report.SafeDefaultTriggered {
+		t.Errorf("expected SafeDefaultTriggered to be true, got false")
+	}
+
+	// Zero orphans removed!
+	if len(report.OrphansRemoved) != 0 {
+		t.Fatalf("expected 0 orphans removed under safe default, got %d: %v", len(report.OrphansRemoved), report.OrphansRemoved)
+	}
+
+	// Both files must remain on disk untouched
+	if _, err := fh.ReadFile(managedContainer); err != nil {
+		t.Errorf("managedContainer was deleted under safe default: %v", err)
+	}
+	if _, err := fh.ReadFile(managedTraefik); err != nil {
+		t.Errorf("managedTraefik was deleted under safe default: %v", err)
+	}
+}
+
+// 9. Empty DB with explicit AllowEmptyDBPrune flag deletes managed units
+func TestReconcile_EmptyDBWithPruneFlag(t *testing.T) {
+	st, fh, cfg := setupTestEnvironment(t)
+	ctx := context.Background()
+
+	cfg.AllowEmptyDBPrune = true // explicit override
+
+	managedContainer := filepath.Join(cfg.QuadletDir, "app-legacy-r1.container")
+	managedTraefik := filepath.Join(cfg.TraefikDynamicDir, "app-legacy.yml")
+
+	_ = fh.WriteFileAtomic(managedContainer, []byte("# managed by dermaga; app=legacy\n[Container]\n"), 0644)
+	_ = fh.WriteFileAtomic(managedTraefik, []byte("# managed by dermaga; app=legacy\n{}\n"), 0644)
+
+	rec := reconciler.New(fh, st, cfg)
+	report, err := rec.Reconcile(ctx)
+	if err != nil {
+		t.Fatalf("Reconcile failed: %v", err)
+	}
+
+	if len(report.OrphansRemoved) != 2 {
+		t.Fatalf("expected 2 orphans removed with prune flag, got %d: %v", len(report.OrphansRemoved), report.OrphansRemoved)
+	}
+
+	if _, err := fh.ReadFile(managedContainer); err == nil {
+		t.Errorf("managedContainer still exists on disk")
+	}
+	if _, err := fh.ReadFile(managedTraefik); err == nil {
+		t.Errorf("managedTraefik still exists on disk")
 	}
 }
