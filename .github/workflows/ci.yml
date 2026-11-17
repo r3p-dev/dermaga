@@ -16,13 +16,21 @@ jobs:
     steps:
       - name: Install system dependencies
         run: |
+          # no service starts inside the job container (openssh-server would try)
+          printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d && chmod 755 /usr/sbin/policy-rc.d
+          # bash, zsh, fish and ssh run the LAP-1 and installer tests; sshd -T checks sshd configs
           apt-get update && apt-get install -y --no-install-recommends \
             ca-certificates \
             curl \
             git \
             make \
             unzip \
-            file
+            file \
+            jq \
+            zsh \
+            fish \
+            openssh-client \
+            openssh-server
 
       - name: Setup non-root user (SEC-1)
         run: |

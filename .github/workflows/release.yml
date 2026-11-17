@@ -1,0 +1,97 @@
+name: Release
+
+# A pushed tag v* becomes a GitHub release with the two static binaries, install.sh stamped with
+# the tag, and checksums.txt (INST-9, SEC-22). Tags with a suffix (v0.3.0-rc) are pre-releases.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    container:
+      image: docker.io/library/debian:trixie-slim@sha256:a72b4433de1cf7d6bae0c4cee74d0547f58601a643b3375f070c51600d63b6b2
+
+    steps:
+      - name: Install system dependencies
+        run: |
+          printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d && chmod 755 /usr/sbin/policy-rc.d
+          apt-get update && apt-get install -y --no-install-recommends \
+            ca-certificates \
+            curl \
+            git \
+            make \
+            unzip \
+            file \
+            jq \
+            zsh \
+            fish \
+            openssh-client \
+            openssh-server \
+            gh
+
+      - name: Setup non-root user (SEC-1)
+        run: |
+          useradd -m -u 1001 server
+
+      - name: Install Go
+        run: |
+          curl -fsSL https://go.dev/dl/go1.26.11.linux-amd64.tar.gz -o go.tar.gz
+          echo "9849f4e04ee35303714e34fbc3ac8ab44ea3e448a95aa182f91e3b9b79c710ec  go.tar.gz" | sha256sum -c -
+          tar -C /usr/local -xzf go.tar.gz
+          rm go.tar.gz
+          echo "/usr/local/go/bin" >> $GITHUB_PATH
+
+      - name: Install Bun
+        run: |
+          curl -fsSL https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64.zip -o bun.zip
+          echo "36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913  bun.zip" | sha256sum -c -
+          unzip bun.zip
+          mv bun-linux-x64/bun /usr/local/bin/bun
+          chmod 755 /usr/local/bin/bun
+          rm -rf bun.zip bun-linux-x64
+
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # git describe needs the tag to name the version
+
+      - name: Run make check
+        run: |
+          chown -R server:server "$GITHUB_WORKSPACE"
+          su server -c "
+            set -euo pipefail
+            export PATH=\"/usr/local/go/bin:/usr/local/bin:\$PATH\"
+            cd \"$GITHUB_WORKSPACE\"
+            git config --global --add safe.directory \"$GITHUB_WORKSPACE\"
+            make check
+          "
+
+      - name: Assemble release files
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # The binaries must carry exactly this tag, never a dirty or describe-suffixed version.
+          bin/dermaga-linux-amd64 version | grep -qxF "dermaga version $TAG (commit $(git rev-parse --short HEAD))"
+          mkdir dist
+          cp bin/dermaga-linux-amd64 bin/dermaga-linux-arm64 dist/
+          [ "$(grep -c '__DERMAGA_VERSION__' install/install.sh)" = 1 ]
+          sed "s/__DERMAGA_VERSION__/$TAG/" install/install.sh > dist/install.sh
+          cd dist && sha256sum dermaga-linux-amd64 dermaga-linux-arm64 install.sh > checksums.txt
+          cat checksums.txt
+
+      - name: Publish the release
+        env:
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          prerelease=""
+          case "$TAG" in *-*) prerelease="--prerelease" ;; esac
+          gh release create "$TAG" dist/* --verify-tag --title "$TAG" --notes "See CHANGELOG.md. Install: curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/$TAG/install.sh | sudo bash" $prerelease
