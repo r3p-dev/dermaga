@@ -1,0 +1,29 @@
+# Command: read-only capture of Debian 13 sshd fixtures from dermaga-vm (vps-setup snapshot state, user server, no sudo)
+# Commit: a88fe9f
+# Status:  M cmd/dermaga/main.go  M cmd/dermaga/main_test.go  M internal/config/paths.go  M internal/reconciler/reconciler.go  M internal/reconciler/reconciler_test.go  M internal/traefik/types.go ?? docs/evidence/M3/ ?? internal/access/ ?? internal/doctor/ ?? internal/quadlet/testdata/traefik-container.golden ?? internal/quadlet/testdata/traefik-http-socket.golden ?? internal/quadlet/testdata/traefik-https-socket.golden ?? internal/quadlet/traefik.go ?? internal/quadlet/traefik_test.go 
+# Timestamp: 2026-11-17T08:29:47+07:00
+
+$ ssh dermaga-vm "hostname; cat /etc/debian_version; ssh -V; sha256sum /etc/ssh/sshd_config; ls /etc/ssh/sshd_config.d"
+dermaga-vm
+13.7
+OpenSSH_10.0p2 Debian-7+deb13u4, OpenSSL 3.5.7 9 Jun 2026
+dbcda82a4b14a4393c1a710470d04185e00f4323a675855a80f4e8e0631e1b4d  /etc/ssh/sshd_config
+00-vps-hardening.conf
+
+Saved /etc/ssh/sshd_config to install/testdata/debian13_sshd_config: dbcda82a4b14a4393c1a710470d04185e00f4323a675855a80f4e8e0631e1b4d  install/testdata/debian13_sshd_config
+
+$ ssh dermaga-vm "journalctl -u ssh.service --no-pager -o cat -n 14"   (saved to install/testdata/journal_vm_verbose.txt)
+Accepted key ED25519 SHA256:V+KZKBpZYT+xiu/DXAsTjf2LTerWPN+DYUlih/Z1U9A found at /home/server/.ssh/authorized_keys:1
+Postponed publickey for server from 192.168.122.1 port 37146 ssh2 [preauth]
+Accepted key ED25519 SHA256:V+KZKBpZYT+xiu/DXAsTjf2LTerWPN+DYUlih/Z1U9A found at /home/server/.ssh/authorized_keys:1
+Accepted publickey for server from 192.168.122.1 port 37146 ssh2: ED25519 SHA256:V+KZKBpZYT+xiu/DXAsTjf2LTerWPN+DYUlih/Z1U9A
+pam_unix(sshd:session): session opened for user server(uid=1001) by server(uid=0)
+User child is on pid 30165
+pam_unix(sshd:session): session closed for user server
+Connection from 192.168.122.1 port 37160 on 192.168.122.217 port 4222 rdomain ""
+Accepted key ED25519 SHA256:V+KZKBpZYT+xiu/DXAsTjf2LTerWPN+DYUlih/Z1U9A found at /home/server/.ssh/authorized_keys:1
+Postponed publickey for server from 192.168.122.1 port 37160 ssh2 [preauth]
+Accepted key ED25519 SHA256:V+KZKBpZYT+xiu/DXAsTjf2LTerWPN+DYUlih/Z1U9A found at /home/server/.ssh/authorized_keys:1
+Accepted publickey for server from 192.168.122.1 port 37160 ssh2: ED25519 SHA256:V+KZKBpZYT+xiu/DXAsTjf2LTerWPN+DYUlih/Z1U9A
+pam_unix(sshd:session): session opened for user server(uid=1001) by server(uid=0)
+User child is on pid 30176

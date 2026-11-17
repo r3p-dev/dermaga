@@ -1,0 +1,14 @@
+Accepted key ED25519 SHA256:V+KZKBpZYT+xiu/DXAsTjf2LTerWPN+DYUlih/Z1U9A found at /home/server/.ssh/authorized_keys:1
+Postponed publickey for server from 192.168.122.1 port 37146 ssh2 [preauth]
+Accepted key ED25519 SHA256:V+KZKBpZYT+xiu/DXAsTjf2LTerWPN+DYUlih/Z1U9A found at /home/server/.ssh/authorized_keys:1
+Accepted publickey for server from 192.168.122.1 port 37146 ssh2: ED25519 SHA256:V+KZKBpZYT+xiu/DXAsTjf2LTerWPN+DYUlih/Z1U9A
+pam_unix(sshd:session): session opened for user server(uid=1001) by server(uid=0)
+User child is on pid 30165
+pam_unix(sshd:session): session closed for user server
+Connection from 192.168.122.1 port 37160 on 192.168.122.217 port 4222 rdomain ""
+Accepted key ED25519 SHA256:V+KZKBpZYT+xiu/DXAsTjf2LTerWPN+DYUlih/Z1U9A found at /home/server/.ssh/authorized_keys:1
+Postponed publickey for server from 192.168.122.1 port 37160 ssh2 [preauth]
+Accepted key ED25519 SHA256:V+KZKBpZYT+xiu/DXAsTjf2LTerWPN+DYUlih/Z1U9A found at /home/server/.ssh/authorized_keys:1
+Accepted publickey for server from 192.168.122.1 port 37160 ssh2: ED25519 SHA256:V+KZKBpZYT+xiu/DXAsTjf2LTerWPN+DYUlih/Z1U9A
+pam_unix(sshd:session): session opened for user server(uid=1001) by server(uid=0)
+User child is on pid 30176
