@@ -153,7 +153,7 @@ func TestACMEOnEveryRouter(t *testing.T) {
 	}
 
 	var doc Dynamic
-	if err := json.Unmarshal(data, &doc); err != nil {
+	if err := json.Unmarshal(StripHeaderComment(data), &doc); err != nil {
 		t.Fatalf("unmarshal json: %v", err)
 	}
 
@@ -189,7 +189,7 @@ func TestACMEOnEveryRouter(t *testing.T) {
 		t.Fatalf("render app without switch: %v", err)
 	}
 	var docNoSwitch Dynamic
-	if err := json.Unmarshal(dataNoSwitch, &docNoSwitch); err != nil {
+	if err := json.Unmarshal(StripHeaderComment(dataNoSwitch), &docNoSwitch); err != nil {
 		t.Fatalf("unmarshal json: %v", err)
 	}
 	if _, hasVerifyNoSwitch := docNoSwitch.HTTP.Routers["app-acme-check-verify"]; hasVerifyNoSwitch {
@@ -235,7 +235,7 @@ func TestDefaultHeadersMatchVPSSetup(t *testing.T) {
 	}
 
 	var doc Dynamic
-	if err := json.Unmarshal(data, &doc); err != nil {
+	if err := json.Unmarshal(StripHeaderComment(data), &doc); err != nil {
 		t.Fatalf("unmarshal json: %v", err)
 	}
 

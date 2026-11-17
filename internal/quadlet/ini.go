@@ -20,7 +20,8 @@ type iniSection struct {
 
 // iniDocument represents an ordered collection of sections.
 type iniDocument struct {
-	Sections []iniSection
+	HeaderComment string
+	Sections      []iniSection
 }
 
 // addSection appends a new section with the given name.
@@ -40,6 +41,9 @@ func (s *iniSection) add(key, value string) {
 // render formats the INI document into standard systemd unit file syntax.
 func (d *iniDocument) render() ([]byte, error) {
 	var buf bytes.Buffer
+	if d.HeaderComment != "" {
+		fmt.Fprintf(&buf, "%s\n", d.HeaderComment)
+	}
 	for i, s := range d.Sections {
 		if strings.ContainsAny(s.Name, "]\r\n\x00") {
 			return nil, fmt.Errorf("invalid section name %q", s.Name)

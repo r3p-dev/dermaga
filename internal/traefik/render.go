@@ -113,7 +113,11 @@ func RenderStatic(spec StaticSpec) ([]byte, error) {
 		cfg.CertificatesResolvers[CertResolverName] = resolver
 	}
 
-	return json.MarshalIndent(cfg, "", "  ")
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return []byte(fmt.Sprintf("%s\n%s\n", StaticMarker(), string(data))), nil
 }
 
 // RenderGlobal renders the 00-global.yml dynamic configuration establishing server-wide default middlewares and TLS.
@@ -199,7 +203,11 @@ func RenderGlobal(spec GlobalSpec) ([]byte, error) {
 		},
 	}
 
-	return json.MarshalIndent(doc, "", "  ")
+	data, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return []byte(fmt.Sprintf("%s\n%s\n", GlobalMarker(), string(data))), nil
 }
 
 // RenderApp renders an application's dynamic configuration file (app-<name>.yml) as pretty-printed JSON.
@@ -433,7 +441,87 @@ func RenderApp(spec AppSpec) ([]byte, error) {
 		},
 	}
 
-	return json.MarshalIndent(doc, "", "  ")
+	data, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return []byte(fmt.Sprintf("%s\n%s\n", AppMarker(spec.AppName), string(data))), nil
+}
+
+// AppMarker returns the explicit ownership marker comment for an app dynamic file.
+func AppMarker(appName string) string {
+	return fmt.Sprintf("# managed by dermaga; app=%s", appName)
+}
+
+// GlobalMarker returns the explicit ownership marker comment for the global dynamic config.
+func GlobalMarker() string {
+	return "# managed by dermaga; global"
+}
+
+// StaticMarker returns the explicit ownership marker comment for the static config.
+func StaticMarker() string {
+	return "# managed by dermaga; static"
+}
+
+// HasAppMarker reports whether content contains the expected ownership marker for appName.
+func HasAppMarker(content, appName string) bool {
+	lines := strings.Split(content, "\n")
+	if len(lines) == 0 {
+		return false
+	}
+	expected := AppMarker(appName)
+	for i := 0; i < len(lines) && i < 3; i++ {
+		line := strings.TrimSpace(lines[i])
+		if line == expected || strings.HasPrefix(line, "# managed by dermaga; app="+appName) {
+			return true
+		}
+	}
+	return false
+}
+
+// HasGlobalMarker reports whether content contains the global ownership marker.
+func HasGlobalMarker(content string) bool {
+	lines := strings.Split(content, "\n")
+	if len(lines) == 0 {
+		return false
+	}
+	for i := 0; i < len(lines) && i < 3; i++ {
+		if strings.TrimSpace(lines[i]) == GlobalMarker() {
+			return true
+		}
+	}
+	return false
+}
+
+// HasAnyMarker reports whether content contains any dermaga management marker.
+func HasAnyMarker(content string) bool {
+	lines := strings.Split(content, "\n")
+	if len(lines) == 0 {
+		return false
+	}
+	for i := 0; i < len(lines) && i < 3; i++ {
+		line := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(line, "# managed by dermaga") {
+			return true
+		}
+	}
+	return false
+}
+
+// StripHeaderComment strips any leading comment lines (e.g. # managed by dermaga)
+// so the remaining bytes can be parsed by encoding/json.
+func StripHeaderComment(data []byte) []byte {
+	lines := strings.Split(string(data), "\n")
+	start := 0
+	for start < len(lines) {
+		trimmed := strings.TrimSpace(lines[start])
+		if len(trimmed) > 0 && trimmed[0] == '#' {
+			start++
+		} else {
+			break
+		}
+	}
+	return []byte(strings.Join(lines[start:], "\n"))
 }
 
 // AppConfigFileName returns the dynamic configuration filename for an app (e.g. "app-demo.yml").

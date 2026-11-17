@@ -47,7 +47,9 @@ func RenderContainer(spec ContainerSpec) ([]byte, error) {
 		startTimeout = 30
 	}
 
-	doc := iniDocument{}
+	doc := iniDocument{
+		HeaderComment: ContainerMarker(spec.AppName),
+	}
 
 	// [Unit]
 	unitSec := doc.addSection("Unit")
@@ -126,7 +128,9 @@ func RenderNetwork(spec NetworkSpec) ([]byte, error) {
 		return nil, fmt.Errorf("validating network spec: %w", err)
 	}
 
-	doc := iniDocument{}
+	doc := iniDocument{
+		HeaderComment: NetworkMarker(spec.NetworkName),
+	}
 
 	// [Network]
 	netSec := doc.addSection("Network")
@@ -137,6 +141,62 @@ func RenderNetwork(spec NetworkSpec) ([]byte, error) {
 	quadletSec.add("DefaultDependencies", "false")
 
 	return doc.render()
+}
+
+// ContainerMarker returns the explicit ownership marker comment for an app container unit.
+func ContainerMarker(appName string) string {
+	return fmt.Sprintf("# managed by dermaga; app=%s", appName)
+}
+
+// NetworkMarker returns the explicit ownership marker comment for a network unit.
+func NetworkMarker(networkName string) string {
+	return fmt.Sprintf("# managed by dermaga; network=%s", networkName)
+}
+
+// HasContainerMarker reports whether content contains the container ownership marker for appName.
+func HasContainerMarker(content, appName string) bool {
+	lines := strings.Split(content, "\n")
+	if len(lines) == 0 {
+		return false
+	}
+	expected := ContainerMarker(appName)
+	for i := 0; i < len(lines) && i < 3; i++ {
+		line := strings.TrimSpace(lines[i])
+		if line == expected || strings.HasPrefix(line, "# managed by dermaga; app="+appName) {
+			return true
+		}
+	}
+	return false
+}
+
+// HasNetworkMarker reports whether content contains the network ownership marker for networkName.
+func HasNetworkMarker(content, networkName string) bool {
+	lines := strings.Split(content, "\n")
+	if len(lines) == 0 {
+		return false
+	}
+	expected := NetworkMarker(networkName)
+	for i := 0; i < len(lines) && i < 3; i++ {
+		if strings.TrimSpace(lines[i]) == expected {
+			return true
+		}
+	}
+	return false
+}
+
+// HasAnyMarker reports whether content contains any dermaga management marker.
+func HasAnyMarker(content string) bool {
+	lines := strings.Split(content, "\n")
+	if len(lines) == 0 {
+		return false
+	}
+	for i := 0; i < len(lines) && i < 3; i++ {
+		line := strings.TrimSpace(lines[i])
+		if strings.HasPrefix(line, "# managed by dermaga") {
+			return true
+		}
+	}
+	return false
 }
 
 // UnitFileName returns the Quadlet filename for an app release container (e.g. "app-demo-r1.container").
