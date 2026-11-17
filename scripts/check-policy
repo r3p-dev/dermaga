@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# Repository policy checks, run by `make check`. Prints nothing when every check passes.
+#
+#   scripts/check-policy [REPO_DIR]        check the repository (default: the current one)
+#   scripts/check-policy --forbidden PATH… print each PATH that must never be committed; exit 1 if any
+#
+# 1. Every container image the project pulls (workflows, Go code, installer, test scripts) is pinned
+#    by tag and digest (AGENTS.md: images pinned by tag and digest). `localhost/` images are local
+#    builds; test inputs (`*_test.go`, `testdata/`) and prose (`*.md`, `docs/`) are not pulled.
+# 2. No forbidden file (secrets, keys, databases, build output) is tracked or untracked-but-unignored.
+# 3. `.gitignore` ignores secrets, build output and raw evidence, and keeps evidence markdown visible.
+# 4. `docs/evidence/` holds only `README.md`, `TEMPLATE.md` and `M<N>/EVIDENCE.md`; raw artifacts
+#    (logs, screenshots, plans) live in the gitignored `tmp/evidence/`.
+set -Eeuo pipefail
+
+forbidden_re='(^|/)(\.env(\..*)?|master\.key|[^/]*\.(key|pem|p12|db|db-wal|db-shm|pyc)|id_(rsa|ecdsa|ed25519)|\.credentials\.json|\.webhook_secret|coverage\.out)$|(^|/)(node_modules|__pycache__|\.svelte-kit)/|^(bin|dist|build|ui/build|internal/server/dist|\.check-logs|tmp)/|^dermaga$'
+
+if [[ ${1:-} == --forbidden ]]; then
+  shift
+  found=0
+  for path in "$@"; do
+    if [[ $path =~ $forbidden_re ]]; then
+      echo "$path"
+      found=1
+    fi
+  done
+  exit "$found"
+fi
+
+self=$(realpath "$0")
+cd "${1:-$(git rev-parse --show-toplevel)}" || exit
+failed=0
+fail() {
+  echo "check-policy: $*"
+  failed=1
+}
+
+mapfile -t files < <(git ls-files --cached --others --exclude-standard)
+
+registry='(docker\.io|ghcr\.io|quay\.io|gcr\.io|registry\.k8s\.io|mcr\.microsoft\.com|public\.ecr\.aws)/'
+unpinned=$(for file in "${files[@]}"; do
+  case $file in
+    *.md | docs/* | *_test.go | */testdata/*) continue ;;
+  esac
+  [[ -f $file ]] || continue
+  {
+    grep -IohE "${registry}[A-Za-z0-9._/:@-]+" -- "$file" || true
+    grep -IohE '^[[:space:]-]*image:[[:space:]]*[^[:space:]#]+' -- "$file" | sed -E 's/.*image:[[:space:]]*//; s/["'\'']//g' || true
+  } | sort -u | while read -r image; do
+    case $image in
+      *'$'* | localhost/*) continue ;;
+    esac
+    [[ $image =~ @sha256:[0-9a-f]{64}$ ]] && continue
+    echo "  $file: $image"
+  done
+done)
+[[ -z $unpinned ]] || fail "images not pinned by digest:"$'\n'"$unpinned"
+
+forbidden=$("$self" --forbidden "${files[@]}" || true)
+[[ -z $forbidden ]] || fail "forbidden files are tracked or not ignored:"$'\n'"$forbidden"
+
+evidence=$(for file in "${files[@]}"; do
+  [[ $file == docs/evidence/* && -e $file ]] || continue
+  [[ $file =~ ^docs/evidence/(README\.md|TEMPLATE\.md|M[0-9]+/EVIDENCE\.md)$ ]] || echo "  $file"
+done)
+[[ -z $evidence ]] || fail "docs/evidence/ may hold only README.md, TEMPLATE.md and M<N>/EVIDENCE.md (raw artifacts go to tmp/evidence/):"$'\n'"$evidence"
+
+for path in .env .env.local master.key x.key x.pem x.db .credentials.json bin/x dist/x build/x \
+  ui/build/x ui/node_modules/x dermaga coverage.out .check-logs/x __pycache__/x.pyc tmp/x \
+  docs/evidence/M9/x.log docs/evidence/M9/x.png; do
+  git check-ignore -q --no-index -- "$path" || fail ".gitignore does not ignore $path"
+done
+for path in docs/evidence/README.md docs/evidence/TEMPLATE.md docs/evidence/M9/EVIDENCE.md; do
+  ! git check-ignore -q --no-index -- "$path" || fail ".gitignore ignores $path"
+done
+
+exit "$failed"

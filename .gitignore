@@ -14,7 +14,6 @@ ui/node_modules/
 *.key
 *.pem
 *.log
-!docs/evidence/**/*.log
 *.db
 *.db-wal
 *.db-shm
@@ -26,5 +25,14 @@ ui/node_modules/
 
 # Test output
 coverage.out
+.check-logs/
+__pycache__/
 ui/test-results/
 ui/playwright-report/
+
+# Raw evidence (logs, screenshots, plans) lives only in tmp/evidence/ (docs/evidence/README.md);
+# docs/evidence/ keeps markdown only
+tmp/
+docs/evidence/**
+!docs/evidence/**/
+!docs/evidence/**/*.md

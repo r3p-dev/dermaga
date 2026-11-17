@@ -18,7 +18,8 @@ jobs:
         run: |
           # no service starts inside the job container (openssh-server would try)
           printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d && chmod 755 /usr/sbin/policy-rc.d
-          # zsh, fish and ssh run the LAP-1 and installer tests; sshd -T checks sshd configs
+          # zsh, fish and ssh run the LAP-1 and installer tests; sshd -T checks sshd configs;
+          # shellcheck is the CI gate for every shell script (DEC-27)
           apt-get update && apt-get install -y --no-install-recommends \
             ca-certificates \
             curl \
@@ -29,7 +30,8 @@ jobs:
             zsh \
             fish \
             openssh-client \
-            openssh-server
+            openssh-server \
+            shellcheck
 
       - name: Setup non-root user (SEC-1)
         run: |
@@ -55,6 +57,11 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Shellcheck every shell script
+        run: |
+          shellcheck --version
+          make shellcheck SHELLCHECK_REQUIRED=1
+
       - name: Run make check and assemble the release files (not published)
         run: |
           chown -R server:server "$GITHUB_WORKSPACE"
@@ -63,7 +70,7 @@ jobs:
             export PATH=\"/usr/local/go/bin:/usr/local/bin:\$PATH\"
             cd \"$GITHUB_WORKSPACE\"
             git config --global --add safe.directory \"$GITHUB_WORKSPACE\"
-            make check release
+            make check release VERBOSE=1
           "
 
       - name: Verify static binaries produced
