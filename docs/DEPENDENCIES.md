@@ -78,7 +78,7 @@ Pinned by tag **and** digest where they are used.
 
 | Image                         | Purpose                                  | Rule |
 | ----------------------------- | ---------------------------------------- | ---- |
-| Traefik v3 (official)         | Reverse proxy                            | Updates within the pinned major only |
+| Traefik v3 (official)         | Reverse proxy; pinned as `traefik.Image` in `internal/traefik/types.go` (tag + multi-arch index digest, DEC-20) | Updates within the pinned major only, shipped with dermaga releases |
 | Debian 13 (official)          | CI job container                         | |
 
 The hook relay runs the dermaga binary on an empty root filesystem (no base image).
@@ -88,7 +88,9 @@ The hook relay runs the dermaga binary on an empty root filesystem (no base imag
 | Package                                                                    | Purpose |
 | -------------------------------------------------------------------------- | ------- |
 | podman, passt, crun, netavark, aardvark-dns, catatonit, uidmap             | Rootless containers and networking |
-| nftables, fail2ban, openssh-server, unattended-upgrades, needrestart, systemd-zram-generator | Host hardening |
+| dbus-user-session                                                          | The systemd user bus `systemctl --user` talks to |
+| nftables, fail2ban, python3-systemd, openssh-server, unattended-upgrades, apt-listchanges, needrestart, systemd-zram-generator | Host hardening (python3-systemd: fail2ban's journal backend) |
+| sudo, iproute2                                                             | sudo for `server`; `ss` and `ip` for the installer's checks |
 | systemd-timesyncd (if no other time daemon)                                | Correct clock for TOTP and certificates |
 | git                                                                        | Mirrors and builds |
 | curl, ca-certificates, jq                                                  | Installer and checks |
@@ -99,7 +101,8 @@ The hook relay runs the dermaga binary on an empty root filesystem (no base imag
 | ------------------------------- | ------ |
 | Go                              | The `go` line in `go.mod` |
 | Bun                             | Pinned in CI and the `Makefile` |
-| Podman (minimum version)        | A constant in code; checked by CI, the installer and `doctor` |
+| Podman (minimum version)        | `doctor.MinPodmanVersion` (5.4.2, Debian 13's); checked by `doctor`, which the installer runs |
+| CI job packages                 | `.github/workflows/ci.yml` and `release.yml` install `jq zsh fish openssh-client openssh-server` (LAP-1 and installer tests, `sshd -T`) and, for releases, `gh` from Debian trixie (`docs/evidence/M3/logs/debian_packages_query.log`) |
 | libvirt + a Debian 13 cloud image | The test VM (`docs/SETUP.md`) |
 
 ## 6. Known advisories

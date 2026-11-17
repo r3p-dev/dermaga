@@ -178,6 +178,11 @@ Dermaga is organized strictly per `docs/CONVENTIONS.md` into `cmd/dermaga`, `int
 - `internal/traefik`: Traefik dynamic routing configuration generator (JSON-in-`.yml`), atomic file rename publisher, and `acme.json` certificate state reader.
 - `internal/reconciler`: Systemd user service supervisor, Quadlet dry-run validator, blue-green deployment orchestrator, and automatic rollback coordinator (`DEP-10`).
 - `internal/server`: HTTP server bound strictly to `127.0.0.1:7070` providing the REST API, session management, TOTP 2FA, rate limiting, and serving the embedded UI.
+- `internal/access`: the one-line laptop command (`LAP-1`) built from the stored SSH address, port and login key fingerprint; validates every value it puts into the command.
+- `internal/doctor`: host health checks (`DOC-1`) run by `dermaga doctor` and by the installer (`INST-11`): lingering, subuids/subgids, Traefik sockets, Podman version, Traefik running, `network-online.target`, clock, disk. Checks for domains, GitHub, TOTP and certificates join with those features.
+
+### Installer (`install/`)
+- `install/install.sh`: the Bash installer (`INST-*`, `HOST-*`, `LOCK-*`), run as root from a release asset. It owns everything that needs root (packages, user `server`, sysctl, nftables, fail2ban, sshd with the lockout guard), downloads and verifies the binary, then hands over to dermaga running as `server`. `install/install_test.go` runs it against a fake host (stub commands in `PATH`, a temporary root, a file as the terminal).
 
 ### Frontend (`ui/`)
 - `ui/src/routes/`: SvelteKit 3 application routes (Overview, Deployments, Logs, Environment, Domains, Headers, Settings, Doctor).
@@ -202,6 +207,15 @@ Dermaga strictly follows the XDG base directory specification for user `server`.
 | `$XDG_RUNTIME_DIR/dermaga/` | Runtime directory (`hooks.sock`, `daemon.sock`); managed by systemd user unit via `RuntimeDirectory=dermaga` | Ephemeral (tmpfs) | 0700 dir, 0600 sockets |
 | `~/.local/share/dermaga/traefik/dynamic/` | Generated Traefik dynamic configurations (`.yml` holding JSON) | Managed files | 0700 dir, 0600 files |
 | `~/.local/share/dermaga/traefik/acme.json` | ACME certificates stored by Traefik | Persistent | 0600 file |
+| `~/.local/share/dermaga/traefik/traefik.yml` | Traefik static configuration (JSON), written by the reconciler | Managed file | 0644 file |
+| `~/.config/containers/systemd/traefik.container` | Traefik Quadlet unit; the directory `~/.local/share/dermaga/traefik` is mounted at `/etc/traefik`, `dynamic/` read-only on top | Managed file | 0644 file |
+| `~/.config/systemd/user/traefik-http.socket`, `traefik-https.socket` | User-manager sockets owning TCP 80 and TCP+UDP 443 (`HOST-6`) | Managed files | 0644 files |
+| `~/.config/systemd/user/dermaga.service` | The daemon's user unit, written by the installer | Installer file | 0644 file |
+| `~/.local/bin/dermaga` | The binary, owned by `server` so the panel can replace it (`UPD-2`) | Installer file | 0755 file |
+| `~/.config/dermaga/github_known_hosts` | GitHub's SSH host keys, pinned from its published metadata (`INST-10`) | Installer file | 0644 file |
+| `/etc/ssh/sshd_config.d/00-dermaga.conf`, `/etc/nftables.conf` (table `inet dermaga`), `/etc/fail2ban/jail.d/90-dermaga.local`, `/etc/sysctl.d/90-dermaga.conf`, other `/etc/**/90-dermaga*` files | Host hardening (`HOST-2`–`HOST-5`) | Installer files (root) | 0644 / 0755 |
+
+Settings written by the installer (`dermaga install-settings`, `INST-6`): `ssh_address`, `ssh_port`, `ssh_login_key_fingerprint`. `dermaga panel` builds the laptop command from them.
 
 Mounting note: Traefik mounts `~/.local/share/dermaga/traefik/dynamic/` as a directory mount into `/etc/traefik/dynamic/` (never bind-mounting individual files, which breaks inotify on atomic renames; verified in [EVIDENCE.md §6](evidence/M0/EVIDENCE.md#6-spike-33-traefik-file-provider-atomic-rename-error-handling-and-verify-router)). All dynamic configuration updates write to a temporary file in the same directory, `fsync`, and atomically `rename` into place.
 
@@ -298,12 +312,30 @@ CREATE TABLE audit_logs (
 ## 5. Flows
 
 ### 5.1 Installation & Bootstrap Flow
-1. Operator executes interactive installer: `curl -fsSL https://.../install.sh | bash`.
-2. Installer checks prerequisites (Debian 13, user `server`, systemd linger, rootless Podman).
-3. Installer wires host systemd: `systemctl add-wants multi-user.target network-online.target` ensuring system network reaches active in < 2 s ([EVIDENCE.md §8](evidence/M0/EVIDENCE.md#8-spike-35-quadlet-notifyhealthy-limits-dry-run-defaultdependencies-restart-backoff)).
-4. Installer downloads static `dermaga` binary, verifies SHA-256 checksum against `checksums.txt`, places binary at `/usr/local/bin/dermaga`, and creates systemd user unit `dermaga.service`.
-5. User session starts `dermaga.service`; panel begins listening exclusively on `127.0.0.1:7070`.
-6. Installer displays instructions to connect via SSH local port forwarding.
+`curl -fsSL https://github.com/r3p-dev/dermaga/releases/download/<tag>/install.sh | sudo bash`. The
+release workflow stamps the tag into `install.sh`; answers come from `/dev/tty`.
+
+1. **Preflight** (`INST-2`, `INST-8`): root, Debian 13, x86_64/arm64, systemd, sshd started by `ssh.service`
+   (not `ssh.socket`), nothing but our own sockets on :80/:443.
+2. **Questions** (`INST-3`–`INST-6`, `HOST-7`): the login key (keys of root and the sudo user, the one
+   used for this login marked from sshd's `Accepted publickey … from IP port PORT` line; or a pasted
+   key), the SSH port (default 4222), the public address (asked only when the default-route
+   interface has no public IPv4), a sudo password (recommended). `--config FILE --yes` answers them
+   for the VM harness (`INST-4`).
+3. **Plan and confirmation** (`INST-7`). Nothing changes before this.
+4. **Host** (`HOST-1`–`HOST-6`): packages; nftables table `inet dermaga` with the old *and* new SSH
+   ports (validated with `nft -c`, loaded with `start`/`reload`, never `restart`); sysctl, zram,
+   journald, coredump, unattended upgrades, clock, `multi-user.target` → `network-online.target`;
+   user `server` (subids, cgroup delegation, key, sudo, lingering, `containers.conf`); fail2ban.
+5. **dermaga** (`INST-9`–`INST-11`): the binary for the architecture is downloaded with
+   `checksums.txt` from the same release and installed to `~server/.local/bin/dermaga` only when its
+   SHA-256 matches (`SEC-22`); GitHub's SSH host keys are pinned; settings are stored; the user unit
+   `dermaga.service` is enabled and started. On start the daemon's reconciler writes Traefik's
+   units and static config and starts the sockets and Traefik without blocking (`DEP-10`). The
+   installer waits for Traefik, then shows `dermaga doctor`.
+6. **Lockout guard** (`LOCK-1`–`LOCK-5`, DEC-19), see §6.5.
+7. **Summary** (`INST-12`): the output of `dermaga panel` (the laptop command and
+   "Lost this? Run `dermaga panel` on the server.").
 
 ### 5.2 First-Run Setup & GitHub Connection Flow
 1. Operator connects to `http://localhost:7070/setup` over SSH tunnel.
@@ -420,6 +452,15 @@ All state transitions are explicit, strictly validated, and modified in exactly 
 | `restarting` | New daemon fails health check | `restored` | Automatically restores previous binary and restarts |
 | `restarting` | New daemon healthy | `idle` | Migration complete; logs update success |
 
+### 6.5 Lockout guard (`LOCK-1`–`LOCK-5`)
+| State | Event / Trigger | Next State | Action / Side Effect |
+|---|---|---|---|
+| `none` | Access already in its final form (re-run) | `closed` | Final files re-applied; identical, so nothing reloads |
+| `none` | Otherwise | `open` | Drop-in `00-dermaga.conf`: old ports + new port, `Match LocalPort <new>` → `AllowUsers server`, `AuthenticationMethods publickey`; `sshd -t`, reload, check sshd listens on exactly those ports; on any failure the previous file is restored |
+| `open` | sshd logs `Connection from C port CP on S port <new>` and `Accepted publickey for server from C port CP` | `closed` | Final drop-in (port, keys only, `AllowUsers server`, no root), nftables and fail2ban with the new port only |
+| `open` | User types `yes` (manual fallback) | `closed` | Same as above |
+| `open` | 10 minutes, Ctrl+C, closed window | (exit) | Nothing closed; old access still works; re-running resumes |
+
 ---
 
 ## 7. Decisions log
@@ -445,5 +486,10 @@ Every architectural decision and workaround adopted during spikes and design is 
 | **DEC-15** | 2026-11-16 | Quadlet Unit Generator via Strict INI Serialization | Generates Quadlet `.container` and `.network` units with standard library INI writer. Enforces `[Quadlet] DefaultDependencies=false` across all units (DEC-06), maps cgroup memory/CPU limits via `PodmanArgs=` (DEC-05), configures exponential restart backoff in `[Service]`, drops all capabilities by default (`SEC-19`), and sets `Notify=healthy` when healthcheck is defined. Guards against systemd syntax injection: escapes `%` to `%%` in `HealthCmd` to prevent specifier expansion (`%h`, `%u`, `%20`), rejects trailing backslash (`\`) to prevent line continuation swallowing directives, and rejects newlines/null bytes across all fields. Validated on Debian 13 with `podman-system-generator --dryrun --user`. | External INI library (rejected: adds dependency); shell templating (rejected: risks command/argument injection). | [EVIDENCE.md §2](evidence/M2/EVIDENCE.md#2-quadlet-generator--dry-run-validation) |
 | **DEC-16** | 2026-11-16 | Traefik Dynamic Switch Routing with Priority 10000 and Universal ACME | Dynamic app configs (`app-<name>.yml`) format typed JSON in `.yml`. Every router declares `tls.certResolver: le`. During blue-green deployments, switch rendering adds a temporary verify router (`app-<name>-verify`) with `priority: 10000`, `Header("X-Dermaga-Verify", "<token>")`, and upstream pointing to the candidate release service (`app-<name>-candidate`), enabling pre-switch verification without interrupting live traffic. | Separate verification entrypoint port (rejected: exposes another port); verifying traffic directly against live router (rejected: risks serving broken candidate to public). | [EVIDENCE.md §3](evidence/M2/EVIDENCE.md#3-traefik-generator--switch-routing) |
 | **DEC-17** | 2026-11-17 | Explicit Ownership Markers and Safe Startup Reconciliation (Empty-Database Protection) | Every Quadlet unit (`.container`, `.network`) and Traefik dynamic file (`.yml`) generated by Dermaga carries a machine-readable first-line comment marker (`# managed by dermaga; app=<name>`, `# managed by dermaga; network=<name>`, `# managed by dermaga; global`, `# managed by dermaga; static`). During DEP-10 startup reconciliation, files matching Dermaga's naming patterns without this marker are treated as foreign: reported, never touched or deleted. Per owner decision, when the database has 0 active apps while managed units exist on disk, orphan deletion is refused by safe default (Option A) to protect against unmounted, missing, or corrupt database paths; `dermaga reconcile --prune` overrides this safeguard when total cleanup is explicitly intended. Partial-database drift protection (Option C) is deferred and will be revisited together with automated backups in v1.1. | File naming prefix only (rejected: collisions with user units in shared `~/.config/containers/systemd`); unconditional pruning on empty DB / Option B (rejected: catastrophic data loss on DB misconfiguration); partial-database threshold protection / Option C (deferred to v1.1 alongside backups). | [EVIDENCE.md §4](evidence/M2/EVIDENCE.md#4-dep-10-startup-reconciliation-on-vm) |
+| **DEC-18** | 2026-11-17 | Installer and binary split; Traefik written by the reconciler; binary at `~server/.local/bin/dermaga` | The Bash installer does only what needs root. Traefik's Quadlet unit, its two sockets and its static config are typed output of the Go generators (golden-tested, `SEC-18`), ensured by the startup reconciler like `web.network` and `00-global.yml`, so a deleted file or a reboot repairs itself (`NFR-3`) and a new release can pin a new image (owned files whose content is out of date are rewritten; unmarked files are foreign and Traefik is then not started). Unit names follow `HOST-6` with DEC-17 markers. The binary lives in `server`'s home because the panel must replace it as `server` (`UPD-2`); §5.1 previously said `/usr/local/bin`. | Bash heredocs for the Traefik units (rejected: a second, untested renderer); `/usr/local/bin` (rejected: not writable by `server`). | `internal/reconciler`, `internal/quadlet/traefik.go`, [M3 EVIDENCE](evidence/M3/EVIDENCE.md) |
+| **DEC-19** | 2026-11-17 | Two-phase sshd lockout guard; new login detected from sshd's own log | Phase *open* adds the new port next to the old ones with a `Match LocalPort` block that admits only `server` with a key, ended by `Match all` so the lines after `Include` in Debian's `sshd_config` stay global (checked with the real `sshd -T`). Every sshd change is `sshd -t`-checked, reloaded, and verified by the listening ports; any failure restores the previous file. The new login is proven by the pair of lines sshd logs with `LogLevel VERBOSE` for one connection (`Connection from C port CP on S port <new>` and `Accepted publickey for server from C port CP`), whose format was copied from `dermaga-vm`. `ssh.socket` setups are refused. | Watching `ss`/`who` for a live session (rejected: misses short logins, does not prove key authentication); a timer that reverts (rejected: phase *open* never removes access, so there is nothing to revert). | `install/install.sh`, `install/testdata/journal_vm_verbose.txt` |
+| **DEC-20** | 2026-11-17 | Traefik image pinned by tag and multi-arch index digest; directory mount; no ACME e-mail | `docker.io/library/traefik:v3.7.19@sha256:aa942a00…` is the OCI index digest from the registry (the M2 test pin `44b61e…` is the linux/amd64 manifest and would not pull on arm64). `~/.local/share/dermaga/traefik` is mounted at `/etc/traefik` (static file and `acme.json`, which Traefik rewrites in place), `dynamic/` read-only on top. No `AutoUpdate=registry` (vps-setup.sh has it): a digest pin cannot auto-update; new images ship with dermaga releases. Traefik's ACME `email` is optional (`omitempty` in its source), so the installer asks none; account behaviour without e-mail is verified with Pebble in M4. | A floating tag with auto-update (rejected: `SEC-20`); single-file bind mounts (rejected: atomic renames are invisible through them). | `docs/evidence/M3/logs/traefik_image_query.log`, `traefik_acme_source_check.log` |
+| **DEC-21** | 2026-11-17 | Laptop command: block first, then `Host *`; `IdentityFile` only for a matching key | ssh uses the first value it reads, so a block appended after a user's `Host *` could lose `User server`. The block is written first and followed by `Host *`, which keeps options at the top of the old file applying to every host exactly as before. The installer stores the login key's fingerprint; the command writes `IdentityFile` + `IdentitiesOnly yes` only for a `~/.ssh/*.pub` with that fingerprint (the open `LAP-1` item in `docs/PLAN.md`). The script contains no `'`, `\\` or `\'`, the only sequences fish interprets in single quotes; tested in sh (bash, dash), bash, zsh and fish. | Appending at the end (rejected: first-match precedence); always writing an `IdentityFile` (rejected: wrong file when keys differ). | `internal/access`, `docs/evidence/M3/logs/lap1_dash_zsh_container.log` |
+| **DEC-22** | 2026-11-17 | Installer scope choices against vps-setup.sh | Same sysctl, fail2ban, sshd and nftables guarantees; nftables uses its own table `inet dermaga` and is never restarted. No `apt-get full-upgrade` (vps-setup.sh does one): re-runs must be a no-op (`INST-2`) and unattended-upgrades applies security updates daily. zram without the swapfile fallback. The provider's user is not deleted; with `AllowUsers server` it can no longer log in, and the summary says how to remove it. `doctor` in M3 runs the checks that exist so far (`INST-11`); `DOC-1` is completed in M9. | Copying vps-setup.sh's flow (rejected: no lockout guard, config file). | `install/install.sh` |
 
 

@@ -14,15 +14,26 @@ Dermaga's build and development workflow requires:
   - **Bun:** `bun` v1.4+ (used for building the SvelteKit 3 UI and producing `bun.lock`).
   - **Node.js:** Node `v22+` / `v24` (LTS) for auxiliary tools and language servers.
 - **System Utilities:** `make`, `git`, `curl`, `jq`, `libvirt-clients` (`virsh`), `virt-install`.
-- **SSH Configuration:** Configure `~/.ssh/config` for convenient access to the test VM:
+- **SSH Configuration:** `~/.ssh/config` on the workstation has two entries for the test VM. The key
+  `~/.ssh/dermaga-vm` is the one cloud-init put into the image for user `debian`:
   ```sshconfig
+  # snapshot `fresh`: only cloud-init's user debian, sshd on port 22
+  Host dermaga-vm-init
+      HostName 192.168.122.217
+      User debian
+      IdentityFile ~/.ssh/dermaga-vm
+      IdentitiesOnly yes
+
+  # after vps-setup.sh or the dermaga installer: user server on port 4222
   Host dermaga-vm
       HostName 192.168.122.217
-      User server
       Port 4222
-      IdentityFile ~/.ssh/id_ed25519
-      StrictHostKeyChecking accept-new
+      User server
+      IdentityFile ~/.ssh/dermaga-vm
+      IdentitiesOnly yes
   ```
+  The workstation's config also has an unmarked `Host dermaga` entry for the VM, so the dermaga
+  laptop command adds its block as `Host dermaga-dermaga-vm` there (`LAP-1`).
 
 ---
 
@@ -230,3 +241,36 @@ cp ui/static/logo.svg ui/static/favicon.svg
 ```
 
 
+
+---
+
+## 7. Milestone M3: Installing on the `fresh` Snapshot
+
+From M3 on, the VM is set up by the installer itself, from the `fresh` snapshot.
+
+1. Revert to `fresh` (ask the owner first), then make reboots restart the VM:
+   ```bash
+   virsh --connect qemu:///system snapshot-revert dermaga-vm fresh
+   virt-xml --connect qemu:///system dermaga-vm --edit --events on_reboot=restart
+   virsh --connect qemu:///system start dermaga-vm
+   ```
+2. A release with `install.sh`, both binaries and `checksums.txt` must exist: the owner pushes a tag
+   (`v0.3.0-rc` for M3b) and `.github/workflows/release.yml` publishes it.
+3. Run the installer interactively as `debian` (it asks on the terminal):
+   ```bash
+   ssh -t dermaga-vm-init 'curl -fsSL https://github.com/r3p-dev/dermaga/releases/download/v0.3.0-rc/install.sh | sudo bash'
+   ```
+   Enter accepts every default. When it waits, log in from a second terminal:
+   `ssh -p 4222 -i ~/.ssh/dermaga-vm server@192.168.122.217`. Afterwards `ssh dermaga-vm` works and
+   `dermaga-vm-init` (port 22, user `debian`) is refused.
+4. Checks from the workstation: `test/vm/port_scan.sh` (during the install), `test/vm/m3_check.sh
+   access|state|running|control 192.168.122.217 4222 ~/.ssh/dermaga-vm`.
+
+**Recovery if SSH is lost:** the old login stays open until the new one is proven (`LOCK-1`–`LOCK-5`).
+If the VM still cannot be reached, use the libvirt console (`virsh --connect qemu:///system console
+dermaga-vm` or virt-manager); `debian` has no password in the cloud image, so the practical recovery
+is reverting to `fresh` (owner's approval).
+
+**Teardown:** revert to `fresh` or `vps-setup` (owner's approval). On the workstation, remove the block
+the laptop command added (between `# dermaga laptop access:` and `# end of dermaga laptop access`,
+plus the `Host *` line after it) or restore `~/.ssh/config.dermaga-backup`.

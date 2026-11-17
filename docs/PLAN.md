@@ -18,7 +18,7 @@ backups come in v1.1.
 | M0  | –       | Spikes and plan                                  | completed   | 28    |
 | M1  | 0.1.0   | Foundation: daemon, login, panel shell           | completed   | 36    |
 | M2  | 0.2.0   | Generators and reconciliation                    | completed   | 28    |
-| M3  | 0.3.0   | Installer, hardening, lockout guard              | not started | 24    |
+| M3  | 0.3.0   | Installer, hardening, lockout guard              | in progress (M3a done, M3b next) | 24    |
 | M4  | 0.4.0   | First-run setup and panel access                 | not started | 20    |
 | M5  | 0.5.0   | Connect GitHub                                   | not started | 28    |
 | M6  | 0.6.0   | First deploy: wizard, build, env, logs           | not started | 36    |
@@ -139,6 +139,10 @@ Open items / decisions for M3:
   `IdentityFile` (with `IdentitiesOnly yes`) only for a real match; with no match it writes no `IdentityFile`
   and tells the user. The logic runs inside `sh -c '...'` so it pastes in bash, zsh and fish.
   (Does not conflict with PRD `LAP-1`; refines the exact `Host dermaga` block content to prevent multi-key SSH failures).
+  Implemented in M3a: `internal/access`, DEC-21.
+
+Checkpoints: **M3a** installer and hardening code with unit and fake-host tests, local checks only;
+**M3b** scenarios a–h on `dermaga-vm` from `fresh` with the `v0.3.0-rc` pre-release.
 
 ## M4 (0.4.0): First-run setup and panel access
 

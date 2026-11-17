@@ -4,33 +4,60 @@
 
 ## 1. Before You Start (`INST-1`)
 
-To use dermaga, you need:
-- A server or VPS running a fresh installation of **Debian 13 (Trixie)** (x86_64 or arm64, 2 GB RAM minimum).
-- A domain name where you can configure DNS records.
-- **Add your laptop's SSH public key** when creating the VPS. Most VPS providers prompt for an SSH public key during instance creation.
+You need:
 
-If you don't have an SSH key pair yet:
-- **Linux & macOS:** Run `ssh-keygen -t ed25519 -C "laptop"`, press Enter for defaults, and view your public key with `cat ~/.ssh/id_ed25519.pub`.
-- **Windows (PowerShell / Windows Terminal):** Run `ssh-keygen -t ed25519`, then `Get-Content $env:USERPROFILE\.ssh\id_ed25519.pub`.
+- A new VPS with **Debian 13** (x86_64 or ARM, 2 GB RAM minimum).
+- A domain where you can add DNS records.
+- **Your laptop's SSH key, added when you create the VPS.** Most providers ask for it on the create
+  page. That is how the installer knows it is you.
 
-Your private key (`id_ed25519`) must never leave your laptop.
+A VPS created with only a root password is fine too: the installer asks for your key.
 
-## 2. Accessing the Panel
+### No SSH key yet?
 
-The panel is never exposed directly to the public internet (`SEC-2`). It binds strictly to `127.0.0.1:7070` on the server and is accessed over an authenticated SSH tunnel:
+The key has two files on your laptop: a private one that **never leaves the laptop** (keep a backup
+of it, like a password) and a public one (`.pub`) that you give to servers.
+
+**Linux and macOS** (Terminal):
+
+1. Check whether you have one: `cat ~/.ssh/id_ed25519.pub`
+2. If that says "No such file", create one: `ssh-keygen -t ed25519` and press Enter at each question.
+3. Show it: `cat ~/.ssh/id_ed25519.pub`. Copy the whole line (it starts with `ssh-ed25519`) and paste
+   it into your provider's SSH key field.
+
+**Windows 10 and newer** (PowerShell or Windows Terminal):
+
+1. Check: `Get-Content $env:USERPROFILE\.ssh\id_ed25519.pub`
+2. If it is missing: `ssh-keygen -t ed25519`, Enter at each question.
+3. Show it again with the command from step 1, and paste the line at your provider.
+
+## 2. Install
+
+Log in to the server the way your provider says (for example `ssh debian@<server-ip>` or
+`ssh root@<server-ip>`), then run the command from the release you want to install:
 
 ```bash
-# Connect and forward port 7070:
-ssh -N -L 7070:127.0.0.1:7070 server@<your-server-ip> -p 4222
+curl -fsSL https://github.com/r3p-dev/dermaga/releases/download/<tag>/install.sh | sudo bash
 ```
 
-Then open `http://localhost:7070` in your web browser.
+It asks only what has no safe default (your key, the SSH port, the public IP when it cannot see
+it), shows a plan, hardens the server and installs everything. Before it closes the old way in, it
+asks you to log in from a **new** terminal on the new port, and waits until that works.
+
+At the end it prints **one command to paste on your laptop**. From then on:
+
+```bash
+ssh dermaga
+```
+
+opens a shell on the server and the panel at **http://localhost:7070**. The panel listens on the
+server's `127.0.0.1:7070` only and is never reachable from the internet (`SEC-2`).
 
 ## 3. Server Commands (`SRV-1`)
 
 Besides the initial installer, the owner only ever needs three commands on the server:
 
-- `dermaga panel`: Prints the laptop SSH configuration snippet and a first-run setup link.
+- `dermaga panel`: Prints the laptop command again.
 - `dermaga admin set-password`: Interactively resets or sets the panel administrator password.
 - `dermaga admin totp disable`: Emergency recovery command to disable TOTP two-factor authentication.
 

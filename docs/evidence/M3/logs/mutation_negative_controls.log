@@ -1,0 +1,79 @@
+# Command: copy of the working tree per mutant; break one guarded rule with sed; go test the test that guards it; it must FAIL (exit != 0)
+# Commit: a88fe9f
+# Status: dirty (M3a working tree)
+# Timestamp: 2026-11-17T08:46:33+07:00
+
+=== mutant sshd-no-restore: install/install.sh: sed 's/^    restore$/    :/'
+953c953
+<     restore
+---
+>     :
+960c960
+<     restore
+--- FAIL: TestInstallRejectedSSHDConfigRolledBack (0.66s)
+--- FAIL: TestInstallSSHDNotListeningRolledBack (0.84s)
+FAIL
+FAIL	dermaga/install	1.507s
+FAIL
+exit=1
+NEGATIVE CONTROL PASSED: the test caught the broken rule
+
+=== mutant login-any-port: install/install.sh: sed 's/ \&\& \$9 == port / /'
+974c974
+<       $1 == "Connection" && $2 == "from" && $9 == port { conn[$3 " " $5] = 1 }
+---
+>       $1 == "Connection" && $2 == "from" { conn[$3 " " $5] = 1 }
+--- FAIL: TestLoginSeenOnRealJournal (0.02s)
+FAIL
+FAIL	dermaga/install	0.024s
+FAIL
+exit=1
+NEGATIVE CONTROL PASSED: the test caught the broken rule
+
+=== mutant close-without-proof: install/install.sh: sed 's/^    wait_for_new_login "\$since"$/    :/'
+1183c1183
+<     wait_for_new_login "$since"
+---
+>     :
+--- FAIL: TestInstallTimeoutKeepsOldAccess (0.88s)
+FAIL
+FAIL	dermaga/install	0.887s
+FAIL
+exit=1
+NEGATIVE CONTROL PASSED: the test caught the broken rule
+
+=== mutant lap1-not-idempotent: internal/access/access.go: sed 's/if grep -qF "\$m " "\$c"; then/if false; then/'
+88c88
+< 		`if grep -qF "$m " "$c"; then a=$(grep -F "$m " "$c" | head -n 1 | sed "s/^.* as //"); echo "Already saved. From now on: ssh $a, then open ` + PanelURL + `"; exit 0; fi`,
+---
+> 		`if false; then a=$(grep -F "$m " "$c" | head -n 1 | sed "s/^.* as //"); echo "Already saved. From now on: ssh $a, then open ` + PanelURL + `"; exit 0; fi`,
+--- FAIL: TestLaptopCommandFreshLaptopPastedTwice (0.26s)
+FAIL
+FAIL	dermaga/internal/access	0.268s
+FAIL
+exit=1
+NEGATIVE CONTROL PASSED: the test caught the broken rule
+
+=== mutant foreign-traefik-owned: internal/reconciler/reconciler.go: sed 's/case readErr == nil \&\& !f.owned(string(current)):/case false:/'
+449c449
+< 		case readErr == nil && !f.owned(string(current)):
+---
+> 		case false:
+--- FAIL: TestReconcile_ForeignTraefikUntouched (0.00s)
+FAIL
+FAIL	dermaga/internal/reconciler	0.006s
+FAIL
+exit=1
+NEGATIVE CONTROL PASSED: the test caught the broken rule
+
+=== mutant doctor-ignores-clock: internal/doctor/doctor.go: sed 's/== "yes" {/!= "nope" {/'
+141c141
+< 	if c.run(ctx, "timedatectl", "show", "-P", "NTPSynchronized") == "yes" {
+---
+> 	if c.run(ctx, "timedatectl", "show", "-P", "NTPSynchronized") != "nope" {
+--- FAIL: TestDoctorDetectsEachProblem (0.00s)
+FAIL
+FAIL	dermaga/internal/doctor	0.003s
+FAIL
+exit=1
+NEGATIVE CONTROL PASSED: the test caught the broken rule
