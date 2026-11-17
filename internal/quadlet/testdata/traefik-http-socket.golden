@@ -1,0 +1,11 @@
+# managed by dermaga; unit=traefik-http.socket
+[Unit]
+Description=dermaga Traefik :80 (HTTP to HTTPS redirect, ACME challenges)
+
+[Socket]
+ListenStream=80
+FileDescriptorName=web
+Service=traefik.service
+
+[Install]
+WantedBy=sockets.target

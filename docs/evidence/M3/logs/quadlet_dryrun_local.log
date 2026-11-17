@@ -1,0 +1,57 @@
+# Command: QUADLET_UNIT_DIRS=<tmp> /usr/lib/systemd/system-generators/podman-system-generator --dryrun --user  (traefik.container + web.network goldens; local Podman, not Debian's 5.4.2: an early check only, the VM check in M3b is authoritative)
+# Commit: a88fe9f
+# Status: dirty (M3a work in progress)
+# Timestamp: 2026-11-17T08:42:04+07:00
+podman version 5.8.9
+---traefik.service---
+# managed by dermaga; unit=traefik.container
+[Unit]
+Description=dermaga Traefik reverse proxy (socket-activated)
+Requires=traefik-http.socket traefik-https.socket
+After=traefik-http.socket traefik-https.socket
+SourcePath=/tmp/claude-1000/-home-r3p-Projects-containers/ddf38bc0-5ba1-4108-8b00-9c22e59b4d51/scratchpad/quadlet-TOxB/traefik.container
+RequiresMountsFor=%t/containers
+Requires=web-network.service
+After=web-network.service
+RequiresMountsFor=/home/server/.local/share/dermaga/traefik
+RequiresMountsFor=/home/server/.local/share/dermaga/traefik/dynamic
+
+[X-Container]
+ContainerName=traefik
+Image=docker.io/library/traefik:v3.7.19@sha256:aa942a00bce033c909bf1f7e861d93761be4b31a035f10d2410d33e38a8f41cf
+Network=web.network
+Notify=true
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=ALL
+PidsLimit=256
+PodmanArgs=--memory=256m
+Volume=/home/server/.local/share/dermaga/traefik:/etc/traefik
+Volume=/home/server/.local/share/dermaga/traefik/dynamic:/etc/traefik/dynamic:ro
+
+[X-Quadlet]
+DefaultDependencies=false
+
+[Service]
+Sockets=traefik-http.socket traefik-https.socket
+Restart=always
+TimeoutStartSec=300
+Environment=PODMAN_SYSTEMD_UNIT=%n
+KillMode=mixed
+ExecStop=/usr/bin/podman rm -v -f -i traefik
+ExecStopPost=-/usr/bin/podman rm -v -f -i traefik
+Delegate=yes
+Type=notify
+NotifyAccess=all
+SyslogIdentifier=%N
+ExecStart=/usr/bin/podman run --name traefik --replace --rm --cgroups=split --pids-limit 256 --network web --sdnotify=container -d --security-opt=no-new-privileges --cap-drop all --read-only -v /home/server/.local/share/dermaga/traefik:/etc/traefik -v /home/server/.local/share/dermaga/traefik/dynamic:/etc/traefik/dynamic:ro --memory=256m docker.io/library/traefik:v3.7.19@sha256:aa942a00bce033c909bf1f7e861d93761be4b31a035f10d2410d33e38a8f41cf
+
+[Install]
+WantedBy=default.target
+
+exit=0
+
+--- negative control: unsupported key added to traefik.container
+quadlet-generator[780807]: converting "traefik.container": unsupported key 'NotAQuadletKey' in group 'Container' in /tmp/claude-1000/-home-r3p-Projects-containers/ddf38bc0-5ba1-4108-8b00-9c22e59b4d51/scratchpad/quadlet-TOxB/traefik.container
+quadlet-generator[780807]: processing encountered some errors
+exit=1

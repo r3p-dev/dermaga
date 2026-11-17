@@ -5,6 +5,10 @@ package traefik
 // CertResolverName is the default Let's Encrypt certificate resolver identifier.
 const CertResolverName = "le"
 
+// Image is the pinned Traefik image: tag plus the multi-arch index digest, so amd64 and arm64
+// servers pull the same release (queried in docs/evidence/M3/logs/traefik_image_query.log).
+const Image = "docker.io/library/traefik:v3.7.19@sha256:aa942a00bce033c909bf1f7e861d93761be4b31a035f10d2410d33e38a8f41cf"
+
 // VerifyHeader is the HTTP header inspected by the temporary switch router.
 const VerifyHeader = "X-Dermaga-Verify"
 
@@ -231,7 +235,7 @@ type CertificatesResolver struct {
 
 // ACMEConfig defines Let's Encrypt / ACME client parameters.
 type ACMEConfig struct {
-	Email         string         `json:"email"`
+	Email         string         `json:"email,omitempty"`
 	Storage       string         `json:"storage"`
 	CAServer      string         `json:"caServer,omitempty"`
 	HTTPChallenge *HTTPChallenge `json:"httpChallenge,omitempty"`

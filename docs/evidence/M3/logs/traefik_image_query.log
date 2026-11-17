@@ -1,0 +1,26 @@
+# Command: registry query for docker.io/library/traefik v3.7 tags and index digest (Docker Hub registry v2 API)
+# Commit: a88fe9f
+# Timestamp: 2026-11-17T08:19:40+07:00
+
+$ GET /v2/library/traefik/tags/list (filtered to ^v3\.7\.[0-9]+$, sorted)
+v3.7.15
+v3.7.16
+v3.7.17
+v3.7.18
+v3.7.19
+
+$ HEAD /v2/library/traefik/manifests/v3.7.19 (Accept: OCI index, Docker manifest list)
+content-type: application/vnd.oci.image.index.v1+json
+docker-content-digest: sha256:aa942a00bce033c909bf1f7e861d93761be4b31a035f10d2410d33e38a8f41cf
+
+$ GET manifest v3.7.19 platforms
+linux/amd64 sha256:44b61e76a251fe586d17d881fc900452d0a7b4a4b08c97ce6eac86d45b4c8b9d
+unknown/unknown sha256:61d6bcdac9ef0cdbfce897410f8ea26a8dcb72c383401febf5cc5b1e17560af4
+linux/arm/v6 sha256:e94d2469757aad70b2a51ed07523536ac7c3540853e853f2412bb36dafd13d7f
+unknown/unknown sha256:8bd921172f80c9ba3eee8b8dc96e1448f46144e74bddac9a655501d9962eb31b
+linux/arm64/v8 sha256:c9913a1db46a68ba0e72e9aa6cbb236dc1c33159f49b53d9ea20ad4df7b746c9
+unknown/unknown sha256:b49ef6c0ae457dc1082a9f49b26024b6208d3f435954267368d03beb3348d7aa
+linux/ppc64le sha256:5a0e202b1ea55a0b943e768c1cd73519d1c2c9f8e81baeb7d33d782d67da1649
+unknown/unknown sha256:4891ec9be00d2132f08c094be11f7df8faeaf088b1b452c3d28dbb9100b8315f
+linux/s390x sha256:720332b899afcc53c785f6c427c36af147ef82e640255f3a03ab2e826a344ba9
+unknown/unknown sha256:a4f59eb9c653d2fbd2d179719182acdc86255a2a2389ce53a31d02891aa56400

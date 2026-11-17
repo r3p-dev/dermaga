@@ -1,0 +1,12 @@
+# managed by dermaga; unit=traefik-https.socket
+[Unit]
+Description=dermaga Traefik :443 (HTTPS over TCP, HTTP/3 over UDP)
+
+[Socket]
+ListenStream=443
+ListenDatagram=443
+FileDescriptorName=websecure
+Service=traefik.service
+
+[Install]
+WantedBy=sockets.target
