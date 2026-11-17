@@ -10,7 +10,7 @@ GOLDEN_DIR="$PROJECT_ROOT/internal/quadlet/testdata"
 echo "=== Quadlet Generator Dry-Run Verification on dermaga-vm ==="
 echo "Timestamp: $(date -Is)"
 echo "Git commit: $(git -C "$PROJECT_ROOT" rev-parse --short HEAD)"
-STATUS_OUTPUT="$(git -C "$PROJECT_ROOT" status --short -- ':!docs/evidence/M2/logs')"
+STATUS_OUTPUT="$(git -C "$PROJECT_ROOT" status --short)"
 if [[ -n "$STATUS_OUTPUT" ]]; then
     echo "Working tree status: dirty"
     echo "$STATUS_OUTPUT"

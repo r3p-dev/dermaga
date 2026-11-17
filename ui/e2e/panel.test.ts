@@ -1,6 +1,16 @@
 import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 
+// Evidence screenshots are written only when EVIDENCE_MILESTONE is set (AGENTS.md "Evidence"),
+// to tmp/evidence/<milestone>/screenshots/; a plain test run writes none.
+async function evidenceShot(page: Page, name: string): Promise<void> {
+  const milestone = process.env.EVIDENCE_MILESTONE;
+  if (!milestone) return;
+  await page.screenshot({
+    path: `../tmp/evidence/${milestone}/screenshots/${name}`,
+  });
+}
+
 async function getComputedRgb(page: Page, selector: string): Promise<string> {
   return await page.evaluate((sel) => {
     const el = sel === "body" ? document.body : document.querySelector(sel);
@@ -112,17 +122,11 @@ test.describe("Dermaga Theme & Panel Journeys (M1-dark)", () => {
     // Verify Light computed backgrounds and Axe AA
     await assertThemeBackgrounds(page, "light");
     await assertAxeAA(page, "Login Desktop Light");
-    await page.screenshot({ path: "../docs/evidence/M1/login-desktop.png" });
-    await page.screenshot({
-      path: "../docs/evidence/M1/brand/login-desktop-light.png",
-    });
+    await evidenceShot(page, "login-desktop-light.png");
 
     await page.setViewportSize({ width: 375, height: 667 });
     await assertAxeAA(page, "Login Narrow Light");
-    await page.screenshot({ path: "../docs/evidence/M1/login-narrow.png" });
-    await page.screenshot({
-      path: "../docs/evidence/M1/brand/login-narrow-light.png",
-    });
+    await evidenceShot(page, "login-narrow-light.png");
 
     // Toggle to Dark Theme
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -132,15 +136,11 @@ test.describe("Dermaga Theme & Panel Journeys (M1-dark)", () => {
     // Verify Dark computed backgrounds and Axe AA
     await assertThemeBackgrounds(page, "dark");
     await assertAxeAA(page, "Login Desktop Dark");
-    await page.screenshot({
-      path: "../docs/evidence/M1/brand/login-desktop-dark.png",
-    });
+    await evidenceShot(page, "login-desktop-dark.png");
 
     await page.setViewportSize({ width: 375, height: 667 });
     await assertAxeAA(page, "Login Narrow Dark");
-    await page.screenshot({
-      path: "../docs/evidence/M1/brand/login-narrow-dark.png",
-    });
+    await evidenceShot(page, "login-narrow-dark.png");
 
     // Verify saved theme persistence on reload
     await page.reload();
@@ -170,15 +170,11 @@ test.describe("Dermaga Theme & Panel Journeys (M1-dark)", () => {
     // Verify Dashboard Dark Theme
     await assertThemeBackgrounds(page, "dark");
     await assertAxeAA(page, "Dashboard Desktop Dark");
-    await page.screenshot({
-      path: "../docs/evidence/M1/brand/dashboard-desktop-dark.png",
-    });
+    await evidenceShot(page, "dashboard-desktop-dark.png");
 
     await page.setViewportSize({ width: 375, height: 667 });
     await assertAxeAA(page, "Dashboard Narrow Dark");
-    await page.screenshot({
-      path: "../docs/evidence/M1/brand/dashboard-narrow-dark.png",
-    });
+    await evidenceShot(page, "dashboard-narrow-dark.png");
 
     // Switch Dashboard to Light Theme
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -186,19 +182,11 @@ test.describe("Dermaga Theme & Panel Journeys (M1-dark)", () => {
     await expect(page.locator("html")).not.toHaveClass(/dark/);
     await assertThemeBackgrounds(page, "light");
     await assertAxeAA(page, "Dashboard Desktop Light");
-    await page.screenshot({
-      path: "../docs/evidence/M1/dashboard-desktop.png",
-    });
-    await page.screenshot({
-      path: "../docs/evidence/M1/brand/dashboard-desktop-light.png",
-    });
+    await evidenceShot(page, "dashboard-desktop-light.png");
 
     await page.setViewportSize({ width: 375, height: 667 });
     await assertAxeAA(page, "Dashboard Narrow Light");
-    await page.screenshot({ path: "../docs/evidence/M1/dashboard-narrow.png" });
-    await page.screenshot({
-      path: "../docs/evidence/M1/brand/dashboard-narrow-light.png",
-    });
+    await evidenceShot(page, "dashboard-narrow-light.png");
 
     // 4. Navigate to Audit Log
     await page.setViewportSize({ width: 1280, height: 800 });
@@ -210,17 +198,11 @@ test.describe("Dermaga Theme & Panel Journeys (M1-dark)", () => {
     // Verify Light Audit Log
     await assertThemeBackgrounds(page, "light");
     await assertAxeAA(page, "Audit Log Desktop Light");
-    await page.screenshot({ path: "../docs/evidence/M1/audit-desktop.png" });
-    await page.screenshot({
-      path: "../docs/evidence/M1/brand/audit-desktop-light.png",
-    });
+    await evidenceShot(page, "audit-desktop-light.png");
 
     await page.setViewportSize({ width: 375, height: 667 });
     await assertAxeAA(page, "Audit Log Narrow Light");
-    await page.screenshot({ path: "../docs/evidence/M1/audit-narrow.png" });
-    await page.screenshot({
-      path: "../docs/evidence/M1/brand/audit-narrow-light.png",
-    });
+    await evidenceShot(page, "audit-narrow-light.png");
 
     // Check filters
     const filter = page.locator("#origin-filter");
@@ -240,15 +222,11 @@ test.describe("Dermaga Theme & Panel Journeys (M1-dark)", () => {
     await expect(page.locator("html")).toHaveClass(/dark/);
     await assertThemeBackgrounds(page, "dark");
     await assertAxeAA(page, "Audit Log Desktop Dark");
-    await page.screenshot({
-      path: "../docs/evidence/M1/brand/audit-desktop-dark.png",
-    });
+    await evidenceShot(page, "audit-desktop-dark.png");
 
     await page.setViewportSize({ width: 375, height: 667 });
     await assertAxeAA(page, "Audit Log Narrow Dark");
-    await page.screenshot({
-      path: "../docs/evidence/M1/brand/audit-narrow-dark.png",
-    });
+    await evidenceShot(page, "audit-narrow-dark.png");
 
     // 5. Logout
     await page.setViewportSize({ width: 1280, height: 800 });

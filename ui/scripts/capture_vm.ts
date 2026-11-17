@@ -34,10 +34,7 @@ async function main() {
 
   console.log("Capturing VM dashboard light screenshot...");
   await page.screenshot({
-    path: "../docs/evidence/M1/brand/panel-vm-brand.png",
-  });
-  await page.screenshot({
-    path: "../docs/evidence/M1/panel-vm-v0.1.4.png",
+    path: "../tmp/evidence/M1/screenshots/panel-vm-light.png",
   });
 
   // Dark mode
@@ -77,7 +74,7 @@ async function main() {
 
   console.log("Capturing VM dashboard dark screenshot...");
   await page.screenshot({
-    path: "../docs/evidence/M1/brand/panel-vm-brand-dark.png",
+    path: "../tmp/evidence/M1/screenshots/panel-vm-dark.png",
   });
 
   console.log("Captured VM screenshots successfully!");

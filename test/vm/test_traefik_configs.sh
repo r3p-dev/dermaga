@@ -11,7 +11,7 @@ GOLDEN_DIR="$PROJECT_ROOT/internal/traefik/testdata"
 echo "=== Traefik Golden Configurations Verification on dermaga-vm ==="
 echo "Timestamp: $(date -Is)"
 echo "Git commit: $(git -C "$PROJECT_ROOT" rev-parse --short HEAD)"
-STATUS_OUTPUT="$(git -C "$PROJECT_ROOT" status --short -- ':!docs/evidence/M2/logs')"
+STATUS_OUTPUT="$(git -C "$PROJECT_ROOT" status --short)"
 if [[ -n "$STATUS_OUTPUT" ]]; then
     echo "Working tree status: dirty"
     echo "$STATUS_OUTPUT"
@@ -195,49 +195,49 @@ ssh dermaga-vm "
       --network-alias app-web-app-r1 \
       -v $REMOTE_TMP/responder_release1.sh:/responder.sh:ro \
       --entrypoint /bin/sh \
-      docker.io/alpine/socat \
+      docker.io/alpine/socat:1.8.1.3@sha256:71131702f671a88b3808a70b7330f9679cd9b9933adcafadc191508edfe55bba \
       -c 'socat TCP-LISTEN:8080,fork,reuseaddr EXEC:/responder.sh'
 
     podman run -d --rm --name $BACKEND_CANDIDATE --network $NET_NAME \
       --network-alias app-web-app-r2 \
       -v $REMOTE_TMP/responder_candidate.sh:/responder.sh:ro \
       --entrypoint /bin/sh \
-      docker.io/alpine/socat \
+      docker.io/alpine/socat:1.8.1.3@sha256:71131702f671a88b3808a70b7330f9679cd9b9933adcafadc191508edfe55bba \
       -c 'socat TCP-LISTEN:8080,fork,reuseaddr EXEC:/responder.sh'
 
     podman run -d --rm --name $BACKEND_PORT80 --network $NET_NAME \
       --network-alias app-landing-r1 \
       -v $REMOTE_TMP/responder_release1.sh:/responder.sh:ro \
       --entrypoint /bin/sh \
-      docker.io/alpine/socat \
+      docker.io/alpine/socat:1.8.1.3@sha256:71131702f671a88b3808a70b7330f9679cd9b9933adcafadc191508edfe55bba \
       -c 'socat TCP-LISTEN:80,fork,reuseaddr EXEC:/responder.sh'
 
     podman run -d --rm --name $BACKEND_PORT3000 --network $NET_NAME \
       --network-alias app-blog-r2 \
       -v $REMOTE_TMP/responder_release1.sh:/responder.sh:ro \
       --entrypoint /bin/sh \
-      docker.io/alpine/socat \
+      docker.io/alpine/socat:1.8.1.3@sha256:71131702f671a88b3808a70b7330f9679cd9b9933adcafadc191508edfe55bba \
       -c 'socat TCP-LISTEN:3000,fork,reuseaddr EXEC:/responder.sh'
 
     podman run -d --rm --name $BACKEND_PORT4000 --network $NET_NAME \
       --network-alias app-docs-service-r1 \
       -v $REMOTE_TMP/responder_release1.sh:/responder.sh:ro \
       --entrypoint /bin/sh \
-      docker.io/alpine/socat \
+      docker.io/alpine/socat:1.8.1.3@sha256:71131702f671a88b3808a70b7330f9679cd9b9933adcafadc191508edfe55bba \
       -c 'socat TCP-LISTEN:4000,fork,reuseaddr EXEC:/responder.sh'
 
     podman run -d --rm --name $BACKEND_PORT9000 --network $NET_NAME \
       --network-alias app-uploader-r1 \
       -v $REMOTE_TMP/responder_release1.sh:/responder.sh:ro \
       --entrypoint /bin/sh \
-      docker.io/alpine/socat \
+      docker.io/alpine/socat:1.8.1.3@sha256:71131702f671a88b3808a70b7330f9679cd9b9933adcafadc191508edfe55bba \
       -c 'socat TCP-LISTEN:9000,fork,reuseaddr EXEC:/responder.sh'
 
     podman run -d --rm --name $BACKEND_PORT8443 --network $NET_NAME \
       --network-alias app-secure-admin-r1 \
       -v $REMOTE_TMP/responder_release1.sh:/responder.sh:ro \
       --entrypoint /bin/sh \
-      docker.io/alpine/socat \
+      docker.io/alpine/socat:1.8.1.3@sha256:71131702f671a88b3808a70b7330f9679cd9b9933adcafadc191508edfe55bba \
       -c 'socat TCP-LISTEN:8443,fork,reuseaddr EXEC:/responder.sh'
 "
 
@@ -383,7 +383,7 @@ fi
 
 echo -n "6b. IP Allowlist acceptance from allowed client (192.168.1.50 in 192.168.1.0/24): "
 TRAEFIK_ALLOW_IP=$(ssh dermaga-vm "podman inspect $TRAEFIK_CONT --format '{{range \$net, \$conf := .NetworkSettings.Networks}}{{if eq \$net \"$NET_ALLOW\"}}{{\$conf.IPAddress}}{{end}}{{end}}'")
-ALLOW_OK_CODE=$(ssh dermaga-vm "podman run --rm --network $NET_ALLOW --ip 192.168.1.50 docker.io/curlimages/curl:8.12.1 -k -s -o /dev/null -w '%{http_code}' --resolve admin.example.com:18443:$TRAEFIK_ALLOW_IP https://admin.example.com:18443/")
+ALLOW_OK_CODE=$(ssh dermaga-vm "podman run --rm --network $NET_ALLOW --ip 192.168.1.50 docker.io/curlimages/curl:8.12.1@sha256:94e9e444bcba979c2ea12e27ae39bee4cd10bc7041a472c4727a558e213744e6 -k -s -o /dev/null -w '%{http_code}' --resolve admin.example.com:18443:$TRAEFIK_ALLOW_IP https://admin.example.com:18443/")
 if [[ "$ALLOW_OK_CODE" == "200" ]]; then
     echo "PASS (HTTP 200 OK)"
 else

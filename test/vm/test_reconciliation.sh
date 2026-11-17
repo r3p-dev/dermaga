@@ -11,7 +11,7 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 echo "=== DEP-10 Reconciliation Verification on dermaga-vm ==="
 echo "Timestamp: $(date -Is)"
 echo "Git commit: $(git -C "$PROJECT_ROOT" rev-parse --short HEAD)"
-STATUS_OUTPUT="$(git -C "$PROJECT_ROOT" status --short -- ':!docs/evidence/M2/logs')"
+STATUS_OUTPUT="$(git -C "$PROJECT_ROOT" status --short)"
 if [[ -n "$STATUS_OUTPUT" ]]; then
     echo "Working tree status: dirty"
     echo "$STATUS_OUTPUT"
@@ -94,7 +94,7 @@ conn.close()
 # 4. Prepare local test image localhost/demo:r1 so live unit start succeeds
 echo "Preparing local test image localhost/demo:r1 on dermaga-vm..."
 ssh dermaga-vm "
-    podman run -d --name temp-demo-seed --entrypoint /bin/sh docker.io/alpine/socat -c 'while true; do sleep 3600; done'
+    podman run -d --name temp-demo-seed --entrypoint /bin/sh docker.io/alpine/socat:1.8.1.3@sha256:71131702f671a88b3808a70b7330f9679cd9b9933adcafadc191508edfe55bba -c 'while true; do sleep 3600; done'
     podman commit temp-demo-seed localhost/demo:r1
     podman rm -f -t 0 temp-demo-seed
 "
@@ -122,7 +122,7 @@ Description=Unmanaged custom VPN with dermaga-like prefix
 
 [Container]
 ContainerName=custom-vpn
-Image=docker.io/alpine/socat:latest
+Image=docker.io/alpine/socat:1.8.1.3@sha256:71131702f671a88b3808a70b7330f9679cd9b9933adcafadc191508edfe55bba
 EOF
 
     # 5b. Foreign config that matches app-*.yml naming but lacks Dermaga marker!
@@ -141,7 +141,7 @@ Description=Unmanaged custom VPN
 
 [Container]
 ContainerName=custom-vpn
-Image=docker.io/alpine/socat:latest
+Image=docker.io/alpine/socat:1.8.1.3@sha256:71131702f671a88b3808a70b7330f9679cd9b9933adcafadc191508edfe55bba
 EOF
 
     cat << 'EOF' > $TRAEFIK_DIR/custom-metrics.yml

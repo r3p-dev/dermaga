@@ -9,7 +9,7 @@ set -euo pipefail
 VM_HOST="${VM_HOST:-dermaga-vm}"
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_DIR"
-LOGS_DIR="$REPO_DIR/docs/evidence/M1/logs"
+LOGS_DIR="$REPO_DIR/tmp/evidence/M1/logs"
 mkdir -p "$LOGS_DIR"
 
 echo "=== Milestone M1 NFR-2 Memory & Argon2id Measurement ==="
