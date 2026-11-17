@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	testKey     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl laptop"
-	testKeyFP   = "SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU"
+	testKey     = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINJv3vGKVFTDzTwjwFX0ErVbqrbgJvZ3HQvpyiTREEP3 laptop"
+	testKeyFP   = "SHA256:/YP4UiFdZmHcBclJhRGwdK0GVnCn7KJDavRQWOUpdO8"
 	fakeBinary  = "fake dermaga binary\n"
 	testVersion = "v0.0.0-test"
 )
@@ -84,7 +84,7 @@ exit 0`,
 	"sleep": `exit 0`,
 }
 
-// stubbed are the commands that only log; real coreutils, awk, sed, grep, jq, ssh stay real.
+// stubbed are the commands that only log; real coreutils, awk, sed, grep and ssh stay real.
 var stubbed = []string{"chown", "usermod", "modprobe", "nft", "fail2ban-client", "visudo"}
 
 type fakeServer struct {
@@ -135,11 +135,6 @@ func newFakeServer(t *testing.T) *fakeServer {
 	sum := sha256.Sum256([]byte(fakeBinary))
 	write(filepath.Join(s.stub, "downloads/dermaga-linux-amd64"), fakeBinary, 0644)
 	write(filepath.Join(s.stub, "downloads/checksums.txt"), hex.EncodeToString(sum[:])+"  dermaga-linux-amd64\n0000000000000000000000000000000000000000000000000000000000000000  dermaga-linux-arm64\n", 0644)
-	meta, err := os.ReadFile("testdata/github_meta.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	write(filepath.Join(s.stub, "downloads/meta"), string(meta), 0644)
 
 	s.files = map[string]string{
 		"etc/os-release":                   "ID=debian\nVERSION_ID=\"13\"\n",
@@ -243,7 +238,7 @@ func (s *fakeServer) automated() []string {
 
 const dropin = "etc/ssh/sshd_config.d/00-dermaga.conf"
 
-// INST-4, LOCK-1…LOCK-4, INST-9, INST-10, INST-12: the automated path from a fresh server.
+// INST-4, LOCK-1…LOCK-4, INST-9, INST-12: the automated path from a fresh server.
 func TestInstallFreshServer(t *testing.T) {
 	s := newFakeServer(t)
 	s.journal(newLoginOn4222...)
@@ -275,12 +270,6 @@ func TestInstallFreshServer(t *testing.T) {
 	}
 	if got := s.read("home/server/.local/bin/dermaga"); got != fakeBinary {
 		t.Errorf("INST-9: binary = %q", got)
-	}
-	if kh := s.read("home/server/.config/dermaga/github_known_hosts"); strings.Count(kh, "github.com ") != 3 {
-		t.Errorf("INST-10: known hosts:\n%s", kh)
-	}
-	if !strings.Contains(out, "github.com SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU") {
-		t.Error("INST-10: fingerprints must be shown")
 	}
 	if !strings.Contains(s.read("home/server/.ssh/authorized_keys"), testKey) {
 		t.Error("INST-5: key not authorised for server")
@@ -456,16 +445,6 @@ func TestInstallRefusesUnverifiedBinary(t *testing.T) {
 				t.Error("unverified binary installed")
 			}
 		})
-	}
-}
-
-// INST-10: a host key that does not match GitHub's published fingerprints aborts.
-func TestInstallGitHubKeyMismatch(t *testing.T) {
-	s := newFakeServer(t)
-	s.writeStub("downloads/meta", `{"ssh_key_fingerprints":{"SHA256_ED25519":"AAAA"},"ssh_keys":["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl"]}`)
-	out, err := s.run("", s.automated()...)
-	if err == nil || !strings.Contains(out, "does not match the published fingerprints") {
-		t.Fatalf("expected a refusal:\n%s", out)
 	}
 }
 

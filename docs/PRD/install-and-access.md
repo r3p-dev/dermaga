@@ -41,8 +41,9 @@ One command, from a GitHub release asset:
 - **INST-8** Refuses to continue when something already listens on :80 or :443, and says what.
 - **INST-9** Installs Podman, Traefik, git and curl; downloads the dermaga binary for the
   architecture and **aborts if its SHA-256 checksum cannot be verified**.
-- **INST-10** Pins GitHub's SSH host keys (from GitHub's published metadata, fingerprints shown) for
-  dermaga's own use.
+- **INST-10** *(Removed from v1.0.0 by owner decision, 2026-11-17.)* No GitHub SSH host keys are
+  pinned: dermaga reaches GitHub only over HTTPS with the GitHub App (`GHA-5`). Pinning returns
+  together with deploy keys as an alternative to the GitHub App (`summary.md` §7).
 - **INST-11** Creates the dermaga user service, enables lingering, starts it, runs the `doctor`
   checks (`DOC-1`) and shows the result.
 - **INST-12** Prints at the end: the laptop command (`LAP-1`), the first-run link (`SETUP-1`), and

@@ -460,7 +460,7 @@ show_plan() {
 
 # --- packages (INST-9) -----------------------------------------------------------------
 readonly PACKAGES=(
-  ca-certificates curl git jq sudo iproute2 dbus-user-session uidmap
+  ca-certificates curl git sudo iproute2 dbus-user-session uidmap
   openssh-server nftables fail2ban python3-systemd unattended-upgrades apt-listchanges needrestart
   systemd-zram-generator podman passt crun netavark aardvark-dns catatonit
 )
@@ -1064,25 +1064,6 @@ install_binary() {
   ok "installed $target (sha256 $got verified)"
 }
 
-# pin_github_keys: INST-10. GitHub's SSH host keys from its published metadata, each checked
-# against the fingerprints published next to them.
-pin_github_keys() {
-  local meta keys fps line fp
-  meta=$(curl -fsSL --proto '=https' --tlsv1.2 --max-time 30 https://api.github.com/meta) ||
-    die "could not read GitHub's published SSH host keys from https://api.github.com/meta"
-  keys=$(jq -r '.ssh_keys[]' <<<"$meta")
-  fps=$(jq -r '.ssh_key_fingerprints[]' <<<"$meta")
-  [[ -n $keys ]] || die "GitHub's metadata lists no SSH host keys"
-  while IFS= read -r line; do
-    fp=$(key_info "$line") || die "GitHub published an invalid SSH host key"
-    fp=${fp%%|*}
-    grep -qxF "${fp#SHA256:}" <<<"$fps" || die "GitHub host key $fp does not match the published fingerprints"
-    info "github.com $fp"
-  done <<<"$keys"
-  sed 's/^/github.com /' <<<"$keys" | write_file "$(server_home)/.config/dermaga/github_known_hosts" 0644 "$SERVER_USER"
-  ok "GitHub's SSH host keys pinned for dermaga"
-}
-
 start_dermaga() {
   step "Starting dermaga"
   local unit i
@@ -1170,7 +1151,6 @@ main() {
   setup_user
   if [[ $final == yes ]]; then setup_fail2ban "$SSH_PORT"; else setup_fail2ban "${OLD_SSH_PORTS[@]}" "$SSH_PORT"; fi
   install_binary
-  pin_github_keys
   start_dermaga
 
   if [[ $final == yes ]]; then
