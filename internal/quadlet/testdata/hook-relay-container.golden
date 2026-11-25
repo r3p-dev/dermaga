@@ -1,0 +1,27 @@
+# managed by dermaga; unit=hook-relay.container
+[Unit]
+Description=dermaga GitHub webhook relay
+After=dermaga.service
+
+[Container]
+ContainerName=hook-relay
+Rootfs=/home/server/.local/share/dermaga/hook-relay-rootfs
+Exec=/dermaga hook-relay -listen :8080 -socket /run/dermaga/hooks.sock
+Network=web.network
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=ALL
+PidsLimit=64
+PodmanArgs=--memory=64m
+Volume=/home/server/.local/bin/dermaga:/dermaga:ro
+Volume=/run/user/1001/dermaga:/run/dermaga:ro
+
+[Quadlet]
+DefaultDependencies=false
+
+[Service]
+Restart=always
+RestartSec=3s
+
+[Install]
+WantedBy=default.target

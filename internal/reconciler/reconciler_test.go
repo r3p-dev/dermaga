@@ -646,3 +646,48 @@ func TestReconcile_ForeignTraefikUntouched(t *testing.T) {
 		}
 	}
 }
+
+func TestReconcile_HookRelayLifecycle_DEC30_GHA6(t *testing.T) {
+	st, fh, cfg := traefikTestConfig(t)
+	cfg.HookRelayRootfsDir = "/home/server/.local/share/dermaga/hook-relay-rootfs"
+	cfg.BinaryPath = "/home/server/.local/bin/dermaga"
+	cfg.SocketDir = "/run/user/1001/dermaga"
+
+	ctx := context.Background()
+	_ = st.SetSetting(ctx, "hook_domain", "hooks.example.com")
+	_ = st.SetSetting(ctx, "github_app_id", "12345")
+
+	rec := reconciler.New(fh, st, cfg)
+	if err := rec.EnsureGitHubRelay(ctx, "hooks.example.com"); err != nil {
+		t.Fatalf("EnsureGitHubRelay failed: %v", err)
+	}
+
+	relayUnit := filepath.Join(cfg.QuadletDir, "hook-relay.container")
+	unitData, err := fh.ReadFile(relayUnit)
+	if err != nil {
+		t.Fatalf("expected hook-relay.container written: %v", err)
+	}
+	if !strings.Contains(string(unitData), "Rootfs="+cfg.HookRelayRootfsDir) {
+		t.Errorf("expected Rootfs in hook-relay.container, got:\n%s", unitData)
+	}
+
+	hookDyn := filepath.Join(cfg.TraefikDynamicDir, "01-hook-domain.yml")
+	dynData, err := fh.ReadFile(hookDyn)
+	if err != nil {
+		t.Fatalf("expected 01-hook-domain.yml written: %v", err)
+	}
+	if !strings.Contains(string(dynData), "http://hook-relay:8080") {
+		t.Errorf("expected http://hook-relay:8080 backend in 01-hook-domain.yml, got:\n%s", dynData)
+	}
+
+	// Disconnect removes both relay unit and hook router (GHA-6)
+	if err := rec.RemoveGitHubRelay(ctx); err != nil {
+		t.Fatalf("RemoveGitHubRelay failed: %v", err)
+	}
+	if _, err := fh.ReadFile(relayUnit); err == nil {
+		t.Error("expected hook-relay.container removed on disconnect")
+	}
+	if _, err := fh.ReadFile(hookDyn); err == nil {
+		t.Error("expected 01-hook-domain.yml removed on disconnect")
+	}
+}

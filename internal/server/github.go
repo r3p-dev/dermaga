@@ -317,6 +317,13 @@ func (s *Server) handleGitHubCallback(w http.ResponseWriter, r *http.Request) {
 
 	_ = s.cfg.Store.RecordAudit(ctx, "panel", "admin", "github_connect", fmt.Sprintf("Connected GitHub App %s (%d)", conv.Slug, conv.ID), nil, nil)
 
+	if s.cfg.Reconciler != nil {
+		if err := s.cfg.Reconciler.EnsureGitHubRelay(ctx, hookDomain); err != nil {
+			writeJSON(w, http.StatusInternalServerError, GitHubCallbackResponse{Error: fmt.Sprintf("connected GitHub App, but failed to start webhook relay: %v", err)})
+			return
+		}
+	}
+
 	installURL := client.AppInstallURL(conv.Slug)
 	writeJSON(w, http.StatusOK, GitHubCallbackResponse{
 		Success: true,
@@ -430,6 +437,12 @@ func (s *Server) handleDisconnectGitHub(w http.ResponseWriter, r *http.Request) 
 	if err := s.cfg.Store.ClearGitHubData(ctx); err != nil {
 		writeJSON(w, http.StatusInternalServerError, GitHubDisconnectResponse{Error: "failed to clear GitHub data"})
 		return
+	}
+	if s.cfg.Reconciler != nil {
+		if err := s.cfg.Reconciler.RemoveGitHubRelay(ctx); err != nil {
+			writeJSON(w, http.StatusInternalServerError, GitHubDisconnectResponse{Error: fmt.Sprintf("cleared GitHub data, but failed to remove webhook relay: %v", err)})
+			return
+		}
 	}
 	_ = s.cfg.Store.RecordAudit(ctx, "panel", "admin", "github_disconnect", "Disconnected GitHub App", nil, nil)
 

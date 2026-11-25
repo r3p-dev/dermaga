@@ -27,6 +27,10 @@ type Config struct {
 	// the Traefik sockets and static config. When either is empty the Traefik step is skipped.
 	UserUnitDir string
 	TraefikDir  string
+	// HookRelayRootfsDir, BinaryPath, and SocketDir configure the rootless hook-relay container (DEC-30).
+	HookRelayRootfsDir string
+	BinaryPath         string
+	SocketDir          string
 }
 
 // Report records the outcome of a reconciliation pass (DEP-10).
@@ -121,6 +125,9 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 
 		if fname == quadlet.TraefikContainerFile && r.traefikEnabled() {
 			continue // handled by ensureTraefik
+		}
+		if fname == quadlet.HookRelayContainerFile && r.hookRelayEnabled() {
+			continue // handled by ensureHookRelay
 		}
 
 		if strings.HasPrefix(fname, name.AppPrefix) && strings.HasSuffix(fname, ".container") {
@@ -231,10 +238,29 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 		}
 	}
 
+	// 2b2. Ensure hook-relay unit when GitHub App and hook_domain are both configured (DEC-30)
+	relayOwned, relayDesired, relayChanged, err := r.ensureHookRelay(ctx, report)
+	if err != nil {
+		return nil, err
+	}
+	if relayChanged {
+		daemonReloadNeeded = true
+	}
+
 	// 2c. Reload systemd daemon if Quadlet units changed
 	if daemonReloadNeeded {
 		if _, err := r.host.RunCommand(ctx, "systemctl", "--user", "daemon-reload"); err != nil {
 			return nil, fmt.Errorf("reloading systemd user daemon: %w", err)
+		}
+	}
+
+	if relayOwned && relayDesired {
+		action := "start"
+		if relayChanged {
+			action = "restart"
+		}
+		if _, err := r.host.RunCommand(ctx, "systemctl", "--user", action, "--no-block", quadlet.HookRelayServiceName); err != nil {
+			return nil, fmt.Errorf("starting hook-relay: %w", err)
 		}
 	}
 
@@ -417,7 +443,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 }
 
 // EnsureHookDomain renders and atomically writes 01-hook-domain.yml for the given domain (TLS-5, APP-2).
-func (r *Reconciler) EnsureHookDomain(_ context.Context, domain string) error {
+func (r *Reconciler) EnsureHookDomain(ctx context.Context, domain string) error {
 	if r.cfg.TraefikDynamicDir == "" {
 		return nil
 	}
@@ -425,7 +451,11 @@ func (r *Reconciler) EnsureHookDomain(_ context.Context, domain string) error {
 	if existing, err := r.host.ReadFile(hookPath); err == nil && !traefik.HasHookDomainMarker(string(existing)) {
 		return fmt.Errorf("refusing to overwrite foreign %s without dermaga marker", traefik.HookDomainFileName)
 	}
-	data, err := traefik.RenderHookDomain(domain, "")
+	backendURL := ""
+	if r.githubConnected(ctx) && r.hookRelayEnabled() {
+		backendURL = quadlet.HookRelayBackendURL
+	}
+	data, err := traefik.RenderHookDomain(domain, backendURL)
 	if err != nil {
 		return fmt.Errorf("rendering hook domain config: %w", err)
 	}
@@ -433,6 +463,129 @@ func (r *Reconciler) EnsureHookDomain(_ context.Context, domain string) error {
 		return fmt.Errorf("writing hook domain config: %w", err)
 	}
 	return nil
+}
+
+// EnsureGitHubRelay installs/starts hook-relay and updates 01-hook-domain.yml to route to it (GHA-1, DEC-30).
+func (r *Reconciler) EnsureGitHubRelay(ctx context.Context, hookDomain string) error {
+	if r.hookRelayEnabled() {
+		report := &Report{}
+		owned, desired, changed, err := r.ensureHookRelay(ctx, report)
+		if err != nil {
+			return err
+		}
+		if changed {
+			if _, err := r.host.RunCommand(ctx, "systemctl", "--user", "daemon-reload"); err != nil {
+				return fmt.Errorf("reloading systemd user daemon: %w", err)
+			}
+		}
+		if owned && desired {
+			action := "start"
+			if changed {
+				action = "restart"
+			}
+			if _, err := r.host.RunCommand(ctx, "systemctl", "--user", action, "--no-block", quadlet.HookRelayServiceName); err != nil {
+				return fmt.Errorf("starting hook-relay: %w", err)
+			}
+		}
+	}
+	if hookDomain != "" {
+		return r.EnsureHookDomain(ctx, hookDomain)
+	}
+	return nil
+}
+
+// RemoveGitHubRelay stops/removes hook-relay.container and removes 01-hook-domain.yml on Disconnect (GHA-6).
+func (r *Reconciler) RemoveGitHubRelay(ctx context.Context) error {
+	if r.hookRelayEnabled() {
+		relayPath := filepath.Join(r.cfg.QuadletDir, quadlet.HookRelayContainerFile)
+		if existing, err := r.host.ReadFile(relayPath); err == nil {
+			if !quadlet.HasUnitMarker(string(existing), quadlet.HookRelayContainerFile) {
+				return fmt.Errorf("refusing to remove foreign %s without dermaga marker", quadlet.HookRelayContainerFile)
+			}
+			_, _ = r.host.RunCommand(ctx, "systemctl", "--user", "stop", quadlet.HookRelayServiceName)
+			if err := r.host.Remove(relayPath); err != nil {
+				return fmt.Errorf("removing %s: %w", quadlet.HookRelayContainerFile, err)
+			}
+			_, _ = r.host.RunCommand(ctx, "systemctl", "--user", "daemon-reload")
+		}
+	}
+	if r.cfg.TraefikDynamicDir != "" {
+		hookPath := filepath.Join(r.cfg.TraefikDynamicDir, traefik.HookDomainFileName)
+		if existing, err := r.host.ReadFile(hookPath); err == nil {
+			if !traefik.HasHookDomainMarker(string(existing)) {
+				return fmt.Errorf("refusing to remove foreign %s without dermaga marker", traefik.HookDomainFileName)
+			}
+			if err := r.host.Remove(hookPath); err != nil {
+				return fmt.Errorf("removing %s: %w", traefik.HookDomainFileName, err)
+			}
+		}
+	}
+	return nil
+}
+
+func (r *Reconciler) hookRelayEnabled() bool {
+	return r.cfg.QuadletDir != "" && r.cfg.HookRelayRootfsDir != "" && r.cfg.BinaryPath != "" && r.cfg.SocketDir != ""
+}
+
+func (r *Reconciler) githubConnected(ctx context.Context) bool {
+	if r.store == nil {
+		return false
+	}
+	appID, err := r.store.GetSetting(ctx, "github_app_id")
+	return err == nil && appID != ""
+}
+
+func (r *Reconciler) ensureHookRelay(ctx context.Context, report *Report) (owned, desired, changed bool, err error) {
+	if !r.hookRelayEnabled() {
+		return false, false, false, nil
+	}
+	hookDomain, _ := r.store.GetSetting(ctx, "hook_domain")
+	desired = r.githubConnected(ctx) && strings.TrimSpace(hookDomain) != ""
+	relayPath := filepath.Join(r.cfg.QuadletDir, quadlet.HookRelayContainerFile)
+
+	if !desired {
+		if existing, err := r.host.ReadFile(relayPath); err == nil {
+			if !quadlet.HasUnitMarker(string(existing), quadlet.HookRelayContainerFile) {
+				report.ForeignFilesReported = append(report.ForeignFilesReported, quadlet.HookRelayContainerFile)
+				return false, false, false, nil
+			}
+			_, _ = r.host.RunCommand(ctx, "systemctl", "--user", "stop", quadlet.HookRelayServiceName)
+			if err := r.host.Remove(relayPath); err != nil {
+				return false, false, false, fmt.Errorf("removing orphaned %s: %w", quadlet.HookRelayContainerFile, err)
+			}
+			report.OrphansRemoved = append(report.OrphansRemoved, quadlet.HookRelayContainerFile)
+			return false, false, true, nil
+		}
+		return false, false, false, nil
+	}
+
+	if err := r.host.MkdirAll(r.cfg.HookRelayRootfsDir, 0755); err != nil {
+		return false, true, false, fmt.Errorf("creating hook-relay rootfs dir: %w", err)
+	}
+	unitBytes, err := quadlet.RenderHookRelay(quadlet.HookRelaySpec{
+		RootfsDir:  r.cfg.HookRelayRootfsDir,
+		BinaryPath: r.cfg.BinaryPath,
+		SocketDir:  r.cfg.SocketDir,
+	})
+	if err != nil {
+		return false, true, false, fmt.Errorf("rendering %s: %w", quadlet.HookRelayContainerFile, err)
+	}
+
+	existing, err := r.host.ReadFile(relayPath)
+	if err == nil {
+		if !quadlet.HasUnitMarker(string(existing), quadlet.HookRelayContainerFile) {
+			report.ForeignFilesReported = append(report.ForeignFilesReported, quadlet.HookRelayContainerFile)
+			return false, true, false, nil
+		}
+		if string(existing) == string(unitBytes) {
+			return true, true, false, nil
+		}
+	}
+	if err := r.host.WriteFileAtomic(relayPath, unitBytes, 0644); err != nil {
+		return false, true, false, fmt.Errorf("writing %s: %w", quadlet.HookRelayContainerFile, err)
+	}
+	report.FilesReRendered = append(report.FilesReRendered, quadlet.HookRelayContainerFile)
+	return true, true, true, nil
 }
 
 func (r *Reconciler) traefikEnabled() bool {
