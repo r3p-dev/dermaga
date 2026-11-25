@@ -28,8 +28,8 @@ func TestStoreMigrations_FreshAndRerun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CurrentVersion failed: %v", err)
 	}
-	if ver != 2 {
-		t.Errorf("expected version 2, got %d", ver)
+	if ver != 3 {
+		t.Errorf("expected version 3, got %d", ver)
 	}
 
 	info, err := os.Stat(dbPath)
@@ -52,8 +52,8 @@ func TestStoreMigrations_FreshAndRerun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CurrentVersion on rerun failed: %v", err)
 	}
-	if ver2 != 2 {
-		t.Errorf("expected version 2 after rerun, got %d", ver2)
+	if ver2 != 3 {
+		t.Errorf("expected version 3 after rerun, got %d", ver2)
 	}
 }
 
@@ -89,8 +89,8 @@ func TestStoreMigration0001To0002(t *testing.T) {
 
 	ctx := context.Background()
 	ver, err := s.CurrentVersion(ctx)
-	if err != nil || ver != 2 {
-		t.Fatalf("expected upgraded version 2, got %d (err=%v)", ver, err)
+	if err != nil || ver != 3 {
+		t.Fatalf("expected upgraded version 3, got %d (err=%v)", ver, err)
 	}
 
 	sess, err := s.GetSession(ctx, "old-hash")
@@ -99,6 +99,93 @@ func TestStoreMigration0001To0002(t *testing.T) {
 	}
 	if sess.LastSeenAt.IsZero() || !sess.LastSeenAt.Equal(sess.CreatedAt) {
 		t.Errorf("expected last_seen_at backfilled to created_at (%v), got %v", sess.CreatedAt, sess.LastSeenAt)
+	}
+}
+
+func TestStoreMigration0002To0003(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "v2.db")
+
+	initSQL, err := os.ReadFile(filepath.Join("migrations", "0001_init.sql"))
+	if err != nil {
+		t.Fatalf("reading 0001_init.sql: %v", err)
+	}
+	mig2SQL, err := os.ReadFile(filepath.Join("migrations", "0002_sessions_metadata.sql"))
+	if err != nil {
+		t.Fatalf("reading 0002_sessions_metadata.sql: %v", err)
+	}
+
+	rawDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open failed: %v", err)
+	}
+	if _, err := rawDB.Exec(string(initSQL)); err != nil {
+		t.Fatalf("exec 0001_init.sql: %v", err)
+	}
+	if _, err := rawDB.Exec(string(mig2SQL)); err != nil {
+		t.Fatalf("exec 0002_sessions_metadata.sql: %v", err)
+	}
+	if _, err := rawDB.Exec(`INSERT INTO schema_migrations (version) VALUES (1), (2)`); err != nil {
+		t.Fatalf("insert schema_migrations: %v", err)
+	}
+	if _, err := rawDB.Exec(`INSERT INTO settings (key, value) VALUES ('hook_domain', 'hooks.example.com')`); err != nil {
+		t.Fatalf("insert v2 setting: %v", err)
+	}
+	_ = rawDB.Close()
+
+	s, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatalf("store.Open upgrade 0002->0003 failed: %v", err)
+	}
+	defer s.Close()
+
+	ctx := context.Background()
+	ver, err := s.CurrentVersion(ctx)
+	if err != nil || ver != 3 {
+		t.Fatalf("expected upgraded version 3, got %d (err=%v)", ver, err)
+	}
+	hd, err := s.GetSetting(ctx, "hook_domain")
+	if err != nil || hd != "hooks.example.com" {
+		t.Fatalf("expected preserved hook_domain, got %q (err=%v)", hd, err)
+	}
+
+	if err := s.ReplaceGitHubInstallationsAndRepos(ctx,
+		[]store.GitHubInstallation{{ID: 42, AccountLogin: "octocat", AccountType: "User", RepositorySelection: "selected"}},
+		[]store.GitHubRepository{{ID: 100, InstallationID: 42, FullName: "octocat/hello", Owner: "octocat", Name: "hello", Private: true, DefaultBranch: "main"}},
+	); err != nil {
+		t.Fatalf("ReplaceGitHubInstallationsAndRepos failed: %v", err)
+	}
+	installs, err := s.ListGitHubInstallations(ctx)
+	if err != nil || len(installs) != 1 || installs[0].AccountLogin != "octocat" {
+		t.Fatalf("unexpected installations: %+v (err=%v)", installs, err)
+	}
+	repos, err := s.ListGitHubRepositories(ctx)
+	if err != nil || len(repos) != 1 || !repos[0].Private {
+		t.Fatalf("unexpected repos: %+v (err=%v)", repos, err)
+	}
+
+	dup, err := s.RecordWebhookDelivery(ctx, store.WebhookDelivery{
+		DeliveryID: "deliv-1", Event: "push", RepositoryFullName: "octocat/hello", Status: "accepted",
+	})
+	if err != nil || dup {
+		t.Fatalf("expected first delivery accepted, dup=%v err=%v", dup, err)
+	}
+	dup2, err := s.RecordWebhookDelivery(ctx, store.WebhookDelivery{
+		DeliveryID: "deliv-1", Event: "push", RepositoryFullName: "octocat/hello", Status: "accepted",
+	})
+	if err != nil || !dup2 {
+		t.Fatalf("expected duplicate delivery flagged, dup=%v err=%v", dup2, err)
+	}
+	last, err := s.GetLastWebhookDelivery(ctx)
+	if err != nil || last == nil || last.DeliveryID != "deliv-1" {
+		t.Fatalf("unexpected last delivery: %+v (err=%v)", last, err)
+	}
+	if err := s.ClearGitHubData(ctx); err != nil {
+		t.Fatalf("ClearGitHubData failed: %v", err)
+	}
+	repos, _ = s.ListGitHubRepositories(ctx)
+	if len(repos) != 0 {
+		t.Fatalf("expected 0 repos after clear, got %d", len(repos))
 	}
 }
 
