@@ -20,7 +20,7 @@ backups come in v1.1.
 | M2  | 0.2.0   | Generators and reconciliation                     | completed         | yes: confirmed by owner, 2026-11-17 (owner tags v0.2.0, v0.2.1; M3 started)                                                                                                     | 28      |
 | M3  | 0.3.0   | Installer, hardening, lockout guard               | completed         | M3a yes: confirmed by owner, 2026-11-17 (owner tags v0.3.0-rc, v0.3.0-rc.2; M3b started); M3b yes: confirmed by owner, 2026-11-25 (owner tags v0.3.0-rc.3, v0.3.0-rc.4, v0.3.0) | 24      |
 | M4  | 0.4.0   | First-run setup and panel access                  | completed         | M4a yes: confirmed by owner, 2026-11-25 (v0.4.0-rc.1); M4b yes: confirmed by owner, 2026-11-25 (owner tags v0.4.0-rc.2 [superseded], v0.4.0-rc.3, v0.4.0) | 20      |
-| M5  | 0.5.0   | Connect GitHub                                    | in progress       | –                                                                                                                                                                               | 28      |
+| M5  | 0.5.0   | Connect GitHub                                    | completed         | M5a yes: confirmed by owner, 2026-11-25; M5b pending confirmation (v0.5.0-rc.1)                                                                                               | 28      |
 | M6  | 0.6.0   | First deploy: wizard, build, env, logs            | not started       | –                                                                                                                                                                               | 36      |
 | M7  | 0.7.0   | Zero downtime: push-to-deploy, redeploy, rollback | not started       | –                                                                                                                                                                               | 32      |
 | M8  | 0.8.0   | Domains, HTTPS, headers, middleware               | not started       | –                                                                                                                                                                               | 28      |
@@ -46,12 +46,12 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
 
 ## Active milestone
 
-**M5a** (checkpoint 1 of M5, 0.5.0): Connect GitHub — App manifest flow, encrypted credentials, installations, and repository list.
+**M6** (0.6.0): First deploy: wizard, build, env, logs (`not started`).
 
-- **Requirement IDs:** GHA-1–GHA-6, SEC-9, DEC-09, DEC-29.
-- **Handoff** (2026-11-25, M5b code ready for `v0.5.0-rc.1` VM journey):
-  - Done: M5a committed and pushed; `hook-relay` `Rootfs=` spike verified on `dermaga-vm`; M5b code (`internal/quadlet/hook_relay.go`, `internal/reconciler`, `internal/webhook`, `hooks.sock` in `cmd/dermaga`, `DEC-30`) implemented and `make check` green.
-  - Remaining: Tag `v0.5.0-rc.1`, run M5b VM journey on `dermaga-vm` from `fresh` (real GitHub App manifest + install, smee.io push delivery, replay captured delivery over Pebble HTTPS `hook-domain` + dedupe, `GHA-7` uninstall/remove reflected, secret greps, safe reboot per `SETUP` §3.2, `CapEff=0` check, denied-login checks last), update `EVIDENCE.md`, bump `0.5.0`.
+- **Requirement IDs:** WIZ-1–WIZ-6, APP-1, APP-5–APP-7, APP-9, DEP-3, DEP-5–DEP-9, LOG-1–LOG-2, UI-1–UI-7.
+- **Handoff** (2026-11-25, M5 complete, `0.5.0`):
+  - Done: M5a (`internal/github`, `0003_github.sql`, AES-256-GCM encrypted App credentials, Settings → GitHub UI, fake-GitHub & Playwright E2E) and M5b (`v0.5.0-rc.1` verified on `dermaga-vm` from `fresh`: `hook-relay.container` `Rootfs=` empty dir with `CapEff=0`, `hooks.sock` `SEC-11`–`SEC-14`, real GitHub App manifest & install, real push via smee + Pebble HTTPS replay/dedupe, `GHA-7` repo removal reflected, secret greps, safe reboot, `m3_check.sh`).
+  - Remaining: **M6 (0.6.0): First deploy: wizard, build, env, logs** (`not started`). Start M6 in a new session after `v0.5.0` is tagged.
 
 **Every milestone** also meets the general acceptance criteria of `AGENTS.md` "Milestone loop": tests for its
 criteria (unit, golden, fake-host, fake-GitHub, API with authentication and the PRD rule, browser tests

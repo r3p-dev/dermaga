@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-25
+
 ### Added
 - **GitHub App connection (`GHA-1`–`GHA-6`, `SEC-9`, `DEC-09`, `DEC-29`)**:
   - `internal/github`: GitHub App manifest builder (`Contents: read`, `Metadata: read`, `push` event, private App), RS256 App JWT signing (`crypto/rsa`), `POST /app-manifests/{code}/conversions`, `PATCH /app/hook/config` with freshly generated 32-byte webhook secret (`content_type: "json"`), installation/repository listing, and per-fetch repo-scoped installation tokens kept in memory only, all pinned to `X-GitHub-Api-Version: 2026-03-10`.

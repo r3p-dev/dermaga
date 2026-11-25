@@ -1,6 +1,6 @@
 # Evidence: M5 (0.5.0) — Connect GitHub
 
-Checkpoint **M5a** (App connect + repositories) verified locally against fake GitHub and Playwright/axe. Checkpoint **M5b** (webhooks, `hook-relay`, and real GitHub VM run) is pending.
+Commit under review for VM run: `23486bc` (`v0.5.0-rc.1`).
 
 ## Acceptance criteria
 
@@ -9,13 +9,16 @@ Checkpoint **M5a** (App connect + repositories) verified locally against fake Gi
 | GHA-1, GHA-2, DEC-09: Manifest flow, min permissions, `PATCH /app/hook/config`, `2026-03-10` header | PASS | `tmp/evidence/M5/logs/make-check-m5a.log` | `TestBuildManifest_GHA1_GHA2`, `TestSignAppJWT_RS256`, `TestFakeGitHub_ManifestWebhookInstallReposAndToken_GHA1_GHA5_DEC09` |
 | GHA-3–GHA-6, SEC-3, SEC-9: Session-bound `state`, encrypted secrets, installations/repos sync, typed disconnect | PASS | `tmp/evidence/M5/logs/make-check-m5a.log` | `TestSettingsGitHubFlow_GHA1_GHA6_SEC3_SEC9`, `TestStoreMigration0002To0003` |
 | UI-1, UI-8, NFR-7: Settings → GitHub (desktop + narrow, light + dark, axe WCAG AA) | PASS | `tmp/evidence/M5/logs/playwright-e2e-m5a.log` | `7 passed (19.9s)` (Firefox + axe WCAG AA) |
-| M5a VM check (`dermaga-vm` from `fresh`, `v0.5.0-rc.1` not tagged for M5a) | NOT RUN | — | Deferred to M5b VM journey: `virsh --connect qemu:///system snapshot-revert dermaga-vm fresh && virt-xml --connect qemu:///system dermaga-vm --edit --events on_reboot=restart && virsh --connect qemu:///system start dermaga-vm`, then `install.sh` from `v0.5.0-rc.N` |
-| GHA-1, GHA-3: Real GitHub App manifest flow & repo selection (owner clicks) | NOT RUN | — | Deferred to M5b VM journey: `ssh dermaga-vm`, open `http://localhost:7070/settings?tab=github`, click **Connect GitHub**, complete GitHub App creation and installation |
-| M5b spike: `hook-relay` Quadlet (`Rootfs=` empty dir, `ReadOnly=true`, `DropCapability=ALL`, `NoNewPrivileges=true`) | PASS | `tmp/evidence/M5/logs/vm-m5b-hook-relay-spike.log` | `active`, `Hook relay proxy forwarding :8080 -> /run/dermaga/hooks.sock`, `ReadOnly=true`, `SecurityOpt=[no-new-privileges]` |
-| M5b spike: `hook-relay` reboot survival | FAIL | — | Invalid: spike used `virsh reboot` (forbidden by `SETUP.md` §3.2); reboot survival will be re-verified in M5b VM journey using safe reboot method |
-| M5b: `hook-relay` Quadlet, `hooks.sock`, `GHA-7`, `GHA-8`, `SEC-11`–`SEC-14`, real GitHub VM run | NOT RUN | — | Pending M5b |
+| SEC-11–SEC-14, GHA-7, GHA-8, DEC-30: `hook-relay` Quadlet, `hooks.sock` webhook unit/reconciler tests | PASS | `tmp/evidence/M5/logs/make-check-m5b.log` | `TestHookRelayGolden_DEC30`, `TestReconcile_HookRelayLifecycle_DEC30_GHA6`, `TestWebhookSecurity_SEC11_SEC12_SEC13_SEC14_GHA8`, `TestWebhookInstallationEvents_GHA7` |
+| Release `v0.5.0-rc.1` tag, workflow & checksums | PASS | `tmp/evidence/M5/logs/release-rc1-verify.log` | `23486bc0a7e825d6840404ffa569e9ba3fcd78fd`, `sha256sum -c checksums.txt` (`OK`) |
+| M5b spike: `hook-relay` (`Rootfs=` empty dir, `ReadOnly=true`, `DropCapability=ALL`, `NoNewPrivileges=true`) | PASS | `tmp/evidence/M5/logs/vm-m5b-hook-relay-spike.log` | `active`, `Hook relay proxy forwarding :8080 -> /run/dermaga/hooks.sock`, `ReadOnly=true`, `SecurityOpt=[no-new-privileges]` |
+| M5b spike: `hook-relay` reboot survival | FAIL | — | Invalid: spike used `virsh reboot` (forbidden by `SETUP.md` §3.2); superseded by safe reboot test below |
+| VM `hook-relay` live security (`Uid=1001`, `CapEff=0`, `NoNewPrivs=1`, `01-hook-domain.yml`) | PASS | `tmp/evidence/M5/logs/vm-m5b-relay-and-state.log` | `CapEff: 0000000000000000`, `NoNewPrivs: 1`, `http://hook-relay:8080` |
+| VM real GitHub App + smee push + Pebble HTTPS replay/dedupe + bad-sig `401` (`GHA-1`, `GHA-3`, `GHA-8`, `SEC-11`, `SEC-13`) | PASS | `tmp/evidence/M5/logs/vm-m5b-webhook-delivery.log` | `smee->hooks.sock status=202`, `pebble-https->relay->hooks.sock replay status=202`, `bad-sig status=401`, 1 deduped row |
+| VM `GHA-7` repo removal reflected + `m3_check.sh` (`control`, `state`, `running`, `access` last) | PASS | `tmp/evidence/M5/logs/vm-m5b-final-checks.log` | `PASS: GHA-7 removal of r3p-dev/dermaga-test-app reflected in panel`, `all checks passed` |
+| VM secret greps (journal, DB, `dermaga` cmdlines) & safe reboot (`virsh shutdown` + `virsh start`) | PASS | `tmp/evidence/M5/logs/vm-m5b-greps.log` | `0 hits in journal`, `0 plaintext secret hits in DB`, `0 secret hits in dermaga cmdlines`, all 3 units `active` after reboot (`vm-m5b-reboot-and-greps.log`) |
 
-### `tmp/evidence/M5/logs/make-check-m5a.log`
+### `tmp/evidence/M5/logs/make-check-m5b.log`
 
 ```text
 ok   ui
@@ -29,18 +32,45 @@ SKIP shellcheck (not installed)
 # Exit: 0
 ```
 
-### `tmp/evidence/M5/logs/playwright-e2e-m5a.log`
+### `tmp/evidence/M5/logs/vm-m5b-relay-and-state.log`
 
 ```text
-Running 7 tests using 4 workers
-  ✓  2 [firefox] › e2e/panel.test.ts:87:3 › Dermaga Theme & Panel Journeys (M1-dark) › system preference prefers-color-scheme: dark produces fully dark page without saved choice (2.8s)
-  ✓  5 [firefox] › e2e/panel.test.ts:106:3 › Dermaga Theme & Panel Journeys (M1-dark) › unauthenticated access redirects to /login (1.3s)
-  ✓  4 [firefox] › e2e/settings.test.ts:29:3 › Settings & Narrow Audit Log (M4b: LAP-3, ADM-4, ADM-5, SEC-10, CONVENTIONS §5.2) › Settings tabs (Access, Security, Hook Domain) and narrow Audit Log stacked rows (7.8s)
-  ✓  1 [firefox] › e2e/github.test.ts:29:3 › Settings -> GitHub (M5a: GHA-1, GHA-3, GHA-6, GHA-8) › hook domain blocker, guided connect card, connected repos desktop+narrow light+dark, and typed disconnect (7.7s)
-  ✓  3 [firefox] › e2e/setup.test.ts:137:3 › First-Run Setup Journey (M4a: SETUP-1, SETUP-2, SETUP-3, SEC-8) › full setup with TOTP enrolment, theme/viewport axe AA checks, and TOTP login (8.9s)
-  ✓  7 [firefox] › e2e/setup.test.ts:225:3 › First-Run Setup Journey (M4a: SETUP-1, SETUP-2, SETUP-3, SEC-8) › skipping TOTP shows persistent warning banner in panel (2.2s)
-  ✓  6 [firefox] › e2e/panel.test.ts:112:3 › Dermaga Theme & Panel Journeys (M1-dark) › full panel journeys, theme switching, computed backgrounds, and axe AA contrast (12.8s)
-  7 passed (19.9s)
+2026-11-25T13:19:27+00:00
+dermaga-vm
+active
+Hook relay proxy forwarding :8080 -> /run/dermaga/hooks.sock
+hook-relay host pid=4121
+Uid:	1001	1001	1001	1001
+Gid:	1001	1001	1001	1001
+CapInh:	0000000000000000
+CapPrm:	0000000000000000
+CapEff:	0000000000000000
+CapBnd:	0000000000000000
+CapAmb:	0000000000000000
+NoNewPrivs:	1
+```
+
+### `tmp/evidence/M5/logs/vm-m5b-webhook-delivery.log`
+
+```text
+smee->hooks.sock status=202 body={"status":"accepted"}
+pebble-https->relay->hooks.sock replay status=202 body={"status":"accepted"}
+negative-control bad-sig status=401
+webhook_deliveries: [('568985fe-e8d3-11f1-8162-5708322608b1', 'push', 'r3p-dev/dermaga-test-app', 'accepted')]
+# Exit: 0
+```
+
+### `tmp/evidence/M5/logs/vm-m5b-greps.log`
+
+```text
+active
+active
+active
+github_app_pem_encrypted len= 2276 encrypted= True
+github_client_secret_encrypted len= 92 encrypted= True
+github_webhook_secret_encrypted len= 124 encrypted= True
+0 plaintext secret hits in DB
+0 secret hits in dermaga cmdlines
 # Exit: 0
 ```
 
@@ -55,21 +85,25 @@ Running 7 tests using 4 workers
 - `tmp/evidence/M5/screenshots/m5a-github-connected-light-desktop.png`: Settings → GitHub (`1280×800`, light), connected App summary (`Dermaga VM`, App ID `12345`), installations (`r3p-dev`), and accessible repositories table (`r3p-dev/dermaga-test-app`).
 - `tmp/evidence/M5/screenshots/m5a-github-connected-dark-narrow.png`: Settings → GitHub (`375×812`, dark), connected App card and stacked layout with zero horizontal overflow.
 
-## How it works (M5a)
+## How it works
 
 1. **Manifest start (`POST /api/settings/github/manifest`)**: Requires `hook_domain` to be set; mints a 32-byte single-use `state` bound to the active session ID and returns the GitHub form action URL (`https://github.com/settings/apps/new?state=...`) and manifest JSON (`Contents: read`, `Metadata: read`, `push` event, private App, callbacks `/settings/github/callback` and `/settings/github/install-callback`).
-2. **Callback (`GET /settings/github/callback` → `POST /api/settings/github/callback`)**: Because session cookies use `SameSite=Strict` (`SEC-7`), the cross-site redirect from GitHub lands on the SvelteKit SPA route, which sends a same-origin `POST` with `{code, state}` (carrying both the session cookie and `Origin` header for `SEC-3`). The daemon validates and consumes `state`, exchanges `code` via `POST /app-manifests/{code}/conversions`, generates a 32-byte webhook secret, pushes it via `PATCH /app/hook/config` (`content_type: "json"`), and stores the PEM key, client secret, and webhook secret AES-256-GCM encrypted (`GHA-4`, `SEC-9`).
+2. **Callback (`GET /settings/github/callback` → `POST /api/settings/github/callback`)**: Because session cookies use `SameSite=Strict` (`SEC-7`), the cross-site redirect from GitHub lands on the SvelteKit SPA route, which sends a same-origin `POST` with `{code, state}` (carrying both the session cookie and `Origin` header for `SEC-3`). The daemon validates and consumes `state`, exchanges `code` via `POST /app-manifests/{code}/conversions`, generates a 32-byte webhook secret, pushes it via `PATCH /app/hook/config` (`content_type: "json"`), stores the PEM key, client secret, and webhook secret AES-256-GCM encrypted (`GHA-4`, `SEC-9`), and calls `Reconciler.EnsureGitHubRelay` to start `hook-relay.service` and wire `01-hook-domain.yml`.
 3. **Install & sync (`GHA-3`, `GHA-5`, `GHA-6`)**: The browser redirects to GitHub's App installation URL and returns to `/settings/github/install-callback`, which calls `POST /api/settings/github/sync`. The daemon lists installations with an RS256 App JWT and fetches each installation's repositories using an ephemeral in-memory installation token.
-4. **Disconnect (`DELETE /api/settings/github`)**: Requires typed `"disconnect"` confirmation, clears stored GitHub credentials, installations, repositories, and deliveries, and returns the GitHub App advanced settings link for manual deletion on GitHub.
+4. **Webhook intake (`GHA-7`, `GHA-8`, `SEC-11`–`SEC-14`)**: Traefik routes `POST /hooks/github-app` on `hook_domain` to `hook-relay:8080`, which forwards raw bytes (capped at `25 MiB + 64 KiB`) to `$XDG_RUNTIME_DIR/dermaga/hooks.sock` (`0600`). The daemon enforces `http.MaxBytesReader` (25 MiB → `413`), verifies `X-Hub-Signature-256` before JSON parsing (`401` with oracle-safe logging), dedupes on `X-GitHub-Delivery` (`202`), rate-limits per repo (`429`), filters to `push` / `installation` / `installation_repositories`, and updates DB state for `GHA-7` and `last_delivery` (`GHA-8`).
+5. **Disconnect (`DELETE /api/settings/github`)**: Requires typed `"disconnect"` confirmation, clears stored GitHub credentials, installations, repositories, and deliveries, removes `hook-relay.container` and `01-hook-domain.yml`, and returns the GitHub App advanced settings link for manual deletion on GitHub.
 
 ## Code tour
 
 - `internal/store/migrations/0003_github.sql`, `internal/store/github.go`: `github_installations`, `github_repositories`, `webhook_deliveries` tables and persistence methods.
 - `internal/github/github.go`: GitHub App manifest builder, RS256 JWT signer, REST client (`X-GitHub-Api-Version: 2026-03-10`).
+- `internal/quadlet/hook_relay.go`, `internal/reconciler/reconciler.go`: `hook-relay.container` (`Rootfs=` empty dir, `DEC-30`) and `01-hook-domain.yml` lifecycle.
+- `internal/webhook/webhook.go`: `hooks.sock` HTTP server enforcing `SEC-11`–`SEC-14` and `GHA-7`–`GHA-8`.
 - `internal/server/github.go`, `internal/server/types.go`, `internal/doctor/doctor.go`: GitHub settings API handlers, single-use session-bound `state`, and `doctor` check.
 - `ui/src/lib/components/GitHubSettings.svelte`, `ui/src/routes/settings/github/`: Settings → GitHub UI and callback routes.
 
 ## Decisions and deviations
 
 - **DEC-29** (`docs/ARCHITECTURE.md` §5.2, §6.3, §7): Aligned Connect GitHub with PRD `GHA-1` under **Settings → GitHub** (`/settings/github/callback` and `/settings/github/install-callback`), blocking Connect GitHub until `hook_domain` is configured.
+- **DEC-30** (`docs/ARCHITECTURE.md` §7, `docs/DEPENDENCIES.md` §3): `hook-relay.container` uses `Rootfs=` on an empty directory with read-only `dermaga` binary (no base image or external digest), `ReadOnly=true`, `NoNewPrivileges=true`, `DropCapability=ALL` (`CapEff=0`), `[Quadlet] DefaultDependencies=false` (`DEC-06`), and `After=dermaga.service`.
 - **SameSite=Strict callback handoff**: Cross-site redirects from `github.com` omit `SameSite=Strict` session cookies, so `/settings/github/callback` and `/settings/github/install-callback` are SPA pages that immediately issue same-origin `POST` requests with `Origin` and the session cookie.
