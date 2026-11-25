@@ -85,13 +85,19 @@ On the Debian guest, `systemd-logind` intercepts this as `Power key pressed shor
 
 ### 3.2 Recommended Reboot Method
 To reboot `dermaga-vm` cleanly and allow QEMU to execute `<on_reboot>restart</on_reboot>`:
-1. **Via SSH (Recommended):**
+1. **Via SSH (when `server` has passwordless sudo, e.g. `vps-setup` snapshot):**
    ```bash
    ssh dermaga-vm "sudo -n reboot"
    ```
    *Mechanism:* Systemd activates `reboot.target`. The guest Linux kernel calls `kernel_restart()`, signalling a true reboot event to QEMU. QEMU detects the reboot and restarts the VM automatically in ~4 seconds.
    *(Rule: automated agents must ask the project owner first and receive explicit permission before executing any command requiring sudo, including guest reboots).*
-2. **Alternative (Guest Agent):**
+2. **From the Host (after the M3 installer sets a sudo password for `server`, without `qemu-guest-agent`):**
+   ```bash
+   virsh --connect qemu:///system reboot dermaga-vm
+   # Without qemu-guest-agent, ACPI powerdown leaves the VM shut off; start it again:
+   virsh --connect qemu:///system start dermaga-vm
+   ```
+3. **Alternative (Guest Agent):**
    If `qemu-guest-agent` is installed on the guest, libvirt can reboot cleanly via:
    ```bash
    virsh --connect qemu:///system reboot dermaga-vm --mode agent
