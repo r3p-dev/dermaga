@@ -3,6 +3,7 @@ module dermaga
 go 1.27.4
 
 require (
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	golang.org/x/crypto v0.59.0
 	golang.org/x/term v0.48.0
 	gopkg.in/yaml.v2 v2.4.0
@@ -19,7 +20,6 @@ require (
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/ncruces/go-strftime v1.1.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
-	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
 	github.com/spf13/cobra v1.3.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	golang.org/x/exp/typeparams v0.0.0-20231108232855-2478ac86f678 // indirect
