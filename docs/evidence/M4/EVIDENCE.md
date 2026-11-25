@@ -10,9 +10,11 @@ Commit under review: `55544cb` + M4a working tree (checkpoint **M4a**).
 | SEC-8: 32B hashed single-use token, 24 h expiry, rate-limited, SEC-3 | PASS | `tmp/evidence/M4/logs/make-check.log` | `TestSetupTokenLifecycle_SEC8`, `TestSetupFlowWithTOTP_SETUP2_SEC8_ADM1` |
 | SETUP-2: password + strength meter + skippable TOTP QR & warning | PASS | `tmp/evidence/M4/logs/playwright-e2e.log` | `5 passed (16.3s)` (Firefox + axe WCAG AA) |
 | DOC-2: `doctor` warns when TOTP is disabled | PASS | `tmp/evidence/M4/logs/make-check.log` | `TestDoctorTOTPWarning_DOC2` |
-| SETUP-3, INST-12: `dermaga panel` via `daemon.sock` + `install.sh` link | PASS (local) | `tmp/evidence/M4/logs/make-check.log` | `TestSetupFlowSkipTOTPAndSocketToken_SETUP2_SETUP3`, `TestCLIPanel_InactiveDaemon` |
-| QR library query (`skip2/go-qrcode` vs `rsc.io/qr`) | decision recorded | `tmp/evidence/M4/logs/qr-library-query.log` | `DEPENDENCIES.md` §1–2 |
-| VM fresh-install journey (`dermaga-vm` from `fresh`) | NOT RUN | — | Needs owner pre-release tag `v0.4.0-rc.1`; see commands below |
+| SETUP-3, INST-12: `dermaga panel` via `daemon.sock` + `install.sh` link | PASS | `tmp/evidence/M4/logs/vm-run1-install.log` | `install.sh` printed first-run link; `dermaga panel` reissue & daemon-down failure verified |
+| VM fresh-install journey (TOTP, token rules, reboot, secret grep, `m3_check.sh`) | PASS | `tmp/evidence/M4/logs/vm-run1-journey.log` | `v0.4.0-rc.1` from `fresh`; TOTP setup/login, token rules, reboot, 0 secret hits, `m3_check` |
+| VM skip-TOTP journey (`dermaga-vm` from `fresh` revert #2) | PASS | `tmp/evidence/M4/logs/vm-run2-skip-totp.log` | Panel warning banner + `[WARN] totp` in `dermaga doctor` |
+| Release `v0.4.0-rc.1` tag, workflow & checksums | PASS | `tmp/evidence/M4/logs/release-rc1-verify.log` | `sha256sum -c checksums.txt` (`OK`) |
+| QR library query (`skip2/go-qrcode` vs `rsc.io/qr`) | decision recorded | `tmp/evidence/M4/logs/qr-library-query.log` | `DEPENDENCIES.md` §1–2 (unmaintained, encode-only acceptable) |
 
 ### `tmp/evidence/M4/logs/make-check.log`
 
@@ -41,18 +43,47 @@ SKIP shellcheck (not installed)
 # Exit: 0
 ```
 
-### VM fresh-install commands (for owner after tagging `v0.4.0-rc.1`)
+### `tmp/evidence/M4/logs/release-rc1-verify.log`
 
-```bash
-# 1. Revert dermaga-vm to fresh (owner approval) and ensure reboot policy
-virsh --connect qemu:///system snapshot-revert dermaga-vm fresh
-virt-xml --connect qemu:///system dermaga-vm --edit --events on_reboot=restart
-virsh --connect qemu:///system start dermaga-vm
+```text
+95a5c06dce7ed8c5e91458cb94d07fe0c95273b8
+completed	success	docs(m4): update plan, architecture, changelog, and M4a evidence	Release	v0.4.0-rc.1	push	45570396747	2m54s	2026-11-25T07:43:40Z
+v0.4.0-rc.1
+dermaga-linux-amd64: OK
+dermaga-linux-arm64: OK
+install.sh: OK
+# Exit: 0
+```
 
-# 2. Run installer from v0.4.0-rc.1 release (prints laptop command + setup?token=... link)
-ssh -t dermaga-vm-init 'curl -fsSL https://github.com/r3p-dev/dermaga/releases/download/v0.4.0-rc.1/install.sh | sudo bash'
+### `tmp/evidence/M4/logs/vm-run1-journey.log`
 
-# 3. On workstation: paste laptop command, run `ssh dermaga`, open printed http://localhost:7070/setup?token=...
+```text
+    tcp dport { 4222 } accept comment "ssh"
+    tcp dport { 80, 443 } accept comment "http, https"
+    udp dport 443 accept comment "http/3"
+PASS  firewall rules open only ssh, 80, 443/tcp, 443/udp
+PASS  old port 22 closed
+PASS  panel port 7070 closed from outside (SEC-2)
+PASS  password login not offered to server
+PASS  root refused, even with the key
+PASS  provider user debian refused, even with the key
+all checks passed
+# Exit: 0
+```
+
+### `tmp/evidence/M4/logs/vm-run2-skip-totp.log`
+
+```text
+PASS: browser skip-TOTP path showed persistent warning banner
+[OK  ] lingering      enabled for server
+[OK  ] podman         version 5.4.2
+[OK  ] traefik        traefik.service is active
+[OK  ] clock          synchronised
+[OK  ] disk           8% used
+[WARN] totp           two-factor authentication is disabled
+                      Enable TOTP in Settings -> Security to protect admin login.
+PASS: dermaga doctor warned about disabled TOTP (DOC-2)
+# Exit: 0
 ```
 
 ## Run & view
@@ -117,8 +148,7 @@ sequenceDiagram
 ## Known limitations / deferred
 
 - **M4b scope:** Hook-domain step + DNS check (`SETUP-2`), `TLS-5` + Pebble ACME without e-mail (`DEC-20`), `LAP-3`, `ADM-4`, `ADM-5`, `SEC-10`, and narrow-screen stacked audit log rows.
-- **VM fresh-install run:** Deferred until owner tags `v0.4.0-rc.1`.
-- **LLMNR port 5355:** Pre-existing open port on `fresh` before `apply_firewall` (carried over from M3b).
+- **LLMNR port 5355:** Pre-existing open port on `fresh` before `apply_firewall` (carried over from M3b; deferred).
 
 ## Suggested commits
 
