@@ -138,6 +138,8 @@ as_server() {
 }
 
 # --- preflight (INST-2, INST-8) ------------------------------------------------
+# The file is the target system's (under $ROOT, a temp root in tests), so shellcheck can't follow it.
+# shellcheck source=/dev/null
 os_field() { (. "$ROOT/etc/os-release" && printf '%s' "${!1:-}"); }
 
 arch() {
@@ -838,9 +840,9 @@ EOF
 
 # --- SSH and the lockout guard (HOST-2, LOCK-1 … LOCK-5) ------------------------------------------
 supported_algos() {
-  local kind=$1 want=$2 have a out=()
+  local kind=$1 wanted_list=$2 have a out=()
   have=$(ssh -Q "$kind" 2>/dev/null)
-  for a in $want; do
+  for a in $wanted_list; do
     if grep -qxF "$a" <<<"$have"; then out+=("$a"); fi
   done
   local IFS=,
