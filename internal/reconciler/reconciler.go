@@ -275,6 +275,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 
 	foundConfigsOnDisk := make(map[string]bool)
 	hasGlobalConfig := false
+	hasHookDomainConfig := false
 
 	for _, entry := range traefikEntries {
 		if entry.IsDir() {
@@ -290,6 +291,16 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 				continue
 			}
 			// Foreign global config!
+			report.ForeignFilesReported = append(report.ForeignFilesReported, fname)
+			continue
+		}
+
+		if fname == traefik.HookDomainFileName {
+			content, err := r.host.ReadFile(filePath)
+			if err == nil && traefik.HasHookDomainMarker(string(content)) {
+				hasHookDomainConfig = true
+				continue
+			}
 			report.ForeignFilesReported = append(report.ForeignFilesReported, fname)
 			continue
 		}
@@ -351,6 +362,16 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 		report.FilesReRendered = append(report.FilesReRendered, "00-global.yml")
 	}
 
+	// 4a2. Re-render missing 01-hook-domain.yml when hook_domain is configured (TLS-5, APP-2)
+	if !hasHookDomainConfig {
+		if hookDomain, err := r.store.GetSetting(ctx, "hook_domain"); err == nil && hookDomain != "" {
+			if err := r.EnsureHookDomain(ctx, hookDomain); err != nil {
+				return nil, err
+			}
+			report.FilesReRendered = append(report.FilesReRendered, traefik.HookDomainFileName)
+		}
+	}
+
 	// 4b. Re-render missing Traefik dynamic configs for active apps
 	for appName, rec := range activeAppNames {
 		configFilename := fmt.Sprintf("%s%s.yml", name.AppPrefix, appName)
@@ -393,6 +414,25 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 	}
 
 	return report, nil
+}
+
+// EnsureHookDomain renders and atomically writes 01-hook-domain.yml for the given domain (TLS-5, APP-2).
+func (r *Reconciler) EnsureHookDomain(_ context.Context, domain string) error {
+	if r.cfg.TraefikDynamicDir == "" {
+		return nil
+	}
+	hookPath := filepath.Join(r.cfg.TraefikDynamicDir, traefik.HookDomainFileName)
+	if existing, err := r.host.ReadFile(hookPath); err == nil && !traefik.HasHookDomainMarker(string(existing)) {
+		return fmt.Errorf("refusing to overwrite foreign %s without dermaga marker", traefik.HookDomainFileName)
+	}
+	data, err := traefik.RenderHookDomain(domain, "")
+	if err != nil {
+		return fmt.Errorf("rendering hook domain config: %w", err)
+	}
+	if err := r.host.WriteFileAtomic(hookPath, data, 0644); err != nil {
+		return fmt.Errorf("writing hook domain config: %w", err)
+	}
+	return nil
 }
 
 func (r *Reconciler) traefikEnabled() bool {
