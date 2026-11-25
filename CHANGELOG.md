@@ -6,6 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-25
+
+### Added
+- **Interactive installer** (`install/install.sh`): turns a fresh Debian 13 (x86_64/arm64) server into a hardened dermaga host (`INST-2`–`INST-12`, `SEC-22`). Collects authorized SSH keys (or guides pasting a key), detects private vs public IP without external calls, shows a plan before modifying the host, verifies release binary SHA-256 checksums, sets up `server` with cgroup v2 delegation and lingering, installs `dermaga.service` and Traefik via startup reconciliation, and runs `dermaga doctor`.
+- **Host hardening** (`HOST-1`–`HOST-7`): single `server` login user, hardened `sshd` (`AllowUsers server`, key-only, `LogLevel VERBOSE`, local TCP forwarding only), `nftables` default-deny (`inet dermaga` table reloaded without flushing `fail2ban`), `fail2ban` (`sshd` aggressive + `recidive`), `sysctl`, `zram`, `unattended-upgrades`, `systemd-timesyncd`, and `network-online.target` wiring (`DEC-06`, `DEC-22`).
+- **Two-phase SSH lockout guard** (`LOCK-1`–`LOCK-5`, `DEC-19`): opens the new SSH port alongside the old port with `Match LocalPort`, detects successful key login from `journalctl`, and closes the old port/password/root access only after proof; restores on failure/timeout/interrupt.
+- **Laptop SSH command & host checks** (`internal/access`, `internal/doctor`, `LAP-1`–`LAP-2`): cross-shell `sh -c '...'` command (bash, zsh, fish) that adds a marked `Host dermaga` (or `dermaga-<hostname>`) block with `LocalForward 7070` and matching `IdentityFile`, plus `dermaga doctor` and `dermaga install-settings`.
+- **VM verification harness** (`test/vm/drive_install.py`, `test/vm/m3_check.sh`, `test/vm/port_scan.sh`, updated `test/vm/seed.sh`): automated M3b scenarios a–h from `fresh` snapshot.
+
+### Fixed
+- **Installer `sshd -T` context**: passed `-C` connection specification to `sshd -T` in `effective_ssh_ports` so Debian 13's `sshd -T` accepts `Match LocalPort` during the open phase.
+- **Live-state lockout & firewall verification**: verified live listening `sshd` sockets (`ss -Hltnp`) and the full `nft list ruleset` before skipping or accepting reloads so interrupted reruns never leave old SSH ports open.
+- **M3b harness & docs**: closed pty master fd with `SIGHUP -> SIGTERM -> SIGKILL` escalation in `drive_install.py --at-wait hangup`, ordered `m3_check.sh access` to run `server` checks before `denied` checks (preventing premature `fail2ban` bans), and documented passworded `sudo` / `virsh` reboot in `docs/SETUP.md` §3.2.
+
 ## [0.2.1] - 2026-11-17
 
 ### Fixed
