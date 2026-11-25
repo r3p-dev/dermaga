@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -108,6 +110,14 @@ func (b *Builder) Build(ctx context.Context, req BuildRequest) (string, error) {
 		cpus = req.CPUs
 	}
 
+	cpuQuota, err := cpuQuotaMicros(cpus)
+	if err != nil {
+		return "", err
+	}
+	if err := ValidateMemoryLimit(mem); err != nil {
+		return "", err
+	}
+
 	buildCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -156,12 +166,15 @@ func (b *Builder) Build(ctx context.Context, req BuildRequest) (string, error) {
 	args := []string{
 		"build",
 		"--memory", mem,
-		"--cpus", cpus,
+		"--cpu-period", "100000",
+		"--cpu-quota", strconv.FormatInt(cpuQuota, 10),
 		"-f", containerfileAbs,
 		"-t", imageRef,
 	}
+	var buildProcEnv []string
 	for k, v := range req.BuildEnv {
-		args = append(args, "--build-arg", k+"="+v)
+		args = append(args, "--build-arg", k)
+		buildProcEnv = append(buildProcEnv, k+"="+v)
 	}
 	args = append(args, contextAbs)
 
@@ -174,7 +187,7 @@ func (b *Builder) Build(ctx context.Context, req BuildRequest) (string, error) {
 			}
 		}
 	})
-	err = b.host.StreamCommandWithEnv(buildCtx, nil, func(line string) {
+	err = b.host.StreamCommandWithEnv(buildCtx, buildProcEnv, func(line string) {
 		_, _ = sm.Write([]byte(line + "\n"))
 	}, "podman", args...)
 	sm.Flush()
@@ -226,4 +239,35 @@ func resolveBuildPaths(exportDir, containerfilePath, buildContext string) (strin
 		return "", "", fmt.Errorf("build context %q escapes build directory", buildContext)
 	}
 	return cfAbs, ctxAbs, nil
+}
+
+var memoryLimitRE = regexp.MustCompile(`^[1-9][0-9]*[bkmgBKMG]?$`)
+
+// ValidateMemoryLimit validates a Podman memory limit string (e.g. "2g", "512m").
+func ValidateMemoryLimit(mem string) error {
+	if !memoryLimitRE.MatchString(strings.TrimSpace(mem)) {
+		return fmt.Errorf("invalid build memory limit %q (expected positive number with optional b/k/m/g suffix)", mem)
+	}
+	return nil
+}
+
+// ValidateTimeoutSec validates a positive build timeout in seconds (DEP-7).
+func ValidateTimeoutSec(raw string) (time.Duration, error) {
+	secs, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || secs <= 0 {
+		return 0, fmt.Errorf("invalid build timeout %q (must be a positive integer in seconds)", raw)
+	}
+	return time.Duration(secs) * time.Second, nil
+}
+
+func cpuQuotaMicros(cpus string) (int64, error) {
+	v, err := strconv.ParseFloat(strings.TrimSpace(cpus), 64)
+	if err != nil || v <= 0 {
+		return 0, fmt.Errorf("invalid build CPU limit %q (must be a positive number)", cpus)
+	}
+	q := int64(v * 100000)
+	if q < 1000 {
+		q = 1000
+	}
+	return q, nil
 }

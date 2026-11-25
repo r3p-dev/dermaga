@@ -313,12 +313,21 @@ func (e *Engine) runOne(parentCtx context.Context, depID string) {
 	}
 
 	buildMem, _ := e.store.GetSetting(parentCtx, "build_memory_limit")
+	if buildMem != "" {
+		if err := builder.ValidateMemoryLimit(buildMem); err != nil {
+			failOrCancel(err, "")
+			return
+		}
+	}
 	buildCPU, _ := e.store.GetSetting(parentCtx, "build_cpu_limit")
 	var buildTimeout time.Duration
 	if ts, err := e.store.GetSetting(parentCtx, "build_timeout_sec"); err == nil && ts != "" {
-		if secs, err := strconv.Atoi(ts); err == nil && secs > 0 {
-			buildTimeout = time.Duration(secs) * time.Second
+		parsed, err := builder.ValidateTimeoutSec(ts)
+		if err != nil {
+			failOrCancel(err, "")
+			return
 		}
+		buildTimeout = parsed
 	}
 
 	imageRef, err := e.builder.Build(runCtx, builder.BuildRequest{

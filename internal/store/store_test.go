@@ -462,7 +462,10 @@ func TestStoreMigration0003To0004(t *testing.T) {
 	if err != nil || dep.Status != "failed" || dep.ErrorMessage != "daemon restarted" || dep.FinishedAt == nil {
 		t.Fatalf("unexpected failed deployment: %+v (err=%v)", dep, err)
 	}
-	if store.DeploymentStatusLabel("probing") != "healthy" || store.DeploymentStatusLabel("active") != "live" || store.DeploymentStatusLabel("building") != "building" {
+	if store.DeploymentStatusLabel("probing") != "healthy" ||
+		store.DeploymentStatusLabel("active") != "live" ||
+		store.DeploymentStatusLabel("superseded") != "replaced by a newer deploy" ||
+		store.DeploymentStatusLabel("building") != "building" {
 		t.Fatalf("unexpected DeploymentStatusLabel mapping")
 	}
 }

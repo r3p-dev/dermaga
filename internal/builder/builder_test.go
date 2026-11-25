@@ -118,3 +118,44 @@ func TestBuilder_PathTraversalRejected(t *testing.T) {
 		t.Fatalf("expected path traversal error, got %v", err)
 	}
 }
+
+func TestBuilder_ValidateLimitsAndBuildArgEnv_DEP7_DEC31(t *testing.T) {
+	for _, bad := range []string{"", "0", "-1g", "abc", "512x"} {
+		if err := ValidateMemoryLimit(bad); err == nil {
+			t.Fatalf("expected error for memory %q", bad)
+		}
+	}
+	for _, bad := range []string{"", "0", "-5", "abc"} {
+		if _, err := ValidateTimeoutSec(bad); err == nil {
+			t.Fatalf("expected error for timeout %q", bad)
+		}
+		if _, err := cpuQuotaMicros(bad); err == nil {
+			t.Fatalf("expected error for cpus %q", bad)
+		}
+	}
+	q, err := cpuQuotaMicros("1.5")
+	if err != nil || q != 150000 {
+		t.Fatalf("expected 150000, got %d (err=%v)", q, err)
+	}
+
+	fh := host.NewFakeHost()
+	b := New(fh, BuildConfig{MirrorsDir: "/tmp/m", BuildsDir: "/tmp/b"}, nil)
+	_, err = b.Build(context.Background(), BuildRequest{
+		AppName: "app", DeploymentID: "dep_1", ReleaseNumber: 1,
+		BuildEnv: map[string]string{"BUILD_VAR": "secret_val"},
+	})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	for _, c := range fh.Commands {
+		if c.Name == "podman" {
+			joined := strings.Join(c.Args, " ")
+			if strings.Contains(joined, "secret_val") {
+				t.Fatalf("build-arg value leaked in podman argv: %s", joined)
+			}
+			if !strings.Contains(strings.Join(c.Env, "\n"), "BUILD_VAR=secret_val") {
+				t.Fatalf("expected BUILD_VAR in podman env, got %v", c.Env)
+			}
+		}
+	}
+}

@@ -125,3 +125,27 @@ func TestParseExposedPort_VariableAndEmpty_WIZ3(t *testing.T) {
 		t.Fatalf("expected 8080, got %d", got)
 	}
 }
+
+func TestInspectRepo_EmptyRepo409_WIZ3(t *testing.T) {
+	pemBytes := testInspectRSAKey(t)
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /app/installations/42/access_tokens", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"token": "ghs_tok", "expires_at": "2026-11-25T15:00:00Z"})
+	})
+	mux.HandleFunc("GET /repos/octo/empty/git/trees/main", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]string{"message": "Git Repository is empty."})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	client := NewClient()
+	client.APIBaseURL = srv.URL
+	insp, err := client.InspectRepo(context.Background(), 10, pemBytes, 42, "octo", "empty", "main")
+	if err != nil {
+		t.Fatalf("expected nil error on empty 409 repo, got %v", err)
+	}
+	if insp.HasContainerfile || len(insp.Candidates) != 0 {
+		t.Fatalf("expected HasContainerfile=false, got %+v", insp)
+	}
+}

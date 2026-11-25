@@ -107,6 +107,12 @@ func (c *Client) InspectRepo(ctx context.Context, appID int64, pemBytes []byte, 
 		} `json:"tree"`
 	}
 	if err := c.doJSON(ctx, http.MethodGet, treeEndpoint, "token "+token, nil, &treeResp); err != nil {
+		if strings.Contains(err.Error(), "409 Conflict") {
+			return &RepoInspection{
+				Branch:     branch,
+				Candidates: []ContainerfileCandidate{},
+			}, nil
+		}
 		return nil, fmt.Errorf("reading repository tree for %s/%s@%s: %w", owner, repo, branch, err)
 	}
 

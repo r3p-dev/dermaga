@@ -74,6 +74,8 @@ func DeploymentStatusLabel(status string) string {
 		return "healthy"
 	case "active":
 		return "live"
+	case "superseded":
+		return "replaced by a newer deploy"
 	default:
 		return status
 	}
