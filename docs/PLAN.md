@@ -21,7 +21,7 @@ backups come in v1.1.
 | M3  | 0.3.0   | Installer, hardening, lockout guard               | completed         | M3a yes: confirmed by owner, 2026-11-17 (owner tags v0.3.0-rc, v0.3.0-rc.2; M3b started); M3b yes: confirmed by owner, 2026-11-25 (owner tags v0.3.0-rc.3, v0.3.0-rc.4, v0.3.0) | 24      |
 | M4  | 0.4.0   | First-run setup and panel access                  | completed         | M4a yes: confirmed by owner, 2026-11-25 (v0.4.0-rc.1); M4b yes: confirmed by owner, 2026-11-25 (owner tags v0.4.0-rc.2 [superseded], v0.4.0-rc.3, v0.4.0) | 20      |
 | M5  | 0.5.0   | Connect GitHub                                    | completed         | M5a yes: confirmed by owner, 2026-11-25; M5b yes: confirmed by owner, 2026-11-25 (v0.5.0-rc.1, v0.5.0)                                                                       | 28      |
-| M6  | 0.6.0   | First deploy: wizard, build, env, logs            | in progress       | –                                                                                                                                                                               | 36      |
+| M6  | 0.6.0   | First deploy: wizard, build, env, logs            | completed         | M6a & M6b verified on `dermaga-vm` (`v0.6.0-rc.3` from `fresh`, Pebble TLS, browser wizard, 0 residue) | 36      |
 | M7  | 0.7.0   | Zero downtime: push-to-deploy, redeploy, rollback | not started       | –                                                                                                                                                                               | 32      |
 | M8  | 0.8.0   | Domains, HTTPS, headers, middleware               | not started       | –                                                                                                                                                                               | 28      |
 | M9  | 0.9.0   | Server care: app status, disk, dashboard, doctor  | not started       | –                                                                                                                                                                               | 24      |
@@ -46,15 +46,12 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
 
 ## Active milestone
 
-**M6** (0.6.0): First deploy: wizard, build, env, logs (`in progress` — M6a: build pipeline & first deploy backend).
+**M7** (0.7.0): Zero downtime: push-to-deploy, redeploy, rollback (`not started`).
 
-- **Requirement IDs:** WIZ-1–WIZ-6, APP-1, APP-5–APP-7, APP-9, DEP-3, DEP-5–DEP-9, LOG-1–LOG-2, UI-1–UI-7.
-- **Checkpoints:**
-  - **M6a (~20 h):** Build pipeline and first deploy backend (`WIZ-2`–`WIZ-3` GitHub tree/Containerfile inspection, bare mirrors, `DEP-5` single queue, `DEP-6` cancel, `DEP-7` limits/timeout, `DEP-8` streaming + `SEC-9` masking, `DEP-3`/`DEP-9` first deploy + status mapping, `APP-1`, `APP-5`–`APP-7`, `APP-9`, `0004` migration, SSE `LOG-1`–`LOG-2`, daemon crash/restart mid-build recovery, unit/golden/fake-host/fake-GitHub/API tests).
-  - **M6b (~16 h):** Wizard stepper (`WIZ-1`–`WIZ-6`), app page tabs (Overview, Deployments, Logs, Environment, Settings, Danger zone — only active M6 tabs per `UI-2`), `UI-1`–`UI-8`, Playwright E2E (desktop + narrow, light + dark, axe WCAG AA), VM journey from `fresh` (portfolio live over Pebble cert), and `0.6.0` bump.
-- **Handoff** (2026-11-25, M5 complete, `0.5.0`):
-  - Done: M5a (`internal/github`, `0003_github.sql`, AES-256-GCM encrypted App credentials, Settings → GitHub UI, fake-GitHub & Playwright E2E), M5b (`v0.5.0-rc.1` verified on `dermaga-vm` from `fresh`), Step 0 (`v0.5.0` from `fresh`: `GHA-7` live webhook-path verified via `gosmee` → `hooks.sock`), and **M6a** (GitHub `WIZ-2`/`WIZ-3` inspection, `0004_m6_apps_deploy.sql`, `internal/builder` mirrors/limits/chunk-safe `SEC-9` masking, `internal/deploy` single queue + first-deploy + cancel/fail cleanup + `APP-9`, `internal/server` M6a REST API & SSE `LOG-1`/`LOG-2`).
-  - Remaining: **M6b (~16 h)** (New App Wizard stepper, App tabs, Playwright E2E, VM journey from `fresh`, `0.6.0` bump).
+- **Requirement IDs:** DEP-1, DEP-2, DEP-4, DEP-10, APP-8, REL-6.
+- **Handoff** (2026-11-26, M6 complete, `0.6.0`):
+  - Done: M6a (`internal/github` `WIZ-2`/`WIZ-3` inspection, `0004_m6_apps_deploy.sql`, `internal/builder` mirrors/limits/`LineAccumulator` + chunk-safe `SEC-9` masking, `internal/deploy` single queue + first-deploy + cancel/fail cleanup + `APP-9`, `internal/server` M6a REST API & SSE `LOG-1`/`LOG-2`) and M6b (Dashboard `AppsList`, 4-step New App Wizard, 6 active App tabs, Playwright + axe E2E, `setup_pebble.sh`, `seed.sh`, `v0.6.0-rc.3` VM journey from `fresh` with Pebble TLS and 0 residue).
+  - Remaining: **M7 (0.7.0): Zero downtime: push-to-deploy, redeploy, rollback** (`not started`). Start M7 in a new session after `v0.6.0` is tagged.
 
 **Every milestone** also meets the general acceptance criteria of `AGENTS.md` "Milestone loop": tests for its
 criteria (unit, golden, fake-host, fake-GitHub, API with authentication and the PRD rule, browser tests

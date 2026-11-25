@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-26
+
 ### Added
 - **M6a build pipeline & first deploy backend (`WIZ-2`–`WIZ-3`, `APP-1`, `APP-5`–`APP-7`, `APP-9`, `DEP-3`, `DEP-5`–`DEP-9`, `LOG-1`–`LOG-2`, `UI-5`, `UI-6`)**:
   - `internal/github`: branch listing (`WIZ-2`), commit resolution, and repo tree/Containerfile/Dockerfile/`EXPOSE`/`.gitmodules`/`filter=lfs` inspection (`WIZ-3`) using repo-scoped installation tokens (`GHA-5`).
