@@ -121,7 +121,7 @@ Pinned by tag **and** digest where they are used.
 | curl (`docker.io/curlimages/curl:8.12.1`) | Allowlist probe in `test/vm/test_traefik_configs.sh` (VM only) | Test only, never shipped; index digest |
 | Pebble (`ghcr.io/letsencrypt/pebble:2.10.3`) | Local ACME test CA for `TLS-5` and `DEC-20` on `dermaga-vm` | Test only, never shipped; index digest |
 
-The hook relay runs the dermaga binary on an empty root filesystem (no base image).
+The hook relay (`hook-relay.container`) runs the static `dermaga` binary on an empty root filesystem (`Rootfs=`, no base image, no digest, `DEC-30`).
 
 Queries for these pins:
 

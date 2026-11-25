@@ -49,9 +49,9 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
 **M5a** (checkpoint 1 of M5, 0.5.0): Connect GitHub — App manifest flow, encrypted credentials, installations, and repository list.
 
 - **Requirement IDs:** GHA-1–GHA-6, SEC-9, DEC-09, DEC-29.
-- **Handoff** (2026-11-25, M5a complete; M5b next):
-  - Done: M5a (`internal/github`, `0003_github.sql` migration + `0002 -> 0003` upgrade test, AES-256-GCM encrypted GitHub credentials, `/api/settings/github/*` with single-use session-bound `state` and `SEC-3` checks, `doctor` GitHub check, **Settings → GitHub** UI + callback routes, fake-GitHub & Playwright E2E + axe WCAG AA tests, `make check` green).
-  - Remaining: **M5b (~14 h)** — `hook-relay` Quadlet (`Rootfs=` empty-dir spike on `dermaga-vm` first), `01-hook-domain.yml` wiring, `hooks.sock` webhook handler (`GHA-7`, `GHA-8`, `SEC-11`–`SEC-14`), real GitHub + smee.io/replay VM verification, secret greps, and `0.5.0` bump.
+- **Handoff** (2026-11-25, M5b code ready for `v0.5.0-rc.1` VM journey):
+  - Done: M5a committed and pushed; `hook-relay` `Rootfs=` spike verified on `dermaga-vm`; M5b code (`internal/quadlet/hook_relay.go`, `internal/reconciler`, `internal/webhook`, `hooks.sock` in `cmd/dermaga`, `DEC-30`) implemented and `make check` green.
+  - Remaining: Tag `v0.5.0-rc.1`, run M5b VM journey on `dermaga-vm` from `fresh` (real GitHub App manifest + install, smee.io push delivery, replay captured delivery over Pebble HTTPS `hook-domain` + dedupe, `GHA-7` uninstall/remove reflected, secret greps, safe reboot per `SETUP` §3.2, `CapEff=0` check, denied-login checks last), update `EVIDENCE.md`, bump `0.5.0`.
 
 **Every milestone** also meets the general acceptance criteria of `AGENTS.md` "Milestone loop": tests for its
 criteria (unit, golden, fake-host, fake-GitHub, API with authentication and the PRD rule, browser tests
