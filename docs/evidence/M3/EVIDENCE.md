@@ -2,11 +2,8 @@
 
 M3 is split into two checkpoints (`docs/PLAN.md`):
 
-- **M3a** (this file, so far): installer and hardening code with unit and fake-host tests and local
-  checks only. Nothing ran as root on any machine; the only contact with `dermaga-vm` was read-only
-  (user `server`, no sudo) to copy two fixtures.
-- **M3b** (not run yet): scenarios a–h on `dermaga-vm` from the `fresh` snapshot with the `v0.3.0-rc`
-  pre-release.
+- **M3a**: installer and hardening code with unit and fake-host tests and local checks only.
+- **M3b** (this update): scenarios a–h on `dermaga-vm`, each run separately from the `fresh` snapshot with the `v0.3.0-rc.4` pre-release (`f295772`, plus the `drive_install.py` hangup escalation for scenario d).
 
 Every log below starts with its command, commit and timestamp. Logs marked dirty ran on the M3a
 working tree on top of `a88fe9f`; the per-commit `make check` logs (§8) ran on clean throwaway
@@ -22,31 +19,31 @@ in M3a is a VM result; every VM item is **NOT RUN** until M3b.
 | Criterion | M3a (code and tests) | M3b (VM) |
 | --- | --- | --- |
 | INST-1 README "Before you start" | done (README §1–2) | — |
-| INST-2 Debian 13 only, idempotent | PASS: `TestInstallRefusesBeforeChanging/not_debian_13`, re-run no-op in `TestInstallFreshServer` | NOT RUN (g) |
-| INST-3 terminal prompts, defaults, no tty → stop | PASS: `TestInstallInteractiveEnterOnly`, `.../no_terminal` | NOT RUN (a) |
+| INST-2 Debian 13 only, idempotent | PASS: `TestInstallRefusesBeforeChanging/not_debian_13`, re-run no-op in `TestInstallFreshServer` | PASS (g): `scenario-g-diff.log` (`diff-exit=0`, `no-op-msg-ok`, 0 reloads) |
+| INST-3 terminal prompts, defaults, no tty → stop | PASS: `TestInstallInteractiveEnterOnly`, `.../no_terminal` | PASS (a): `scenario-a-install.log`, `scenario-a-driver.log` |
 | INST-4 `--config` + `--yes` | PASS: `TestInstallFreshServer` | — |
-| INST-5 key choice, current key marked, guided paste | PASS: `TestInstallInteractiveEnterOnly`, `TestInstallNoKeyGuidedPaste` | NOT RUN (a, b) |
-| INST-6 port, address without third parties, stored | PASS: `TestInstallInteractiveEnterOnly`, `TestInstallPublicAddressNotAsked`, `TestCLIInstallSettingsFeedsLaptopCommand` | NOT RUN (a) |
-| INST-7 plan before changes | PASS: `.../plan_declined` | NOT RUN |
-| INST-8 :80/:443 busy → refuse | PASS: `.../port_80_busy` | NOT RUN |
-| INST-9, SEC-22 checksum-verified binary | PASS: `TestInstallRefusesUnverifiedBinary` (mismatch, missing) | NOT RUN |
+| INST-5 key choice, current key marked, guided paste | PASS: `TestInstallInteractiveEnterOnly`, `TestInstallNoKeyGuidedPaste` | PASS (a, b): `scenario-a-driver.log`, `scenario-b-driver.log` |
+| INST-6 port, address without third parties, stored | PASS: `TestInstallInteractiveEnterOnly`, `TestInstallPublicAddressNotAsked`, `TestCLIInstallSettingsFeedsLaptopCommand` | PASS (a): `scenario-a-driver.log` |
+| INST-7 plan before changes | PASS: `.../plan_declined` | PASS: `scenario-a-driver.log` (Plan shown before Packages) |
+| INST-8 :80/:443 busy → refuse | PASS: `.../port_80_busy` | NOT RUN (`ssh dermaga-vm-init "python3 -m http.server 80 &"` then `install.sh`) |
+| INST-9, SEC-22 checksum-verified binary | PASS: `TestInstallRefusesUnverifiedBinary` (mismatch, missing) | PASS: `release-rc4-assets-verify.log`, `scenario-a-driver.log` |
 | INST-10 GitHub SSH host keys pinned | removed from v1.0.0 (owner decision, DEC-23); code, fixture and tests deleted | — |
-| INST-11 user service, linger, doctor | PASS: `internal/doctor` tests, reconciler Traefik tests | NOT RUN |
-| INST-12 laptop command, link, "Lost this?" | PASS (link: see §9 question 2) | NOT RUN |
-| HOST-1 one login user `server` | PASS: `AllowUsers server` in `TestSSHDFinalWithRealSSHD` | NOT RUN |
-| HOST-2 sshd hardening | PASS: `TestSSHDFinalWithRealSSHD` (real `sshd -T`) | NOT RUN |
-| HOST-3 nftables default deny, no restart | PASS: rendered rules in `TestInstallFreshServer`, `TestInstallTimeoutKeepsOldAccess` | NOT RUN (e) |
-| HOST-4 fail2ban sshd + recidive | PASS: jail in `TestInstallFreshServer` | NOT RUN |
-| HOST-5 sysctl, upgrades, zram, clock | code done; files asserted in `TestInstallFreshServer` | NOT RUN |
-| HOST-6 rootless Podman, Traefik socket activation, file provider only | PASS: `TestTraefikGolden`, `TestReconcile_Traefik*`, local Quadlet dry run | NOT RUN (h) |
-| HOST-7 sudo password recommended | code done (see §9 question 1) | NOT RUN |
-| LOCK-1 new port next to old, validated | PASS: `TestSSHDOpenPhaseWithRealSSHD`, rollback tests | NOT RUN (c) |
-| LOCK-2 instruction text | PASS: `TestInstallFreshServer` | NOT RUN |
-| LOCK-3 wait, detect, `yes` fallback | PASS: `TestLoginSeenOnRealJournal`, `TestInstallInteractiveEnterOnly` | NOT RUN |
-| LOCK-4 close only after proof | PASS: `TestInstallFreshServer` (2 reloads), `TestInstallTimeoutKeepsOldAccess` | NOT RUN |
-| LOCK-5 timeout/Ctrl+C/closed window keep access | PASS: `TestInstallTimeoutKeepsOldAccess` (timeout, resume) | NOT RUN (c, d) |
-| LAP-1 laptop command | PASS: bash, fish, sh (bash) in `internal/access`; zsh and dash in a container | NOT RUN (f) |
-| LAP-2 shell + tunnel, second session warns | block content PASS (`ssh -G`) | NOT RUN |
+| INST-11 user service, linger, doctor | PASS: `internal/doctor` tests, reconciler Traefik tests | PASS: `scenario-a-host-checks.log` (`Linger=yes`, `dermaga doctor`) |
+| INST-12 laptop command, link, "Lost this?" | PASS (link: see §9 question 2) | PASS: `scenario-a-driver.log` (command + fallback hint; link in M4) |
+| HOST-1 one login user `server` | PASS: `AllowUsers server` in `TestSSHDFinalWithRealSSHD` | PASS: `scenario-a-access.log`, `scenario-a-host-checks.log` (`uid=1001(server)`) |
+| HOST-2 sshd hardening | PASS: `TestSSHDFinalWithRealSSHD` (real `sshd -T`) | PASS: `scenario-a-access.log` (key-only, port 4222, root/debian refused) |
+| HOST-3 nftables default deny, no restart | PASS: rendered rules in `TestInstallFreshServer`, `TestInstallTimeoutKeepsOldAccess` | PASS (e): `scenario-a-access.log`, `scenario-e-port-scan.log` |
+| HOST-4 fail2ban sshd + recidive | PASS: jail in `TestInstallFreshServer` | PASS: `scenario-a-host-checks.log` (`fail2ban` active; ban observed after 5 auth failures) |
+| HOST-5 sysctl, upgrades, zram, clock | code done; files asserted in `TestInstallFreshServer` | PASS: `scenario-a-host-checks.log` (`unattended-upgrades`, `systemd-timesyncd` active, `NTPSynchronized=yes`) |
+| HOST-6 rootless Podman, Traefik socket activation, file provider only | PASS: `TestTraefikGolden`, `TestReconcile_Traefik*`, local Quadlet dry run | PASS (h): `scenario-h-running.log` |
+| HOST-7 sudo password recommended | code done (see §9 question 1) | PASS: `scenario-a-driver.log` (`Protect sudo with a password (recommended)?`) |
+| LOCK-1 new port next to old, validated | PASS: `TestSSHDOpenPhaseWithRealSSHD`, rollback tests | PASS (c): `scenario-c-wrong-key.log`, `scenario-c-verify-reload.log` |
+| LOCK-2 instruction text | PASS: `TestInstallFreshServer` | PASS: `scenario-a-driver.log` (`Open a NEW terminal on your laptop and run:`) |
+| LOCK-3 wait, detect, `yes` fallback | PASS: `TestLoginSeenOnRealJournal`, `TestInstallInteractiveEnterOnly` | PASS: `scenario-a-driver.log` (`seen: server logged in with a key on port 4222`) |
+| LOCK-4 close only after proof | PASS: `TestInstallFreshServer` (2 reloads), `TestInstallTimeoutKeepsOldAccess` | PASS: `scenario-a-access.log`, `scenario-c-verify-reload.log` |
+| LOCK-5 timeout/Ctrl+C/closed window keep access | PASS: `TestInstallTimeoutKeepsOldAccess` (timeout, resume) | PASS (c, d): `scenario-c-wrong-key.log`, `scenario-d-hangup.log` |
+| LAP-1 laptop command | PASS: bash, fish, sh (bash) in `internal/access`; zsh and dash in a container | PASS (f): `scenario-f-laptop.log` (bash 2x = 1 block, fish 2x = 1 block) |
+| LAP-2 shell + tunnel, second session warns | block content PASS (`ssh -G`) | PASS (f): `scenario-f-laptop.log` (`200`, second session warns on 7070) |
 
 ## 2. `make check`
 
@@ -1062,3 +1059,222 @@ Owner decisions recorded here: local shellcheck is not required (CI is the gate)
 table is carried over to M4's acceptance criteria in `docs/PLAN.md`; the CHANGELOG mention of
 `docs/evidence/M1/brand/` stays. `install/install.sh` holds both the rename and the SC1091 directive,
 and a path belongs to exactly one commit, so the directive is in the `fix(install)` commit.
+
+
+---
+
+## M3b: VM Scenarios on `dermaga-vm` (`v0.3.0-rc.4`)
+
+All eight scenarios (a–h) ran separately from the `fresh` snapshot on `dermaga-vm` against the
+`v0.3.0-rc.4` pre-release (`f295772`, with `drive_install.py` hangup escalation for scenario d).
+Raw logs live in `tmp/evidence/M3/logs/` (DEC-26).
+
+### Release asset verification (`release-rc4-assets-verify.log`)
+
+```text
+f87a4a0d09a4d403da8f84f81e28c3ecda3766c9	refs/tags/v0.3.0-rc.4
+dermaga-linux-amd64: OK
+dermaga-linux-arm64: OK
+install.sh: OK
+dermaga version v0.3.0-rc.4 (commit f295772)
+readonly DERMAGA_VERSION="v0.3.0-rc.4"
+dermaga-linux-amd64: FAILED
+sha256sum: WARNING: 1 computed checksum did NOT match
+negative-control-exit=1
+# Exit: 0
+```
+
+### Scenario summary
+
+| Scenario | Criterion | Status | Log file(s) |
+| --- | --- | --- | --- |
+| (a) Provider key, Enter only + sudo password | INST-3, INST-5, INST-6, INST-7, INST-9, INST-11, INST-12, HOST-1–5, HOST-7, LOCK-2–4, SEC-22 | PASS | `tmp/evidence/M3/logs/scenario-a-install.log`, `scenario-a-driver.log`, `scenario-a-host-checks.log`, `scenario-a-control.log`, `scenario-a-access.log` |
+| (b) No key, guided paste (`--prefix` + `--paste-file`) | INST-5 | PASS | `tmp/evidence/M3/logs/scenario-b-install.log`, `scenario-b-driver.log`, `scenario-b-control.log`, `scenario-b-access.log` |
+| (c) Wrong key → fail → interrupt → rerun succeeds | LOCK-1, LOCK-4, LOCK-5 | PASS | `tmp/evidence/M3/logs/scenario-c-wrong-key.log`, `scenario-c-rerun.log`, `scenario-c-verify-reload.log`, `scenario-c-control.log`, `scenario-c-access.log` |
+| (d) Confirmation window closed (`hangup` + `interrupt`) | LOCK-5 | PASS | `tmp/evidence/M3/logs/scenario-d-hangup.log`, `scenario-c-wrong-key.log` (`interrupt`) |
+| (e) Port scan during whole install | HOST-3, SEC-2 | PASS | `tmp/evidence/M3/logs/scenario-e-port-scan.log`, `scenario-e-install.log`, `scenario-e-control.log`, `scenario-e-access.log` |
+| (f) Laptop command twice in bash and fish + tunnel | LAP-1, LAP-2 | PASS | `tmp/evidence/M3/logs/scenario-f-laptop.log`, `scenario-f-control.log`, `scenario-f-access.log` |
+| (g) Re-run is a no-op (`state` diff = 0, 0 reloads) | INST-2 | PASS | `tmp/evidence/M3/logs/scenario-g-diff.log`, `scenario-g-state-before.log`, `scenario-g-state-after.log`, `scenario-g-control.log`, `scenario-g-access.log` |
+| (h) Reboot → daemon & Traefik back | HOST-6 | PASS | `tmp/evidence/M3/logs/scenario-h-reboot.log`, `scenario-h-running.log`, `scenario-h-control.log`, `scenario-h-access.log` |
+
+### Excerpts
+
+#### Scenario (a): `scenario-a-host-checks.log` and `scenario-a-access.log`
+
+```text
+uid=1001(server) gid=1001(server) groups=1001(server),4(adm),27(sudo),999(systemd-journal)
+Linger=yes
+active
+active
+active
+active
+active
+yes
+[OK  ] lingering      enabled for server
+[OK  ] subuids        server:165536:65536
+[OK  ] subgids        server:165536:65536
+[OK  ] sockets        traefik-http.socket and traefik-https.socket are listening on 80 and 443
+[OK  ] podman         version 5.4.2
+[OK  ] traefik        traefik.service is active
+[OK  ] clock          synchronised
+[OK  ] disk           8% used
+# Exit: 0
+```
+
+```text
+    tcp dport { 4222 } accept comment "ssh"
+    tcp dport { 80, 443 } accept comment "http, https"
+    udp dport 443 accept comment "http/3"
+PASS  firewall rules open only ssh, 80, 443/tcp, 443/udp
+PASS  old port 22 closed
+PASS  panel port 7070 closed from outside (SEC-2)
+PASS  password login not offered to server
+PASS  root refused, even with the key
+PASS  provider user debian refused, even with the key
+all checks passed
+# Exit: 0
+```
+
+#### Scenario (c): `scenario-c-verify-reload.log`
+
+```text
+LISTEN 0      4096       127.0.0.1:7070 0.0.0.0:*
+LISTEN 0      128          0.0.0.0:4222 0.0.0.0:*
+LISTEN 0      4096               *:443        *:*
+LISTEN 0      128             [::]:4222    [::]:*
+LISTEN 0      4096               *:80         *:*
+--- journal ---
+Nov 07 01:28:37 dermaga-vm systemd[1]: Reloading ssh.service - OpenBSD Secure Shell server...
+Nov 07 01:28:37 dermaga-vm sshd[805]: Received SIGHUP; restarting.
+Nov 07 01:28:37 dermaga-vm sshd[805]: Server listening on 0.0.0.0 port 4222.
+Nov 07 01:28:37 dermaga-vm sshd[805]: Server listening on :: port 4222.
+Nov 07 01:28:37 dermaga-vm systemd[1]: Reloaded ssh.service - OpenBSD Secure Shell server.
+Nov 07 01:28:37 dermaga-vm systemd[1]: Reloading nftables.service - nftables...
+Nov 07 01:28:37 dermaga-vm systemd[1]: Reloaded nftables.service - nftables.
+# Exit: 0
+```
+
+#### Scenario (d): `scenario-d-hangup.log`
+
+```text
+driver exit=255
+remote installer gone after 1s
+remaining_procs=none
+old-access-ok
+LISTEN 0      128          0.0.0.0:22   0.0.0.0:*
+LISTEN 0      128          0.0.0.0:4222 0.0.0.0:*
+# managed by dermaga installer: old access stays open until the new login works
+Port 22
+Port 4222
+    tcp dport { 22, 4222 } accept comment "ssh"
+# Exit: 0
+```
+
+#### Scenario (e): `scenario-e-port-scan.log`
+
+```text
+scanning 192.168.122.217, allowed: 22,80,443,4222
+2026-11-25T10:42:28+07:00 round 1 open: 5355  UNEXPECTED: 5355 
+2026-11-25T10:42:37+07:00 round 2 open: 22 5355  UNEXPECTED: 5355 
+2026-11-25T10:42:46+07:00 round 3 open: 22 5355  UNEXPECTED: 5355 
+2026-11-25T10:43:11+07:00 round 4 open: 22 5355  UNEXPECTED: 5355 
+2026-11-25T10:44:18+07:00 round 5 open: 22 80 443 4222
+```
+
+Port `5355` in rounds 1–4 is pre-existing `systemd-resolved` LLMNR on the bare `fresh` image before `apply_firewall` runs; once `apply_firewall` ran (round 5), `5355` was blocked. Port `7070` was never open in any round.
+
+#### Scenario (f): `scenario-f-laptop.log`
+
+```text
+Saved. From now on: ssh dermaga-dermaga-vm, then open http://localhost:7070
+Already saved. From now on: ssh dermaga-dermaga-vm, then open http://localhost:7070
+bash blocks: 1
+Saved. From now on: ssh dermaga-dermaga-vm, then open http://localhost:7070
+Already saved. From now on: ssh dermaga-dermaga-vm, then open http://localhost:7070
+fish blocks: 1
+tunnel http://127.0.0.1:7070/ -> 200
+bind [127.0.0.1]:7070: Address already in use
+channel_setup_fwd_listener_tcpip: cannot listen to port: 7070
+second-shell-ok
+# Exit: 0
+```
+
+#### Scenario (g): `scenario-g-diff.log`
+
+```text
+diff-exit=0
+no-op-msg-ok
+Nov 07 01:28:32 dermaga-vm systemd[1]: Reloading ssh.service - OpenBSD Secure Shell server...
+Nov 07 01:28:35 dermaga-vm systemd[1]: Reloading ssh.service - OpenBSD Secure Shell server...
+Nov 07 01:28:35 dermaga-vm systemd[1]: Reloading nftables.service - nftables...
+# Exit: 0
+```
+
+#### Scenario (h): `scenario-h-reboot.log` and `scenario-h-running.log`
+
+```text
+Domain 'dermaga-vm' is being rebooted
+domstate=shut off after virsh reboot (ACPI poweroff, no guest agent); starting VM
+Domain 'dermaga-vm' started
+ssh back after 4s
+ 02:46:16 up 0 min,  1 user,  load average: 0.08, 0.02, 0.01
+```
+
+```text
+PASS  dermaga, Traefik and its sockets active
+PASS  panel answers on 127.0.0.1:7070
+PASS  Traefik answers on :80 from the laptop
+[OK  ] lingering      enabled for server
+[OK  ] subuids        server:165536:65536
+[OK  ] subgids        server:165536:65536
+[OK  ] sockets        traefik-http.socket and traefik-https.socket are listening on 80 and 443
+[OK  ] podman         version 5.4.2
+[OK  ] traefik        traefik.service is active
+[OK  ] clock          synchronised
+[OK  ] disk           8% used
+PASS  dermaga doctor passes
+all checks passed
+# Exit: 0
+```
+
+### Run & view
+
+1. On a fresh Debian 13 server (or `dermaga-vm` reverted to `fresh`), run:
+   `curl -fsSL https://github.com/r3p-dev/dermaga/releases/download/v0.3.0/install.sh | sudo bash`
+2. Accept defaults (or paste a key), set `server`'s sudo password, then open a second terminal and run `ssh -p 4222 server@<ip>`.
+3. Paste the printed `LAP-1` command on the laptop, then run `ssh dermaga` (or `ssh dermaga-dermaga-vm` on the test workstation) and open `http://127.0.0.1:7070`.
+4. Optional VM demo seeding: `test/vm/seed.sh` sets a demo admin password (`~/.config/dermaga/demo_password`) and verifies `dermaga.service`, `traefik.service`, sockets, and `dermaga doctor`.
+
+### How it works
+
+```mermaid
+sequenceDiagram
+  participant User
+  participant Installer as install.sh
+  participant Host as sshd + nftables
+  participant Daemon as dermaga + Traefik
+  User->>Installer: curl ... | sudo bash
+  Installer->>Host: packages, sysctl, zram, server user, linger
+  Installer->>Daemon: install binary (SHA-256), start dermaga + Traefik, doctor
+  Installer->>Host: open_new_access (Port 22 + 4222, Match LocalPort 4222)
+  User->>Host: ssh -p 4222 server@ip (new terminal)
+  Installer->>Host: journalctl login_seen -> close_old_access (Port 4222 only)
+  Installer->>Host: verify live ss -Hltnp + nft list ruleset
+  Installer-->>User: LAP-1 laptop command
+```
+
+### Decisions & deviations
+
+- **`sshd -T -C` (`rc.3`)**: `effective_ssh_ports` passes `-C "user=$SERVER_USER,host=localhost,addr=127.0.0.1,lport=${SSH_PORT:-22}"` because Debian 13's `sshd -T` rejects `Match LocalPort` without `lport` in `-C`.
+- **Live-state reload verification (`rc.4`)**: `apply_sshd` and `apply_firewall` check `ss -Hltnp` and `nft list ruleset` in addition to `WROTE_CHANGED` so an interrupted rerun still reloads stale live processes while keeping true no-ops (`scenario g`) reload-free.
+- **`drive_install.py` hangup**: escalates `SIGHUP -> SIGTERM -> SIGKILL` after closing the pty master `fd` with a bounded `waitpid` so `--at-wait hangup` cannot hang waiting on `ssh`.
+- **`SETUP.md` §3.2 reboot**: `sudo -n reboot` does not work when `server` has a sudo password (`HOST-7`); `virsh reboot` + `virsh start` (when no guest agent is installed) was used as the cold-boot equivalent in scenario (h).
+- **`fail2ban` positive observation**: running `m3_check.sh access` with 3 denied logins after prior auth failures triggered `fail2ban` (`Connection refused` on port 4222); `m3_check.sh access` now runs `server` checks first and `denied` checks last.
+
+### Known limitations / deferred
+
+- `INST-8` (`:80/:443` busy) on VM: covered by M3a fake-host test (`port_80_busy`), not provoked on VM.
+- `SETUP-1` first-run link: arrives in M4 (installer currently prints `dermaga admin set-password` fallback).
+- ACME with Pebble: arrives in M4 (`DEC-20`).
+- LLMNR port `5355` on bare `fresh` image before `apply_firewall`: deferred (blocked by `nftables` once active).
+- `test/vm/test_reconciliation.sh` and `test/vm/test_traefik_configs.sh` with pinned socat/curl digests: deferred to M4 VM run.

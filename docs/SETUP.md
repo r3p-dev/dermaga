@@ -267,7 +267,7 @@ From M3 on, the VM is set up by the installer itself, from the `fresh` snapshot.
    To rehearse the release job locally as root: `test/ci/simulate_release.sh .github/workflows/release.yml HEAD <tag>`.
 3. Run the installer interactively as `debian` (it asks on the terminal):
    ```bash
-   ssh -t dermaga-vm-init 'curl -fsSL https://github.com/r3p-dev/dermaga/releases/download/v0.3.0-rc.2/install.sh | sudo bash'
+   ssh -t dermaga-vm-init 'curl -fsSL https://github.com/r3p-dev/dermaga/releases/download/v0.3.0/install.sh | sudo bash'
    ```
    Enter accepts every default. When it waits, log in from a second terminal:
    `ssh -p 4222 -i ~/.ssh/dermaga-vm server@192.168.122.217`. Afterwards `ssh dermaga-vm` works and
