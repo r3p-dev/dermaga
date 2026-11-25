@@ -19,7 +19,7 @@ backups come in v1.1.
 | M1  | 0.1.0   | Foundation: daemon, login, panel shell            | completed         | yes: confirmed by owner, 2026-11-17 (owner tags v0.1.0–v0.1.4; M2 started)                                                                                                      | 36      |
 | M2  | 0.2.0   | Generators and reconciliation                     | completed         | yes: confirmed by owner, 2026-11-17 (owner tags v0.2.0, v0.2.1; M3 started)                                                                                                     | 28      |
 | M3  | 0.3.0   | Installer, hardening, lockout guard               | completed         | M3a yes: confirmed by owner, 2026-11-17 (owner tags v0.3.0-rc, v0.3.0-rc.2; M3b started); M3b yes: confirmed by owner, 2026-11-25 (owner tags v0.3.0-rc.3, v0.3.0-rc.4, v0.3.0) | 24      |
-| M4  | 0.4.0   | First-run setup and panel access                  | completed         | M4a yes: confirmed by owner, 2026-11-25 (v0.4.0-rc.1); M4b VM verified on v0.4.0-rc.3 (pending 0.4.0 tag) | 20      |
+| M4  | 0.4.0   | First-run setup and panel access                  | completed         | M4a yes: confirmed by owner, 2026-11-25 (v0.4.0-rc.1); M4b yes: confirmed by owner, 2026-11-25 (owner tags v0.4.0-rc.2 [superseded], v0.4.0-rc.3, v0.4.0) | 20      |
 | M5  | 0.5.0   | Connect GitHub                                    | not started       | –                                                                                                                                                                               | 28      |
 | M6  | 0.6.0   | First deploy: wizard, build, env, logs            | not started       | –                                                                                                                                                                               | 36      |
 | M7  | 0.7.0   | Zero downtime: push-to-deploy, redeploy, rollback | not started       | –                                                                                                                                                                               | 32      |
@@ -51,7 +51,7 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
 - **Requirement IDs:** SETUP-2 (hook domain + DNS check), TLS-5, DEC-20 (ACME without e-mail, Pebble), LAP-3, ADM-4, ADM-5, SEC-10, CONVENTIONS §5.2 (narrow audit log).
 - **Handoff** (2026-11-25, M4 complete, `0.4.0`):
   - Done: M4a (`v0.4.0-rc.1`) and M4b (`v0.4.0-rc.3`) verified locally and on `dermaga-vm` from `fresh`: setup mode + single-use token (`SETUP-1`, `SEC-8`), password + skippable TOTP + `doctor` warning (`SETUP-2`, `DOC-2`), `dermaga panel` + `install.sh` (`SETUP-3`, `INST-12`), migration `0002` + `ADM-5` sessions, `ADM-4`/`SEC-10` re-auth, `LAP-3` Settings → Access, `SETUP-2`/`APP-2`/`TLS-5` hook domain + Pebble ACME without e-mail (`DEC-20`), `503`/`404` hook path, `0001 -> 0002` DB upgrade, narrow Audit Log, `m3_check` control + access.
-  - Remaining: **M5 (0.5.0): Connect GitHub** (`not started`). Start M5 in a new session after `v0.4.0` is tagged.
+  - Remaining: **M5 (0.5.0): Connect GitHub** (`not started`). Start M5 in a new session (`v0.4.0` tagged and smoke-verified).
 
 **Every milestone** also meets the general acceptance criteria of `AGENTS.md` "Milestone loop": tests for its
 criteria (unit, golden, fake-host, fake-GitHub, API with authentication and the PRD rule, browser tests
