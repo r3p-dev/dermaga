@@ -20,6 +20,7 @@ func TestRenderHookDomain_APP2_TLS5(t *testing.T) {
 		"Host(`hooks.example.com`) && Path(`/hooks/github-app`) && Method(`POST`)",
 		`"certResolver": "le"`,
 		`"websecure"`,
+		`"servers": []`,
 	} {
 		if !strings.Contains(s, want) {
 			t.Errorf("expected %q in rendered hook-domain.yml:\n%s", want, s)

@@ -57,9 +57,9 @@ func RenderHookDomain(domain, backendURL string) ([]byte, error) {
 	if err := ValidateHookDomain(d); err != nil {
 		return nil, err
 	}
-	if backendURL == "" {
-		// Placeholder until hook-relay is installed in M5 (no real handler, no body parsing).
-		backendURL = "http://127.0.0.1:9"
+	servers := []Server{}
+	if backendURL != "" {
+		servers = []Server{{URL: backendURL}}
 	}
 
 	doc := Dynamic{
@@ -75,7 +75,7 @@ func RenderHookDomain(domain, backendURL string) ([]byte, error) {
 			Services: map[string]Service{
 				"hook-domain": {
 					LoadBalancer: LoadBalancer{
-						Servers: []Server{{URL: backendURL}},
+						Servers: servers,
 					},
 				},
 			},
