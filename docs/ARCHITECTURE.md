@@ -172,6 +172,7 @@ One line per directory that exists in the repository; start here, then read the 
 | `internal/config/` | XDG paths, default port and socket paths (`paths.go`) |
 | `internal/crypto/` | AES-256-GCM at rest bound to column names, master key, HMAC verification |
 | `internal/doctor/` | Host health checks (`DOC-1`) and how to fix each failure |
+| `internal/github/` | GitHub App JWT (`crypto/rsa`), manifest flow, installations, repositories, repo-scoped tokens (`GHA-1`–`GHA-6`, `DEC-09`) |
 | `internal/host/` | The host boundary: commands with argument slices and timeouts, atomic writes; faked in tests |
 | `internal/name/` | Project name and every derived prefix (`dg-`, `app-`) |
 | `internal/quadlet/` | Quadlet unit generator (apps, Traefik), golden files in `testdata/` |
@@ -331,6 +332,39 @@ CREATE TABLE audit_logs (
     details TEXT NOT NULL DEFAULT '{}',         -- Structured JSON payload (secrets redacted)
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
+
+-- Migration 0003_github.sql
+
+CREATE TABLE github_installations (
+    id INTEGER PRIMARY KEY,                    -- GitHub App installation ID
+    account_login TEXT NOT NULL,
+    account_type TEXT NOT NULL,                -- User or Organization
+    repository_selection TEXT NOT NULL DEFAULT 'selected', -- all or selected
+    suspended_at TEXT,                         -- NULL unless suspended (GHA-7)
+    html_url TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE TABLE github_repositories (
+    id INTEGER PRIMARY KEY,                    -- GitHub repository ID
+    installation_id INTEGER NOT NULL REFERENCES github_installations(id) ON DELETE CASCADE,
+    full_name TEXT NOT NULL UNIQUE,            -- owner/repo
+    owner TEXT NOT NULL,
+    name TEXT NOT NULL,
+    private INTEGER NOT NULL DEFAULT 0,
+    default_branch TEXT NOT NULL DEFAULT 'main',
+    html_url TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
+
+CREATE TABLE webhook_deliveries (
+    delivery_id TEXT PRIMARY KEY,              -- X-GitHub-Delivery (SEC-13)
+    event TEXT NOT NULL,
+    action TEXT NOT NULL DEFAULT '',
+    repository_full_name TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL,                      -- accepted, ignored, duplicate, rejected
+    received_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);
 ```
 
 ---
@@ -366,12 +400,12 @@ release workflow stamps the tag into `install.sh`; answers come from `/dev/tty`.
 ### 5.2 First-Run Setup & GitHub Connection Flow
 1. Operator connects to `http://localhost:7070/setup` over SSH tunnel using the single-use setup token (`SETUP-1`, `SEC-8`).
 2. Operator creates admin password and optionally enrolls TOTP 2FA (skippable with a persistent warning in the panel and `doctor`, `SETUP-2`, `DOC-2`).
-3. Operator sets reserved hook domain (e.g. `hook.example.com`).
-4. Panel renders GitHub App Manifest creation form with `redirect_url` pointing to `http://localhost:7070/setup/github/callback`.
-5. Operator submits form to GitHub; GitHub redirects back with temporary code.
-6. Dermaga daemon exchanges code via `POST /app-manifests/{code}/conversions` using `X-GitHub-Api-Version: 2026-03-10`.
-7. Dermaga generates a cryptographically secure 32-byte secret and configures the webhook URL and secret on GitHub via `PATCH /app/hook/config` using App RS256 JWT (`content_type: "json"`, verified in [EVIDENCE.md §5](evidence/M0/EVIDENCE.md#5-webhook-secret-configuration--verification)).
-8. System transitions to `ready` state.
+3. Operator optionally sets reserved hook domain (e.g. `hook.example.com`) during `/setup` or later under **Settings → Hook Domain** (`SETUP-2`). Once an admin password exists, the panel is unlocked (`admin_created`).
+4. In **Settings → GitHub** (`GHA-1`), once `hook_domain` is set, the panel renders a guided GitHub App Manifest creation form with `redirect_url` pointing to `http://localhost:7070/settings/github/callback` and `setup_url` pointing to `http://localhost:7070/settings/github/install-callback`, carrying a single-use session-bound `state` CSRF parameter.
+5. Operator submits form to GitHub; GitHub redirects back with temporary `code` and `state`.
+6. Dermaga daemon validates `SEC-3` Host/Origin and the single-use `state`, exchanges `code` via `POST /app-manifests/{code}/conversions` using `X-GitHub-Api-Version: 2026-03-10` (`DEC-09`).
+7. Dermaga generates a cryptographically secure 32-byte secret and configures the webhook URL (`https://<hook-domain>/hooks/github-app`) and secret on GitHub via `PATCH /app/hook/config` using App RS256 JWT (`content_type: "json"`, `GHA-1`). Private key, client secret, and webhook secret are stored AES-256-GCM encrypted (`GHA-4`, `SEC-9`).
+8. Operator installs the App on GitHub (`GHA-3`) and is redirected back to `/settings/github/install-callback`, which syncs installations and repositories and redirects to `/settings?tab=github`. System transitions to `ready` state.
 
 ### 5.3 Webhook Intake Flow
 1. GitHub sends delivery to `https://<hook-domain>/hooks/github-app`.
@@ -461,8 +495,8 @@ All state transitions are explicit, strictly validated, and modified in exactly 
 | State | Event / Trigger | Next State | Action / Side Effect |
 |---|---|---|---|
 | `uninitialized` | Fresh installation boots | `admin_created` | Admin password set and TOTP enrolled or skipped (`SETUP-2`); panel login unlocked with hook-domain pending notice |
-| `admin_created` | Operator sets hook domain | `domain_set` | Dedicated hook host reserved; Traefik router created |
-| `domain_set` | GitHub App manifest flow completed | `ready` | Credentials saved; webhook secret pushed via API |
+| `admin_created` | Operator sets hook domain (in `/setup` or Settings → Hook Domain) | `domain_set` | Dedicated hook host reserved; Traefik router created |
+| `domain_set` | GitHub App manifest flow completed in Settings → GitHub (`DEC-29`) | `ready` | Credentials saved encrypted; webhook secret pushed via API |
 | `ready` | Normal operational mode | `ready` | Admin panel unlocked; apps and deployments enabled |
 
 ### 6.4 Update Status (`UPD-2`–`UPD-3`)
@@ -523,5 +557,6 @@ Every architectural decision and workaround adopted during spikes and design is 
 | **DEC-26** | 2026-11-17 | Only EVIDENCE.md is committed per milestone; raw artifacts live in gitignored `tmp/evidence/` | The owner reviewed every existing screenshot and log; they made up ~2.1 MB of `docs/evidence/` (1.36 MB PNG, 0.72 MB logs) and are only needed while a milestone is under review. `docs/evidence/M<N>/` now holds only `EVIDENCE.md` with exact excerpts (≤ ~20 lines) and one line per screenshot citing its local `tmp/evidence/` path; `scripts/evidence-run`, Playwright (`EVIDENCE_MILESTONE`) and the VM scripts write to `tmp/evidence/<milestone>/`; `scripts/check-policy` and `scripts/check-commits` reject raw files under `docs/evidence/`. Old artifacts were deleted and stay in git history. | Keep committing logs and screenshots (rejected: repo size, review-only value); Git LFS (rejected: another tool and hosting quota for files nobody reopens); a separate evidence repository (rejected: two repos to keep in step). | `docs/evidence/README.md`, `docs/evidence/M3/EVIDENCE.md` (Process checkpoint) |
 | **DEC-27** | 2026-11-17 | shellcheck is enforced in CI, optional locally | The owner's machine does not have `shellcheck`, and an unpinned container is not allowed. CI installs Debian trixie's `shellcheck` package in the pinned job container and runs `make shellcheck SHELLCHECK_REQUIRED=1` as its own step; locally `make check` runs it when installed and prints `SKIP shellcheck (not installed)` otherwise, never failing for the missing tool. | Run a shellcheck container locally (rejected: unpinned or extra container); require it locally (rejected: not installed on the owner's machine). | `.github/workflows/ci.yml`, `Makefile`, `docs/CONVENTIONS.md` §7.1 |
 | **DEC-28** | 2026-11-17 | `test/vm/.shellcheckrc` disables SC2029 for the VM scripts only | The VM scenario scripts send about 50 `ssh dermaga-vm "…"` commands built from local variables (paths, names, ports defined in the script); expanding them on the client is the intent. shellcheck reads `.shellcheckrc` from the checked script's directory and its parents (shellcheck 0.10.0 manual), so the file applies to `test/vm/` only; every other finding is fixed or gets a targeted directive with a reason (`docs/CONVENTIONS.md` §7.1). | Per-line directives (rejected: about 50 identical lines of noise); quoting every remote variable (rejected: changes where expansion happens and risks breaking VM scripts that cannot run outside M3b). | `test/vm/.shellcheckrc`, `docs/evidence/M3/EVIDENCE.md` (Follow-up 2) |
+| **DEC-29** | 2026-11-25 | Align GitHub App connection flow with PRD under Settings → GitHub | PRD (`GHA-1`) places **Connect GitHub** under **Settings → GitHub** rather than `/setup`, and M4 unlocked the panel at `admin_created` with an optional hook domain step. Moving the manifest callback to `/settings/github/callback` and installation callback to `/settings/github/install-callback` keeps `/setup` focused on admin/TOTP/hook-domain and blocks Connect GitHub until `hook_domain` is set (`SETUP-2`). | Keeping `/setup/github/callback` in `/setup` (rejected: contradicts PRD `GHA-1` and forces GitHub connection during initial setup). | `docs/PRD/apps.md` (`GHA-1`), `internal/server/github.go` |
 
 

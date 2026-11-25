@@ -20,7 +20,7 @@ backups come in v1.1.
 | M2  | 0.2.0   | Generators and reconciliation                     | completed         | yes: confirmed by owner, 2026-11-17 (owner tags v0.2.0, v0.2.1; M3 started)                                                                                                     | 28      |
 | M3  | 0.3.0   | Installer, hardening, lockout guard               | completed         | M3a yes: confirmed by owner, 2026-11-17 (owner tags v0.3.0-rc, v0.3.0-rc.2; M3b started); M3b yes: confirmed by owner, 2026-11-25 (owner tags v0.3.0-rc.3, v0.3.0-rc.4, v0.3.0) | 24      |
 | M4  | 0.4.0   | First-run setup and panel access                  | completed         | M4a yes: confirmed by owner, 2026-11-25 (v0.4.0-rc.1); M4b yes: confirmed by owner, 2026-11-25 (owner tags v0.4.0-rc.2 [superseded], v0.4.0-rc.3, v0.4.0) | 20      |
-| M5  | 0.5.0   | Connect GitHub                                    | not started       | –                                                                                                                                                                               | 28      |
+| M5  | 0.5.0   | Connect GitHub                                    | in progress       | –                                                                                                                                                                               | 28      |
 | M6  | 0.6.0   | First deploy: wizard, build, env, logs            | not started       | –                                                                                                                                                                               | 36      |
 | M7  | 0.7.0   | Zero downtime: push-to-deploy, redeploy, rollback | not started       | –                                                                                                                                                                               | 32      |
 | M8  | 0.8.0   | Domains, HTTPS, headers, middleware               | not started       | –                                                                                                                                                                               | 28      |
@@ -46,12 +46,12 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
 
 ## Active milestone
 
-**M4b** (checkpoint of M4, 0.4.0): panel access, security settings, hook domain, Pebble ACME, and narrow audit log.
+**M5a** (checkpoint 1 of M5, 0.5.0): Connect GitHub — App manifest flow, encrypted credentials, installations, and repository list.
 
-- **Requirement IDs:** SETUP-2 (hook domain + DNS check), TLS-5, DEC-20 (ACME without e-mail, Pebble), LAP-3, ADM-4, ADM-5, SEC-10, CONVENTIONS §5.2 (narrow audit log).
-- **Handoff** (2026-11-25, M4 complete, `0.4.0`):
-  - Done: M4a (`v0.4.0-rc.1`) and M4b (`v0.4.0-rc.3`) verified locally and on `dermaga-vm` from `fresh`: setup mode + single-use token (`SETUP-1`, `SEC-8`), password + skippable TOTP + `doctor` warning (`SETUP-2`, `DOC-2`), `dermaga panel` + `install.sh` (`SETUP-3`, `INST-12`), migration `0002` + `ADM-5` sessions, `ADM-4`/`SEC-10` re-auth, `LAP-3` Settings → Access, `SETUP-2`/`APP-2`/`TLS-5` hook domain + Pebble ACME without e-mail (`DEC-20`), `503`/`404` hook path, `0001 -> 0002` DB upgrade, narrow Audit Log, `m3_check` control + access.
-  - Remaining: **M5 (0.5.0): Connect GitHub** (`not started`). Start M5 in a new session (`v0.4.0` tagged and smoke-verified).
+- **Requirement IDs:** GHA-1–GHA-6, SEC-9, DEC-09, DEC-29.
+- **Handoff** (2026-11-25, M5a complete; M5b next):
+  - Done: M5a (`internal/github`, `0003_github.sql` migration + `0002 -> 0003` upgrade test, AES-256-GCM encrypted GitHub credentials, `/api/settings/github/*` with single-use session-bound `state` and `SEC-3` checks, `doctor` GitHub check, **Settings → GitHub** UI + callback routes, fake-GitHub & Playwright E2E + axe WCAG AA tests, `make check` green).
+  - Remaining: **M5b (~14 h)** — `hook-relay` Quadlet (`Rootfs=` empty-dir spike on `dermaga-vm` first), `01-hook-domain.yml` wiring, `hooks.sock` webhook handler (`GHA-7`, `GHA-8`, `SEC-11`–`SEC-14`), real GitHub + smee.io/replay VM verification, secret greps, and `0.5.0` bump.
 
 **Every milestone** also meets the general acceptance criteria of `AGENTS.md` "Milestone loop": tests for its
 criteria (unit, golden, fake-host, fake-GitHub, API with authentication and the PRD rule, browser tests
@@ -207,6 +207,8 @@ Acceptance criteria:
   panel.
 - The App's key and tokens never appear in `ps`, logs, files or the database in plaintext (greps
   shown).
+
+Checkpoints: **M5a (~14 h)** App connect + repositories (`GHA-1`–`GHA-6`, `SEC-9`, `DEC-09`, `0003` migration, Settings → GitHub UI, fake-GitHub & Playwright tests); **M5b (~14 h)** webhooks + `hook-relay` Quadlet (`Rootfs=` empty-dir spike on `dermaga-vm`, `01-hook-domain.yml` wiring, `hooks.sock` handler, `GHA-7`, `GHA-8`, `SEC-11`–`SEC-14`, real GitHub + smee/replay VM verification, `0.5.0` bump).
 
 ## M6 (0.6.0): First deploy: wizard, build, env, logs
 

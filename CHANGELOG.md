@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **GitHub App connection (`GHA-1`–`GHA-6`, `SEC-9`, `DEC-09`, `DEC-29`)**:
+  - `internal/github`: GitHub App manifest builder (`Contents: read`, `Metadata: read`, `push` event, private App), RS256 App JWT signing (`crypto/rsa`), `POST /app-manifests/{code}/conversions`, `PATCH /app/hook/config` with freshly generated 32-byte webhook secret (`content_type: "json"`), installation/repository listing, and per-fetch repo-scoped installation tokens kept in memory only, all pinned to `X-GitHub-Api-Version: 2026-03-10`.
+  - Migration `0003_github.sql` (`github_installations`, `github_repositories`, `webhook_deliveries`) with `0002 -> 0003` upgrade coverage, AES-256-GCM encryption at rest for App PEM, client secret, and webhook secret, and `doctor` GitHub status check.
+  - **Settings → GitHub** UI (`ui/src/lib/components/GitHubSettings.svelte`, `/settings/github/callback`, `/settings/github/install-callback`): hook-domain prerequisite blocker, guided 3-step connect card, single-use session-bound `state` CSRF protection + `SEC-3` Host/Origin checks, installations/repositories view (stacked rows on narrow screens), and typed-confirmation Disconnect with GitHub deletion instructions.
+
 ## [0.4.0] - 2026-11-25
 
 ### Added
