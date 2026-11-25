@@ -3,12 +3,18 @@
 	import { onMount } from 'svelte';
 
 	let password = $state('');
+	let totpCode = $state('');
+	let totpRequired = $state(false);
 	let loading = $state(false);
 	let error = $state<string | null>(null);
 
 	onMount(async () => {
 		try {
 			const s = await getSession();
+			if (s.setup_required) {
+				window.location.href = '/setup';
+				return;
+			}
 			if (s.authenticated) {
 				window.location.href = '/';
 			}
@@ -25,10 +31,16 @@
 		error = null;
 
 		try {
-			const res = await login({ password });
+			const res = await login({
+				password,
+				...(totpRequired ? { totp_code: totpCode.trim() } : {})
+			});
 			if (res.success) {
 				window.location.href = '/';
 			} else {
+				if (res.totp_required) {
+					totpRequired = true;
+				}
 				error = res.error || 'Authentication failed';
 			}
 		} catch (err) {
@@ -72,9 +84,29 @@
 				/>
 			</div>
 
+			{#if totpRequired}
+				<div>
+					<label for="totp-code" class="block text-xs font-medium text-stone-700 dark:text-stone-300 mb-1.5">
+						Authenticator Code (TOTP)
+					</label>
+					<input
+						id="totp-code"
+						type="text"
+						inputmode="numeric"
+						autocomplete="one-time-code"
+						pattern="[0-9]*"
+						maxlength="6"
+						bind:value={totpCode}
+						placeholder="123456"
+						required
+						class="w-full px-3 py-2 text-sm font-mono tracking-widest rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-950 text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-brand-ring focus:border-transparent transition"
+					/>
+				</div>
+			{/if}
+
 			<button
 				type="submit"
-				disabled={loading || !password}
+				disabled={loading || !password || (totpRequired && totpCode.trim().length !== 6)}
 				class="w-full py-2 px-4 rounded-md bg-brand-primary hover:bg-brand-hover active:bg-brand-active disabled:opacity-50 text-brand-btn-text font-medium text-sm transition shadow-sm flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-brand-ring focus:ring-offset-2 dark:focus:ring-offset-stone-900"
 			>
 				{#if loading}

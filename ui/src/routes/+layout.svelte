@@ -14,6 +14,10 @@
 	async function refreshSession() {
 		try {
 			session = await getSession();
+			if (session.setup_required && page.url.pathname !== '/setup') {
+				window.location.href = '/setup';
+				return;
+			}
 		} catch {
 			session = null;
 		} finally {
@@ -145,6 +149,20 @@
 				Loading dermaga...
 			</div>
 		{:else}
+			{#if session?.authenticated}
+				<div class="space-y-3 mb-5">
+					{#if !session.totp_enabled}
+						<div role="alert" class="p-3.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs font-medium">
+							Two-factor authentication is disabled. Enable TOTP in Settings to protect your server.
+						</div>
+					{/if}
+					{#if session.setup_state === 'admin_created'}
+						<div role="status" class="p-3.5 rounded-lg bg-stone-100 dark:bg-stone-900 border border-stone-300 dark:border-stone-700 text-stone-800 dark:text-stone-200 text-xs">
+							Setup incomplete: hook domain is not configured yet (required before connecting GitHub).
+						</div>
+					{/if}
+				</div>
+			{/if}
 			{@render children()}
 		{/if}
 	</main>

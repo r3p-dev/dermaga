@@ -31,6 +31,10 @@
 	onMount(async () => {
 		try {
 			session = await getSession();
+			if (session.setup_required) {
+				window.location.href = '/setup';
+				return;
+			}
 			if (!session.authenticated) {
 				window.location.href = '/login';
 				return;
