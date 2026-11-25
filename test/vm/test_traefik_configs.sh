@@ -24,9 +24,19 @@ echo
 # 1. Query running Traefik container on dermaga-vm for exact image and digest
 TRAEFIK_IMG=$(ssh dermaga-vm "podman inspect traefik --format '{{.Config.Image}}'")
 TRAEFIK_DIGEST=$(ssh dermaga-vm "podman image inspect $TRAEFIK_IMG --format '{{.Digest}}'")
-PINNED_IMAGE="${TRAEFIK_IMG}@${TRAEFIK_DIGEST}"
+if [[ $TRAEFIK_IMG == *@* ]]; then
+    PINNED_IMAGE="$TRAEFIK_IMG"
+else
+    PINNED_IMAGE="${TRAEFIK_IMG}@${TRAEFIK_DIGEST}"
+fi
+RUNNING_DIGEST=$(ssh dermaga-vm "podman inspect traefik --format '{{.ImageDigest}}'")
+if [[ "$RUNNING_DIGEST" != "$TRAEFIK_DIGEST" ]]; then
+    echo "FAIL: running Traefik digest ($RUNNING_DIGEST) != pinned digest ($TRAEFIK_DIGEST)"
+    exit 1
+fi
 echo "Discovered live Traefik container image: $TRAEFIK_IMG"
 echo "Discovered live Traefik image digest: $TRAEFIK_DIGEST"
+echo "Verified running Traefik digest matches pinned digest: $RUNNING_DIGEST"
 echo "Using pinned Traefik image: $PINNED_IMAGE"
 echo
 

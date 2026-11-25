@@ -256,11 +256,12 @@ else
     exit 1
 fi
 
-echo -n "5c. Existing system units untouched (traefik.container, traefik-acme.volume): "
-if ssh dermaga-vm "[ -f $QUADLET_DIR/traefik.container ] && [ -f $QUADLET_DIR/traefik-acme.volume ]"; then
-    echo "PASS (system units preserved)"
+# Case 5c: M3 Traefik system unit is dermaga-managed (DEC-18) and uses bind-mounted acme.json without traefik-acme.volume (DEC-20)
+echo -n "5c. M3 Traefik layout verified (dermaga-managed traefik.container, bind-mounted acme.json, no traefik-acme.volume): "
+if ssh dermaga-vm "grep -q '^# managed by dermaga;' $QUADLET_DIR/traefik.container && grep -q ':/etc/traefik' $QUADLET_DIR/traefik.container && [ ! -e $QUADLET_DIR/traefik-acme.volume ]"; then
+    echo "PASS (DEC-18 traefik.container managed; DEC-20 bind-mounted /etc/traefik, no traefik-acme.volume)"
 else
-    echo "FAIL: System units were modified or deleted!"
+    echo "FAIL: M3 Traefik layout check failed (DEC-18/DEC-20)!"
     exit 1
 fi
 
@@ -280,14 +281,15 @@ else
     exit 1
 fi
 
-echo -n "5f. Foreign files reported in output: "
+echo -n "5f. Planted foreign files reported in output (and managed traefik.container not reported as foreign): "
 if echo "$RECONCILE_OUTPUT" | grep -q "custom-vpn.container" && \
    echo "$RECONCILE_OUTPUT" | grep -q "app-custom-vpn.container" && \
    echo "$RECONCILE_OUTPUT" | grep -q "app-custom-metrics.yml" && \
-   echo "$RECONCILE_OUTPUT" | grep -q "traefik.container"; then
-    echo "PASS (All foreign files accurately reported)"
+   echo "$RECONCILE_OUTPUT" | grep -q "custom-metrics.yml" && \
+   ! echo "$RECONCILE_OUTPUT" | grep -q "traefik.container"; then
+    echo "PASS (All 4 planted foreign files reported; traefik.container managed)"
 else
-    echo "FAIL: Foreign files not accurately reported in output!"
+    echo "FAIL: Foreign files report mismatch!"
     exit 1
 fi
 
