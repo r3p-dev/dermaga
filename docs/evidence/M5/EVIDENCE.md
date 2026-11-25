@@ -9,6 +9,8 @@ Checkpoint **M5a** (App connect + repositories) verified locally against fake Gi
 | GHA-1, GHA-2, DEC-09: Manifest flow, min permissions, `PATCH /app/hook/config`, `2026-03-10` header | PASS | `tmp/evidence/M5/logs/make-check-m5a.log` | `TestBuildManifest_GHA1_GHA2`, `TestSignAppJWT_RS256`, `TestFakeGitHub_ManifestWebhookInstallReposAndToken_GHA1_GHA5_DEC09` |
 | GHA-3–GHA-6, SEC-3, SEC-9: Session-bound `state`, encrypted secrets, installations/repos sync, typed disconnect | PASS | `tmp/evidence/M5/logs/make-check-m5a.log` | `TestSettingsGitHubFlow_GHA1_GHA6_SEC3_SEC9`, `TestStoreMigration0002To0003` |
 | UI-1, UI-8, NFR-7: Settings → GitHub (desktop + narrow, light + dark, axe WCAG AA) | PASS | `tmp/evidence/M5/logs/playwright-e2e-m5a.log` | `7 passed (19.9s)` (Firefox + axe WCAG AA) |
+| M5a VM check (`dermaga-vm` from `fresh`, `v0.5.0-rc.1` not tagged for M5a) | NOT RUN | — | Deferred to M5b VM journey: `virsh --connect qemu:///system snapshot-revert dermaga-vm fresh && virt-xml --connect qemu:///system dermaga-vm --edit --events on_reboot=restart && virsh --connect qemu:///system start dermaga-vm`, then `install.sh` from `v0.5.0-rc.N` |
+| GHA-1, GHA-3: Real GitHub App manifest flow & repo selection (owner clicks) | NOT RUN | — | Deferred to M5b VM journey: `ssh dermaga-vm`, open `http://localhost:7070/settings?tab=github`, click **Connect GitHub**, complete GitHub App creation and installation |
 | M5b: `hook-relay` Quadlet (`Rootfs=` VM spike), `hooks.sock`, `GHA-7`, `GHA-8`, `SEC-11`–`SEC-14`, real GitHub VM run | NOT RUN | — | Pending M5b |
 
 ### `tmp/evidence/M5/logs/make-check-m5a.log`

@@ -167,7 +167,7 @@ func (s *Server) handleStartGitHubManifest(w http.ResponseWriter, r *http.Reques
 	stateSum := sha256.Sum256([]byte(state))
 	stateHash := hex.EncodeToString(stateSum[:])
 
-	now := time.Now()
+	now := s.now()
 	s.mu.Lock()
 	for k, v := range s.manifestState {
 		if now.After(v.ExpiresAt) {
@@ -218,10 +218,17 @@ func (s *Server) consumeManifestState(state, sessionID string) bool {
 		return false
 	}
 	delete(s.manifestState, stateHash)
-	if time.Now().After(pending.ExpiresAt) {
+	if s.now().After(pending.ExpiresAt) {
 		return false
 	}
 	return pending.SessionID == sessionID
+}
+
+func (s *Server) now() time.Time {
+	if s.cfg.Now != nil {
+		return s.cfg.Now()
+	}
+	return time.Now()
 }
 
 // handleGitHubCallback verifies the single-use session-bound state, exchanges the manifest code,

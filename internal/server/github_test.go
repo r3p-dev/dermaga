@@ -35,9 +35,10 @@ func testGitHubPEM(t *testing.T) []byte {
 	})
 }
 
-func setupAuthedServerWithFakeGitHub(t *testing.T) (*server.Server, *store.Store, []byte, string) {
+func setupAuthedServerWithFakeGitHub(t *testing.T) (*server.Server, *store.Store, []byte, string, *time.Time) {
 	t.Helper()
 	pemBytes := testGitHubPEM(t)
+	now := time.Unix(1700000000, 0).UTC()
 	fakeGH := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch {
@@ -104,6 +105,7 @@ func setupAuthedServerWithFakeGitHub(t *testing.T) (*server.Server, *store.Store
 		ListenAddr: "127.0.0.1:7070",
 		Store:      s,
 		MasterKey:  masterKey,
+		Now:        func() time.Time { return now },
 		GitHub: &github.Client{
 			APIBaseURL: fakeGH.URL,
 			WebBaseURL: fakeGH.URL,
@@ -116,11 +118,11 @@ func setupAuthedServerWithFakeGitHub(t *testing.T) (*server.Server, *store.Store
 
 	rawTok, _ := auth.GenerateSessionToken()
 	_ = s.CreateSession(ctx, auth.HashSessionToken(rawTok), "admin", time.Now().Add(time.Hour))
-	return srv, s, masterKey, rawTok
+	return srv, s, masterKey, rawTok, &now
 }
 
 func TestSettingsGitHubFlow_GHA1_GHA6_SEC3_SEC9(t *testing.T) {
-	srv, s, masterKey, tok := setupAuthedServerWithFakeGitHub(t)
+	srv, s, masterKey, tok, nowPtr := setupAuthedServerWithFakeGitHub(t)
 	h := srv.Handler()
 
 	doReq := func(method, path string, body any, cookieTok string) *httptest.ResponseRecorder {
@@ -188,7 +190,18 @@ func TestSettingsGitHubFlow_GHA1_GHA6_SEC3_SEC9(t *testing.T) {
 		t.Fatalf("expected 400 for state bound to another session, got %d", rrOther.Code)
 	}
 
-	// Note: wrong-session attempt consumed or didn't? Re-issue state for clean valid callback test
+	// Expired state refused
+	rrExp := doReq(http.MethodPost, "/api/settings/github/manifest", nil, tok)
+	var startExp server.GitHubManifestStartResponse
+	_ = json.Unmarshal(rrExp.Body.Bytes(), &startExp)
+	uExp, _ := url.Parse(startExp.ActionURL)
+	stateExp := uExp.Query().Get("state")
+	*nowPtr = nowPtr.Add(16 * time.Minute)
+	if rrExpCB := doReq(http.MethodPost, "/api/settings/github/callback", server.GitHubCallbackRequest{Code: "valid-code", State: stateExp}, tok); rrExpCB.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for expired state, got %d", rrExpCB.Code)
+	}
+
+	// Note: re-issue state for clean valid callback test
 	rr2 := doReq(http.MethodPost, "/api/settings/github/manifest", nil, tok)
 	var start2 server.GitHubManifestStartResponse
 	_ = json.Unmarshal(rr2.Body.Bytes(), &start2)
@@ -207,21 +220,32 @@ func TestSettingsGitHubFlow_GHA1_GHA6_SEC3_SEC9(t *testing.T) {
 		t.Fatalf("expected 400 on replayed state, got %d", rrReplay.Code)
 	}
 
-	// SEC-9 / GHA-4: secrets encrypted in DB, never plaintext
+	// SEC-9 / GHA-4: secrets encrypted in DB, never plaintext; never in API responses or audit logs
 	ctx := context.Background()
 	pemEnc, _ := s.GetSetting(ctx, "github_app_pem_encrypted")
 	whEnc, _ := s.GetSetting(ctx, "github_webhook_secret_encrypted")
 	if strings.Contains(pemEnc, "BEGIN RSA PRIVATE KEY") {
 		t.Fatal("PEM stored in plaintext!")
 	}
-	if _, err := crypto.Decrypt(masterKey, "github_webhook_secret_encrypted", whEnc); err != nil {
+	whPlain, err := crypto.Decrypt(masterKey, "github_webhook_secret_encrypted", whEnc)
+	if err != nil {
 		t.Fatalf("webhook secret decrypt failed: %v", err)
+	}
+	if strings.Contains(rrCB.Body.String(), "BEGIN RSA PRIVATE KEY") ||
+		strings.Contains(rrCB.Body.String(), "super-client-secret") ||
+		strings.Contains(rrCB.Body.String(), string(whPlain)) {
+		t.Fatal("callback response leaked secret material")
 	}
 
 	// Sync installations + repos (GHA-3, GHA-5, GHA-6)
 	rrSync := doReq(http.MethodPost, "/api/settings/github/sync", nil, tok)
 	if rrSync.Code != http.StatusOK {
 		t.Fatalf("sync failed: %d %s", rrSync.Code, rrSync.Body.String())
+	}
+	if strings.Contains(rrSync.Body.String(), "BEGIN RSA PRIVATE KEY") ||
+		strings.Contains(rrSync.Body.String(), "super-client-secret") ||
+		strings.Contains(rrSync.Body.String(), string(whPlain)) {
+		t.Fatal("sync response leaked secret material")
 	}
 	var status server.GitHubStatusResponse
 	_ = json.Unmarshal(rrSync.Body.Bytes(), &status)
@@ -242,5 +266,39 @@ func TestSettingsGitHubFlow_GHA1_GHA6_SEC3_SEC9(t *testing.T) {
 	_ = json.Unmarshal(rrAfter.Body.Bytes(), &afterStatus)
 	if afterStatus.Connected || len(afterStatus.Repositories) != 0 {
 		t.Fatalf("expected disconnected empty state, got %+v", afterStatus)
+	}
+
+	// Assert encrypted keys, secrets, installations, and repos are deleted from DB
+	for _, k := range []string{
+		"github_app_id",
+		"github_app_pem_encrypted",
+		"github_client_secret_encrypted",
+		"github_webhook_secret_encrypted",
+	} {
+		if _, err := s.GetSetting(ctx, k); err != store.ErrNotFound {
+			t.Errorf("expected setting %s deleted after disconnect, got err=%v", k, err)
+		}
+	}
+	if insts, err := s.ListGitHubInstallations(ctx); err != nil || len(insts) != 0 {
+		t.Errorf("expected 0 installations after disconnect, got %d (err=%v)", len(insts), err)
+	}
+	if repos, err := s.ListGitHubRepositories(ctx); err != nil || len(repos) != 0 {
+		t.Errorf("expected 0 repos after disconnect, got %d (err=%v)", len(repos), err)
+	}
+
+	// Assert audit logs never contain secret material
+	logs, err := s.ListAuditLogs(ctx, store.AuditFilter{Limit: 50})
+	if err != nil {
+		t.Fatalf("ListAuditLogs failed: %v", err)
+	}
+	for _, entry := range logs {
+		if strings.Contains(entry.Description, "BEGIN RSA PRIVATE KEY") ||
+			strings.Contains(entry.Description, "super-client-secret") ||
+			strings.Contains(entry.Description, string(whPlain)) ||
+			strings.Contains(string(entry.Details), "BEGIN RSA PRIVATE KEY") ||
+			strings.Contains(string(entry.Details), "super-client-secret") ||
+			strings.Contains(string(entry.Details), string(whPlain)) {
+			t.Fatalf("audit log %d leaked secret material", entry.ID)
+		}
 	}
 }

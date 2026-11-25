@@ -45,6 +45,7 @@ type Config struct {
 	MasterKey  []byte
 	Version    string
 	Commit     string
+	Now        func() time.Time
 }
 
 // Server encapsulates the HTTP and Unix socket listeners.
