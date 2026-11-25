@@ -28,6 +28,7 @@ _Filled in as dependencies are added (M1 onward)._
 | `modernc.org/sqlite` v1.62.0 | Go module | SQLite driver without cgo; static binary | M1 |
 | `golang.org/x/crypto` v0.59.0 | Go module | argon2id password hashing, bcrypt for Traefik basic auth | M1 (v0.59.0 since M3, DEC-23) |
 | `golang.org/x/term` v0.48.0 | Go module | Terminal detection and password prompt without echo | M1 |
+| `github.com/skip2/go-qrcode` v0.0.0-20200617195104-da1b6568686e | Go module | QR code matrix generation for TOTP enrolment (`SETUP-2`) | M4a |
 | `gopkg.in/yaml.v2` v2.4.0 | Go module, tests only | Parses `internal/traefik/testdata/vps-setup-headers.golden` in `injection_test.go`; not linked into the binary | M2 (listed in M3) |
 | `honnef.co/go/tools` v0.8.2 (staticcheck) | Go tool | Lint, deprecated API detection | M1 |
 | `golang.org/x/vuln` v1.9.0 (govulncheck) | Go tool | Known Go vulnerability scanning | M1 |
@@ -79,6 +80,7 @@ Add each in the milestone where it is first needed, after checking its current v
 | ----------------------------------- | ---------------------------------------------------- | -------------------------------------------------------- |
 | `modernc.org/sqlite`                | SQLite driver without cgo                            | No SQLite in the standard library; cgo drivers break the static binary |
 | `golang.org/x/crypto`               | argon2id (admin password), bcrypt (Traefik basic auth) | Neither algorithm is in the standard library           |
+| `github.com/skip2/go-qrcode`        | QR code matrix for TOTP enrolment (`SETUP-2`)        | Reed-Solomon error correction and QR mask selection are non-trivial without a library; `skip2/go-qrcode` (MIT, zero transitive deps, pushed 2024-03-01, `govulncheck` clean) was chosen over `rsc.io/qr` (v0.2.0, unmaintained since 2018). Queried 2026-11-25 (`tmp/evidence/M4/logs/qr-library-query.log`). |
 
 Deliberately **not** added: a web framework, an ORM, a CLI framework, a YAML library in the binary (Traefik
 files are JSON; one test reads a YAML golden file, see §1), a TOML library (no config file), a TOTP library (RFC 6238 on `crypto/hmac`), a JWT library (RS256 on `crypto/rsa`), `go-github`
