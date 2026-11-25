@@ -1,6 +1,6 @@
 # Evidence: M4 (0.4.0) — First-run setup and panel access
 
-Commit under review: `55544cb` + M4a working tree (checkpoint **M4a**).
+Commit under review: `f0e5736` + M4b working tree (checkpoint **M4b**; M4a confirmed on `v0.4.0-rc.1`).
 
 ## Acceptance criteria
 
@@ -9,6 +9,11 @@ Commit under review: `55544cb` + M4a working tree (checkpoint **M4a**).
 | SETUP-1: setup mode redirect & API refusal | PASS | `tmp/evidence/M4/logs/make-check.log` | `TestSetupModeEnforcement_SETUP1_SEC3` |
 | SEC-8: 32B hashed single-use token, 24 h expiry, rate-limited, SEC-3 | PASS | `tmp/evidence/M4/logs/make-check.log` | `TestSetupTokenLifecycle_SEC8`, `TestSetupFlowWithTOTP_SETUP2_SEC8_ADM1` |
 | SETUP-2: password + strength meter + skippable TOTP QR & warning | PASS | `tmp/evidence/M4/logs/playwright-e2e.log` | `5 passed (16.3s)` (Firefox + axe WCAG AA) |
+| SETUP-2, APP-2: hook domain DNS check, `/setup` Step 3, `01-hook-domain.yml` | PASS | `tmp/evidence/M4/logs/make-check-m4b.log` | `TestCheckDomainDNS_SETUP2`, `TestRenderHookDomain_APP2_TLS5`, `TestSettingsHookDomain_SETUP2_TLS5` |
+| LAP-3, ADM-5: Settings → Access, active sessions (`0002` migration) | PASS | `tmp/evidence/M4/logs/make-check-m4b.log` | `TestStoreMigration0001To0002`, `TestSettingsAccessAndSessions_LAP3_ADM5` |
+| ADM-4, SEC-10: password change ends other sessions; TOTP enable/disable re-auth | PASS | `tmp/evidence/M4/logs/make-check-m4b.log` | `TestSettingsSecurityPasswordAndTOTP_ADM4_SEC10` |
+| CONVENTIONS §5.2: narrow-screen stacked Audit Log rows | PASS | `tmp/evidence/M4/logs/playwright-e2e-m4b.log` | `6 passed` (`hasOverflow=false`, axe WCAG AA) |
+| TLS-5, DEC-20: Pebble ACME without e-mail on `dermaga-vm` | NOT RUN | — | Needs owner pre-release tag `v0.4.0-rc.2` for VM run |
 | DOC-2: `doctor` warns when TOTP is disabled | PASS | `tmp/evidence/M4/logs/make-check.log` | `TestDoctorTOTPWarning_DOC2` |
 | SETUP-3, INST-12: `dermaga panel` via `daemon.sock` + `install.sh` link | PASS | `tmp/evidence/M4/logs/vm-run1-install.log` | `install.sh` printed first-run link; `dermaga panel` reissue & daemon-down failure verified |
 | VM fresh-install journey (TOTP, token rules, reboot, secret grep, `m3_check.sh`) | PASS | `tmp/evidence/M4/logs/vm-run1-journey.log` | `v0.4.0-rc.1` from `fresh`; TOTP setup/login, token rules, reboot, 0 secret hits, `m3_check` |
@@ -102,6 +107,11 @@ PASS: dermaga doctor warned about disabled TOTP (DOC-2)
 | `tmp/evidence/M4/screenshots/m4a-setup-totp-dark-narrow.png` | `/setup` (step 2) | 375 | dark | Responsive 3-step header and crisp QR code on dark surface |
 | `tmp/evidence/M4/screenshots/m4a-login-totp-dark-desktop.png` | `/login` (TOTP) | 1280 | dark | Password + 6-digit TOTP authenticator prompt |
 | `tmp/evidence/M4/screenshots/m4a-dashboard-totp-warning-light.png` | `/` (post-skip) | 1280 | light | Persistent amber TOTP-disabled warning and hook-domain notice |
+| `tmp/evidence/M4/screenshots/m4b-setup-hook-domain-light-desktop.png` | `/setup` (step 3) | 1280 | dark | Step 3 Hook Domain form with DNS record expectation and skip button |
+| `tmp/evidence/M4/screenshots/m4b-settings-access-light-desktop.png` | `/settings` (Access) | 1280 | light | Laptop/mobile SSH instructions and Active Sessions list with Current badge |
+| `tmp/evidence/M4/screenshots/m4b-settings-security-light-desktop.png` | `/settings` (Security) | 1280 | light | Change Admin Password and TOTP setup forms |
+| `tmp/evidence/M4/screenshots/m4b-settings-hook-domain-dark-desktop.png` | `/settings` (Hook Domain) | 1280 | dark | Reserved Hook Domain input with Check DNS and Save buttons |
+| `tmp/evidence/M4/screenshots/m4b-audit-logs-narrow-dark.png` | `/audit-logs` | 375 | dark | Stacked card rows on narrow screen with zero horizontal scroll |
 
 ## How it works
 

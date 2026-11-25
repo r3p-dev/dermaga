@@ -19,7 +19,7 @@ backups come in v1.1.
 | M1  | 0.1.0   | Foundation: daemon, login, panel shell            | completed         | yes: confirmed by owner, 2026-11-17 (owner tags v0.1.0–v0.1.4; M2 started)                                                                                                      | 36      |
 | M2  | 0.2.0   | Generators and reconciliation                     | completed         | yes: confirmed by owner, 2026-11-17 (owner tags v0.2.0, v0.2.1; M3 started)                                                                                                     | 28      |
 | M3  | 0.3.0   | Installer, hardening, lockout guard               | completed         | M3a yes: confirmed by owner, 2026-11-17 (owner tags v0.3.0-rc, v0.3.0-rc.2; M3b started); M3b yes: confirmed by owner, 2026-11-25 (owner tags v0.3.0-rc.3, v0.3.0-rc.4, v0.3.0) | 24      |
-| M4  | 0.4.0   | First-run setup and panel access                  | in progress (M4a) | –                                                                                                                                                                               | 20      |
+| M4  | 0.4.0   | First-run setup and panel access                  | in progress (M4b) | M4a yes: confirmed by owner, 2026-11-25 (v0.4.0-rc.1); M4b local ready                                                                                                          | 20      |
 | M5  | 0.5.0   | Connect GitHub                                    | not started       | –                                                                                                                                                                               | 28      |
 | M6  | 0.6.0   | First deploy: wizard, build, env, logs            | not started       | –                                                                                                                                                                               | 36      |
 | M7  | 0.7.0   | Zero downtime: push-to-deploy, redeploy, rollback | not started       | –                                                                                                                                                                               | 32      |
@@ -46,21 +46,12 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
 
 ## Active milestone
 
-**M4a** (checkpoint of M4, 0.4.0): first-run setup.
+**M4b** (checkpoint of M4, 0.4.0): panel access, security settings, hook domain, Pebble ACME, and narrow audit log.
 
-- **Requirement IDs:** SETUP-1, SETUP-2 (password + TOTP steps, persistent warning), SETUP-3, SEC-8,
-  INST-12 (first-run link), DOC-2 (TOTP warning in `doctor`).
-- **Likely touched:** `internal/auth/`, `internal/store/`, `internal/server/`, `internal/doctor/`,
-  `cmd/dermaga/main.go`, `install/install.sh`, `ui/src/routes/setup/`, `ui/src/routes/login/`,
-  `ui/src/routes/+layout.svelte`, `ui/e2e/`, `test/vm/seed.sh`, `docs/`.
-- **Acceptance criteria:** from a fresh install on `dermaga-vm`, `ssh dermaga` + browser → `/setup` →
-  panel without any command typed on the server; token reuse, expiry and use after setup are refused
-  (API tests and browser journey); persistent TOTP warning in panel and `doctor` when skipped.
-- **Out of scope (M4b):** hook-domain step of SETUP-2 with DNS check, TLS-5 and ACME without e-mail
-  with Pebble (DEC-20), LAP-3, ADM-4, ADM-5, SEC-10, narrow-screen stacked audit log rows.
-- **Handoff** (2026-11-25, M4a code & local verification complete):
-  - Done: `SETUP-1`–`SETUP-3`, `SEC-8`, `INST-12` first-run link, `DOC-2` TOTP warning, TOTP enrolment & login (`internal/auth`, `internal/server`, `internal/doctor`, `cmd/dermaga`, `install/install.sh`, `ui/src/routes/setup/`), unit/API/Playwright+axe tests, `make check` green.
-  - Remaining: VM fresh-install journey on `dermaga-vm` after owner tags `v0.4.0-rc.1`, then **M4b** (hook-domain step + DNS check, `TLS-5` + Pebble ACME no-email check `DEC-20`, `LAP-3`, `ADM-4`, `ADM-5`, `SEC-10`, narrow-screen stacked audit log rows).
+- **Requirement IDs:** SETUP-2 (hook domain + DNS check), TLS-5, DEC-20 (ACME without e-mail, Pebble), LAP-3, ADM-4, ADM-5, SEC-10, CONVENTIONS §5.2 (narrow audit log).
+- **Handoff** (2026-11-25, M4b code & local verification complete):
+  - Done: M4a confirmed (`v0.4.0-rc.1`). Implemented M4b: migration `0002_sessions_metadata.sql` (`user_agent`, `last_seen_at` throttled ≤1/min), `ADM-5` active sessions list + revoke/logout-others, `ADM-4`/`SEC-10` password change + TOTP enable/disable with re-auth, `LAP-3` Settings → Access, `SETUP-2`/`APP-2`/`TLS-5` hook domain DNS check + `01-hook-domain.yml` router, Settings UI (`/settings`), `/setup` Step 3, and narrow-screen stacked audit log rows (`CONVENTIONS.md` §5.2). `make check` and 6/6 Playwright + axe WCAG AA tests pass.
+  - Remaining: VM verification on `dermaga-vm` with `v0.4.0-rc.2` (including Pebble ACME `TLS-5` / `DEC-20`), then bump `0.4.0` in `CHANGELOG.md` and proceed to M5.
 
 **Every milestone** also meets the general acceptance criteria of `AGENTS.md` "Milestone loop": tests for its
 criteria (unit, golden, fake-host, fake-GitHub, API with authentication and the PRD rule, browser tests
