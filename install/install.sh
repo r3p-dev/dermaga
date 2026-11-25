@@ -539,18 +539,57 @@ table inet dermaga {
 EOF
 }
 
+# live_firewall_ok PORT...: verifies the full live `nft list ruleset` has table inet dermaga's
+# ssh rule matching PORT... and no other rule accepting an unexpected SSH port.
+live_firewall_ok() {
+  local expected ruleset
+  expected=$(unique_ports "$@")
+  ruleset=$(nft list ruleset 2>/dev/null) || return 1
+  awk -v expected="$expected" '
+    BEGIN {
+      n = split(expected, exp_arr, " ")
+      for (i = 1; i <= n; i++) exp_set[exp_arr[i]] = 1
+    }
+    /^table inet dermaga \{/ { in_dermaga = 1; next }
+    in_dermaga && /^\}/ { in_dermaga = 0; next }
+    /tcp dport/ && /accept/ {
+      line = $0
+      sub(/.*tcp dport[[:space:]]*\{?[[:space:]]*/, "", line)
+      sub(/[[:space:]]*\}?[[:space:]]*accept.*/, "", line)
+      gsub(/,/, " ", line)
+      m = split(line, p, /[[:space:]]+/)
+      if (in_dermaga && $0 ~ /comment "ssh"/) {
+        seen_ssh = 1
+        for (i = 1; i <= m; i++) if (p[i] != "") got_ssh[p[i]] = 1
+      } else if (!(in_dermaga && $0 ~ /comment "http, https"/)) {
+        for (i = 1; i <= m; i++) {
+          if (p[i] != "" && p[i] != "80" && p[i] != "443") bad = 1
+        }
+      }
+    }
+    END {
+      if (bad || !seen_ssh) exit 1
+      for (k in exp_set) if (!(k in got_ssh)) exit 1
+      for (k in got_ssh) if (!(k in exp_set)) exit 1
+    }
+  ' <<<"$ruleset"
+}
+
 # apply_firewall PORT...: validated before loading; never `restart`, whose stop action flushes
 # every table and would drop the current session for a moment.
 apply_firewall() {
+  local expected
+  expected=$(unique_ports "$@")
   render_nftables "$@" | write_file "$NFT_CONF" 0755
   nft -c -f "$NFT_CONF" || die "the generated firewall rules failed validation"
   systemctl enable --quiet nftables.service
   if ! systemctl is-active --quiet nftables.service; then
     systemctl start nftables.service
-  elif ((WROTE_CHANGED)); then
+  elif ((WROTE_CHANGED)) || ! live_firewall_ok "$@"; then
     systemctl reload nftables.service
   fi
-  ok "firewall: open ssh $(unique_ports "$@"), 80/tcp, 443/tcp, 443/udp"
+  live_firewall_ok "$@" || die "live firewall ruleset does not match expected SSH port(s) $expected after reload"
+  ok "firewall: open ssh $expected, 80/tcp, 443/tcp, 443/udp"
 }
 
 # --- base system (HOST-5) ------------------------------------------------------------------
@@ -918,34 +957,43 @@ PubkeyAcceptedAlgorithms $pubkeys
 EOF
 }
 
-# sshd_listening PORT...: true when sshd listens on every given port within 10 s (sshd re-execs
-# on reload, so the ports are briefly missing).
+# live_ssh_ports: TCP ports sshd is currently listening on.
+live_ssh_ports() {
+  ss -Hltnp 2>/dev/null | awk '/"sshd/ {n=split($4, a, ":"); if (n > 1) print a[n]}' | sort -un
+}
+
+# sshd_listening PORT...: true when sshd listens on every given port (and no extra port) within
+# 10 s (sshd re-execs on reload, so the ports are briefly missing or old ports briefly linger).
 sshd_listening() {
-  local p i missing
+  local p i missing expected
+  expected=$(unique_ports "$@")
   for ((i = 0; i < 10; i++)); do
     missing=0
     for p in "$@"; do
       ss -Hltnp "( sport = :$p )" | grep -q '"sshd' || missing=1
     done
-    ((missing)) || return 0
+    if ((!missing)) && [[ $(live_ssh_ports | paste -sd' ') == "$expected" ]]; then
+      return 0
+    fi
     sleep 1
   done
   return 1
 }
 
 # apply_sshd CONTENT PORT...: the lockout guard around every sshd change. The config is checked
-# with sshd -t before a reload; if sshd then does not listen on exactly the expected ports, the
-# previous file is put back and sshd reloaded again.
+# with sshd -t before a reload; if live sshd then does not listen on exactly the expected ports,
+# the previous file is put back and sshd reloaded again.
 apply_sshd() {
   local content=$1 backup="" had=0 expected
   shift
+  expected=$(unique_ports "$@")
   if [[ -f $SSHD_DROPIN ]]; then
     backup=$(mktemp)
     cp -p "$SSHD_DROPIN" "$backup"
     had=1
   fi
   printf '%s\n' "$content" | write_file "$SSHD_DROPIN" 0644
-  if ((WROTE_CHANGED == 0)); then
+  if ((WROTE_CHANGED == 0)) && [[ $(live_ssh_ports | paste -sd' ') == "$expected" ]] && [[ $(effective_ssh_ports | paste -sd' ') == "$expected" ]]; then
     rm -f "$backup"
     return 0
   fi
@@ -958,7 +1006,6 @@ apply_sshd() {
   fi
   ssh-keygen -A >/dev/null
   systemctl reload ssh.service
-  expected=$(unique_ports "$@")
   if ! sshd_listening "$@" || [[ $(effective_ssh_ports | paste -sd' ') != "$expected" ]]; then
     restore
     systemctl reload ssh.service

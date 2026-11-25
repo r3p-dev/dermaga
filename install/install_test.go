@@ -34,14 +34,37 @@ case "$1" in
     if [[ -f $f ]]; then awk '$1 == "Port" {print "port " $2}' "$f"; else echo "port 22"; fi
     if [[ $* == *lport=* ]]; then echo "passwordauthentication no"; echo "permitrootlogin no"; fi ;;
 esac`,
-	// ss: sshd listens on its configured ports unless told not to; port 80 busy on demand.
+	// ss: sshd listens on live_ssh_ports (or configured ports) unless told not to; port 80 busy on demand.
 	"ss": `
 if [[ $* == *":80 or"* ]]; then [[ -e $STUB/port80_busy ]] && echo 'LISTEN 0 511 0.0.0.0:80 0.0.0.0:* users:(("nginx",pid=1,fd=6))'; exit 0; fi
+if [[ -f $STUB/live_ssh_ports ]]; then
+  ports=$(cat "$STUB/live_ssh_ports")
+else
+  f=$ROOT/etc/ssh/sshd_config.d/00-dermaga.conf
+  if [[ -f $f ]]; then ports=$(awk '$1 == "Port" {print $2}' "$f"); else ports=22; fi
+fi
 p=$(sed -n 's/.*sport = :\([0-9]*\).*/\1/p' <<<"$*")
-[[ -e $STUB/sshd_never_listens_$p ]] && exit 0
-f=$ROOT/etc/ssh/sshd_config.d/00-dermaga.conf
-if [[ -f $f ]]; then ports=$(awk '$1 == "Port" {print $2}' "$f"); else ports=22; fi
-grep -qx "$p" <<<"$ports" && echo "LISTEN 0 128 0.0.0.0:$p 0.0.0.0:* users:((\"sshd\",pid=7,fd=3))"
+if [[ -n $p ]]; then
+  [[ -e $STUB/sshd_never_listens_$p ]] && exit 0
+  grep -qx "$p" <<<"$ports" && echo "LISTEN 0 128 0.0.0.0:$p 0.0.0.0:* users:((\"sshd\",pid=7,fd=3))"
+else
+  for lp in $ports; do
+    [[ -e $STUB/sshd_never_listens_$lp ]] && continue
+    echo "LISTEN 0 128 0.0.0.0:$lp 0.0.0.0:* users:((\"sshd\",pid=7,fd=3))"
+  done
+fi
+exit 0`,
+	"nft": `
+case "$1" in
+  list)
+    if [[ -f $STUB/live_nft.conf ]]; then
+      cat "$STUB/live_nft.conf"
+    elif [[ -f $ROOT/etc/nftables.conf ]]; then
+      cat "$ROOT/etc/nftables.conf"
+    fi
+    [[ -f $STUB/extra_nft_table ]] && cat "$STUB/extra_nft_table"
+    ;;
+esac
 exit 0`,
 	"journalctl": `cat "$STUB/journal.txt" 2>/dev/null; exit 0`,
 	"curl": `
@@ -55,7 +78,17 @@ state=$STUB/active_units
 case "$*" in
   *"is-active --quiet ssh.socket"*) exit 1 ;;
   *is-active*) u=${@: -1}; grep -qxF "$u" "$state" 2>/dev/null ;;
-  "reload ssh.service") n=$(ls "$STUB"/reload-*.conf 2>/dev/null | wc -l); cp "$ROOT/etc/ssh/sshd_config.d/00-dermaga.conf" "$STUB/reload-$((n + 1)).conf" 2>/dev/null || touch "$STUB/reload-$((n + 1)).conf" ;;
+  "reload ssh.service")
+    n=$(ls "$STUB"/reload-*.conf 2>/dev/null | wc -l)
+    cp "$ROOT/etc/ssh/sshd_config.d/00-dermaga.conf" "$STUB/reload-$((n + 1)).conf" 2>/dev/null || touch "$STUB/reload-$((n + 1)).conf"
+    if [[ ! -e $STUB/sshd_keeps_stale_ports ]]; then
+      awk '$1 == "Port" {print $2}' "$ROOT/etc/ssh/sshd_config.d/00-dermaga.conf" >"$STUB/live_ssh_ports" 2>/dev/null || true
+    fi ;;
+  "start nftables.service"|"reload nftables.service")
+    echo "nftables.service" >>"$state"
+    if [[ ! -e $STUB/nft_keeps_stale_rules ]]; then
+      cp "$ROOT/etc/nftables.conf" "$STUB/live_nft.conf" 2>/dev/null || true
+    fi ;;
   start*|restart*) echo "${@: -1}" >>"$state" ;;
   "add-wants multi-user.target network-online.target") mkdir -p "$ROOT/etc/systemd/system/multi-user.target.wants"; touch "$ROOT/etc/systemd/system/multi-user.target.wants/network-online.target" ;;
 esac
@@ -85,7 +118,7 @@ exit 0`,
 }
 
 // stubbed are the commands that only log; real coreutils, awk, sed, grep and ssh stay real.
-var stubbed = []string{"chown", "usermod", "modprobe", "nft", "fail2ban-client", "visudo"}
+var stubbed = []string{"chown", "usermod", "modprobe", "fail2ban-client", "visudo"}
 
 type fakeServer struct {
 	t     *testing.T
@@ -680,4 +713,67 @@ func TestInstallScriptSyntax(t *testing.T) {
 	if out, err := exec.Command("bash", "-n", "install.sh").CombinedOutput(); err != nil {
 		t.Fatalf("bash -n: %v\n%s", err, out)
 	}
+}
+
+// TestInstallFilesWrittenNotAppliedRerun reproduces M3b scenario c: when 00-dermaga.conf and
+// /etc/nftables.conf on disk already match the final config (WROTE_CHANGED=0) but live sshd/nft
+// still have port 22 open, a rerun must still reload both and fail loudly if port 22 stays open.
+func TestInstallFilesWrittenNotAppliedRerun(t *testing.T) {
+	cfg := "SSH_PUBLIC_KEY=" + testKey + "\nSSH_PORT=4222\nPUBLIC_ADDRESS=203.0.113.10\nSUDO_PASSWORDLESS=yes\n"
+	setupFinalFiles := func(t *testing.T) *fakeServer {
+		t.Helper()
+		s := newFakeServer(t)
+		s.writeStub("cfg", cfg)
+		s.journal(
+			"Connection from 192.168.122.1 port 51001 on 192.168.122.217 port 4222 rdomain \"\"",
+			"Accepted publickey for server from 192.168.122.1 port 51001 ssh2: ED25519 "+testKeyFP,
+		)
+		if out, err := s.run("", "--config", filepath.Join(s.stub, "cfg"), "--yes"); err != nil {
+			t.Fatalf("initial setup failed: %v\n%s", err, out)
+		}
+		return s
+	}
+
+	t.Run("reloads_when_live_state_stale", func(t *testing.T) {
+		s := setupFinalFiles(t)
+		staleNFT, err := bashFn(t, nil, "render_nftables 22 4222")
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.writeStub("live_ssh_ports", "22\n4222\n")
+		s.writeStub("live_nft.conf", staleNFT)
+		_ = os.Remove(filepath.Join(s.stub, "calls.log"))
+
+		if out, err := s.run("", "--config", filepath.Join(s.stub, "cfg"), "--yes"); err != nil {
+			t.Fatalf("rerun failed: %v\n%s", err, out)
+		}
+		callsBytes, err := os.ReadFile(filepath.Join(s.stub, "calls.log"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		calls := string(callsBytes)
+		if !strings.Contains(calls, "systemctl reload ssh.service") {
+			t.Fatalf("expected systemctl reload ssh.service when live sshd still listens on 22; calls:\n%s", calls)
+		}
+		if !strings.Contains(calls, "systemctl reload nftables.service") {
+			t.Fatalf("expected systemctl reload nftables.service when live nft still allows 22; calls:\n%s", calls)
+		}
+	})
+
+	t.Run("fails_loudly_when_sshd_keeps_port_22", func(t *testing.T) {
+		s := setupFinalFiles(t)
+		s.writeStub("live_ssh_ports", "22\n4222\n")
+		s.writeStub("sshd_keeps_stale_ports", "1")
+		if out, err := s.run("", "--config", filepath.Join(s.stub, "cfg"), "--yes"); err == nil {
+			t.Fatalf("expected rerun to fail loudly when sshd still listens on 22 after reload; output:\n%s", out)
+		}
+	})
+
+	t.Run("fails_loudly_when_extra_nft_table_accepts_port_22", func(t *testing.T) {
+		s := setupFinalFiles(t)
+		s.writeStub("extra_nft_table", "table inet extra {\n\tchain input {\n\t\ttcp dport 22 accept\n\t}\n}\n")
+		if out, err := s.run("", "--config", filepath.Join(s.stub, "cfg"), "--yes"); err == nil {
+			t.Fatalf("expected rerun to fail loudly when another nft table accepts port 22; output:\n%s", out)
+		}
+	})
 }
