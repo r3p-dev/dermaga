@@ -119,6 +119,7 @@ Pinned by tag **and** digest where they are used.
 | Debian 13 (official)          | CI job container                         | |
 | socat (`docker.io/alpine/socat:1.8.1.3`) | Throwaway backends in `test/vm/test_reconciliation.sh` and `test/vm/test_traefik_configs.sh` (VM only) | Test only, never shipped; index digest |
 | curl (`docker.io/curlimages/curl:8.12.1`) | Allowlist probe in `test/vm/test_traefik_configs.sh` (VM only) | Test only, never shipped; index digest |
+| Pebble (`ghcr.io/letsencrypt/pebble:2.10.3`) | Local ACME test CA for `TLS-5` and `DEC-20` on `dermaga-vm` | Test only, never shipped; index digest |
 
 The hook relay runs the dermaga binary on an empty root filesystem (no base image).
 
@@ -141,6 +142,12 @@ Queries for these pins:
   1.8.1.3 sha256:71131702f671a88b3808a70b7330f9679cd9b9933adcafadc191508edfe55bba
   == docker.io/curlimages/curl:8.12.1
   8.12.1 sha256:94e9e444bcba979c2ea12e27ae39bee4cd10bc7041a472c4727a558e213744e6
+  ```
+
+- Pebble, 2026-11-25, `skopeo` (`tmp/evidence/M4/logs/pebble-image-query.log`):
+
+  ```text
+  ghcr.io/letsencrypt/pebble:2.10.3@sha256:0c81f05db371f436c97fb894bd6d2ab8fc9c8e2ce40f8bef8a8e15941bcd75ef
   ```
 
 ## 4. Host packages (Debian 13, installed by the installer)

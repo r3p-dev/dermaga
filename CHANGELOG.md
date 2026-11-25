@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-25
+
 ### Added
 - **First-run setup mode (`SETUP-1`, `SEC-8`)**: server-enforced redirect to `/setup` while no admin password exists, API refusal in setup mode, single-use 32-byte setup tokens stored as SHA-256 hashes with 24 h expiry, constant-time verification, rate limiting, and exchange for a short-lived `HttpOnly; SameSite=Strict` setup session cookie (with URL token stripped via `history.replaceState`).
 - **Setup wizard & TOTP enrolment (`SETUP-2`, `ADM-1`)**: `/setup` UI with token paste fallback + PRD guidance, admin password step with strength meter and server-side policy enforcement, optional TOTP enrolment (`crypto/hmac` RFC 6238 + `github.com/skip2/go-qrcode` inline SVG, ±1 step skew, replay protection, copyable Base32 secret and `otpauth://` URI), persistent TOTP-disabled warning banner in the panel and `dermaga doctor` (`DOC-2`), and TOTP verification on `/login`.

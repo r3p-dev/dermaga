@@ -1,6 +1,6 @@
 # Evidence: M4 (0.4.0) — First-run setup and panel access
 
-Commit under review: `f0e5736` + M4b working tree (checkpoint **M4b**; M4a confirmed on `v0.4.0-rc.1`).
+Commit under review: `b1ff03d` (`v0.4.0-rc.3`; `v0.4.0-rc.2` at `4279c16` was superseded because it was tagged before the `01-hook-domain.yml` 503 empty-servers fix in `b1ff03d`).
 
 ## Acceptance criteria
 
@@ -10,10 +10,11 @@ Commit under review: `f0e5736` + M4b working tree (checkpoint **M4b**; M4a confi
 | SEC-8: 32B hashed single-use token, 24 h expiry, rate-limited, SEC-3 | PASS | `tmp/evidence/M4/logs/make-check.log` | `TestSetupTokenLifecycle_SEC8`, `TestSetupFlowWithTOTP_SETUP2_SEC8_ADM1` |
 | SETUP-2: password + strength meter + skippable TOTP QR & warning | PASS | `tmp/evidence/M4/logs/playwright-e2e.log` | `5 passed (16.3s)` (Firefox + axe WCAG AA) |
 | SETUP-2, APP-2: hook domain DNS check, `/setup` Step 3, `01-hook-domain.yml` | PASS | `tmp/evidence/M4/logs/make-check-m4b.log` | `TestCheckDomainDNS_SETUP2`, `TestRenderHookDomain_APP2_TLS5`, `TestSettingsHookDomain_SETUP2_TLS5` |
-| LAP-3, ADM-5: Settings → Access, active sessions (`0002` migration) | PASS | `tmp/evidence/M4/logs/make-check-m4b.log` | `TestStoreMigration0001To0002`, `TestSettingsAccessAndSessions_LAP3_ADM5` |
-| ADM-4, SEC-10: password change ends other sessions; TOTP enable/disable re-auth | PASS | `tmp/evidence/M4/logs/make-check-m4b.log` | `TestSettingsSecurityPasswordAndTOTP_ADM4_SEC10` |
+| LAP-3, ADM-5: Settings → Access, active sessions (`0002` migration) | PASS | `tmp/evidence/M4/logs/vm-m4b-panel-and-upgrade.log` | `TestStoreMigration0001To0002` + VM session list/revoke & `rc.1 -> rc.3` upgrade |
+| ADM-4, SEC-10: password change ends other sessions; TOTP enable/disable re-auth | PASS | `tmp/evidence/M4/logs/vm-m4b-panel-and-upgrade.log` | `TestSettingsSecurityPasswordAndTOTP_ADM4_SEC10` + VM re-auth + 0 secret hits |
 | CONVENTIONS §5.2: narrow-screen stacked Audit Log rows | PASS | `tmp/evidence/M4/logs/playwright-e2e-m4b.log` | `6 passed` (`hasOverflow=false`, axe WCAG AA) |
-| TLS-5, DEC-20: Pebble ACME without e-mail on `dermaga-vm` | NOT RUN | — | Needs owner pre-release tag `v0.4.0-rc.2` for VM run |
+| TLS-5, DEC-20: Pebble ACME without e-mail, `503`/`404` hook path, `m3_check` | PASS | `tmp/evidence/M4/logs/vm-m4b-pebble-tls5.log` | Pebble cert issued (`contact: None`), `POST /hooks/github-app=503`, `GET`/`/other=404`, account reused; `vm-m4b-final-access.log` |
+| Release `v0.4.0-rc.3` tag, workflow & checksums | PASS | `tmp/evidence/M4/logs/release-rc3-verify.log` | `b1ff03d`, `sha256sum -c checksums.txt` (`OK`) |
 | DOC-2: `doctor` warns when TOTP is disabled | PASS | `tmp/evidence/M4/logs/make-check.log` | `TestDoctorTOTPWarning_DOC2` |
 | SETUP-3, INST-12: `dermaga panel` via `daemon.sock` + `install.sh` link | PASS | `tmp/evidence/M4/logs/vm-run1-install.log` | `install.sh` printed first-run link; `dermaga panel` reissue & daemon-down failure verified |
 | VM fresh-install journey (TOTP, token rules, reboot, secret grep, `m3_check.sh`) | PASS | `tmp/evidence/M4/logs/vm-run1-journey.log` | `v0.4.0-rc.1` from `fresh`; TOTP setup/login, token rules, reboot, 0 secret hits, `m3_check` |
@@ -88,6 +89,29 @@ PASS: browser skip-TOTP path showed persistent warning banner
 [WARN] totp           two-factor authentication is disabled
                       Enable TOTP in Settings -> Security to protect admin login.
 PASS: dermaga doctor warned about disabled TOTP (DOC-2)
+# Exit: 0
+```
+
+### `tmp/evidence/M4/logs/vm-m4b-pebble-tls5.log`
+
+```text
+PASS: Pebble issued cert for hooks.dermaga.test; ACME account=https://pebble:14000/my-account/8578a7ce2d9dd59 None
+Responses over Pebble TLS: POST /hooks/github-app=503, GET /hooks/github-app=404, POST /other=404
+PASS: hook path returned 503 and other methods/paths returned 404 over Pebble TLS
+PASS: Traefik reused ACME account without email across restart (DEC-20)
+# Exit: 0
+```
+
+### `tmp/evidence/M4/logs/vm-m4b-final-access.log`
+
+```text
+PASS  firewall rules open only ssh, 80, 443/tcp, 443/udp
+PASS  old port 22 closed
+PASS  panel port 7070 closed from outside (SEC-2)
+PASS  password login not offered to server
+PASS  root refused, even with the key
+PASS  provider user debian refused, even with the key
+all checks passed
 # Exit: 0
 ```
 
