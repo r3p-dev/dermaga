@@ -68,7 +68,7 @@ All notable changes to this project are documented here. The format follows
 ## [0.1.3] - 2026-11-16
 
 ### Added
-- Official Dermaga logo (`ui/static/logo.svg`) incorporated from `dermaga-archive/ui/static/logo.svg`.
+- Official Dermaga logo (`ui/static/logo.svg`) incorporated from the project's earlier design assets.
 - High-resolution favicons (`favicon.png` 32x32, `favicon-16x16.png` 16x16, and `favicon.svg`) generated reproducibly via ImageMagick (`docs/SETUP.md` §6.7).
 - Brand-derived design tokens in `ui/src/app.css` (`--brand-primary`, `--brand-hover`, `--brand-active`, `--brand-ring`, `--brand-accent`, `--brand-navy`, `--brand-text`, `--brand-badge-*`, `--brand-btn-text`) mapped into Tailwind v4 `@theme`.
 - Automated contrast verification script `scripts/check_contrast.py` verifying all 17 text/background and focus-ring color pairings meet or exceed WCAG 2.1 Level AA (`NFR-7`).
