@@ -56,12 +56,14 @@ type AuditFilter struct {
 	Offset int
 }
 
-// Session represents an authenticated user session (SEC-7).
+// Session represents an authenticated user session (SEC-7, ADM-5).
 type Session struct {
-	ID        string    `json:"id"`
-	UserID    string    `json:"user_id"`
-	ExpiresAt time.Time `json:"expires_at"`
-	CreatedAt time.Time `json:"created_at"`
+	ID         string    `json:"id"`
+	UserID     string    `json:"user_id"`
+	UserAgent  string    `json:"user_agent"`
+	LastSeenAt time.Time `json:"last_seen_at"`
+	ExpiresAt  time.Time `json:"expires_at"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // Open initializes and migrates the SQLite database at the specified path.
@@ -279,19 +281,35 @@ func (s *Store) DeleteSetting(ctx context.Context, key string) error {
 
 // --- Sessions ---
 
+const maxSessionUserAgentLen = 256
+
+func truncateUserAgent(ua string) string {
+	ua = strings.TrimSpace(ua)
+	if len(ua) <= maxSessionUserAgentLen {
+		return ua
+	}
+	return ua[:maxSessionUserAgentLen]
+}
+
 // CreateSession stores a new hashed session token (SEC-7).
 func (s *Store) CreateSession(ctx context.Context, tokenHash, userID string, expiresAt time.Time) error {
-	query := `INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, ?)`
-	_, err := s.db.ExecContext(ctx, query, tokenHash, userID, expiresAt.UTC().Format(time.RFC3339))
+	return s.CreateSessionWithMeta(ctx, tokenHash, userID, "", expiresAt)
+}
+
+// CreateSessionWithMeta stores a new hashed session token along with truncated user-agent metadata (SEC-7, ADM-5).
+func (s *Store) CreateSessionWithMeta(ctx context.Context, tokenHash, userID, userAgent string, expiresAt time.Time) error {
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	query := `INSERT INTO sessions (id, user_id, user_agent, last_seen_at, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)`
+	_, err := s.db.ExecContext(ctx, query, tokenHash, userID, truncateUserAgent(userAgent), nowStr, expiresAt.UTC().Format(time.RFC3339), nowStr)
 	return err
 }
 
 // GetSession retrieves a session by its token hash.
 func (s *Store) GetSession(ctx context.Context, tokenHash string) (*Session, error) {
 	var sess Session
-	var expStr, createdStr string
-	query := `SELECT id, user_id, expires_at, created_at FROM sessions WHERE id = ?`
-	err := s.db.QueryRowContext(ctx, query, tokenHash).Scan(&sess.ID, &sess.UserID, &expStr, &createdStr)
+	var expStr, createdStr, lastSeenStr string
+	query := `SELECT id, user_id, user_agent, last_seen_at, expires_at, created_at FROM sessions WHERE id = ?`
+	err := s.db.QueryRowContext(ctx, query, tokenHash).Scan(&sess.ID, &sess.UserID, &sess.UserAgent, &lastSeenStr, &expStr, &createdStr)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -301,12 +319,57 @@ func (s *Store) GetSession(ctx context.Context, tokenHash string) (*Session, err
 
 	sess.ExpiresAt, _ = time.Parse(time.RFC3339, expStr)
 	sess.CreatedAt, _ = time.Parse(time.RFC3339, createdStr)
+	if lastSeen, err := time.Parse(time.RFC3339, lastSeenStr); err == nil {
+		sess.LastSeenAt = lastSeen
+	} else {
+		sess.LastSeenAt = sess.CreatedAt
+	}
 	return &sess, nil
+}
+
+// ListSessions returns all stored sessions ordered by most recently active (ADM-5).
+func (s *Store) ListSessions(ctx context.Context) ([]Session, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, user_id, user_agent, last_seen_at, expires_at, created_at FROM sessions ORDER BY last_seen_at DESC, created_at DESC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var sessions []Session
+	for rows.Next() {
+		var sess Session
+		var expStr, createdStr, lastSeenStr string
+		if err := rows.Scan(&sess.ID, &sess.UserID, &sess.UserAgent, &lastSeenStr, &expStr, &createdStr); err != nil {
+			return nil, err
+		}
+		sess.ExpiresAt, _ = time.Parse(time.RFC3339, expStr)
+		sess.CreatedAt, _ = time.Parse(time.RFC3339, createdStr)
+		if lastSeen, err := time.Parse(time.RFC3339, lastSeenStr); err == nil {
+			sess.LastSeenAt = lastSeen
+		} else {
+			sess.LastSeenAt = sess.CreatedAt
+		}
+		sessions = append(sessions, sess)
+	}
+	return sessions, rows.Err()
+}
+
+// TouchSession updates last_seen_at and slides the idle expiry (called at most once per minute).
+func (s *Store) TouchSession(ctx context.Context, tokenHash string, now, newExpiresAt time.Time) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE sessions SET last_seen_at = ?, expires_at = ? WHERE id = ?`,
+		now.UTC().Format(time.RFC3339), newExpiresAt.UTC().Format(time.RFC3339), tokenHash)
+	return err
 }
 
 // DeleteSession deletes a specific session.
 func (s *Store) DeleteSession(ctx context.Context, tokenHash string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE id = ?`, tokenHash)
+	return err
+}
+
+// DeleteOtherSessions deletes every session except the given token hash (ADM-4, ADM-5).
+func (s *Store) DeleteOtherSessions(ctx context.Context, keepTokenHash string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM sessions WHERE id != ?`, keepTokenHash)
 	return err
 }
 

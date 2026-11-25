@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,8 +28,8 @@ func TestStoreMigrations_FreshAndRerun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CurrentVersion failed: %v", err)
 	}
-	if ver != 1 {
-		t.Errorf("expected version 1, got %d", ver)
+	if ver != 2 {
+		t.Errorf("expected version 2, got %d", ver)
 	}
 
 	info, err := os.Stat(dbPath)
@@ -51,8 +52,89 @@ func TestStoreMigrations_FreshAndRerun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CurrentVersion on rerun failed: %v", err)
 	}
-	if ver2 != 1 {
-		t.Errorf("expected version 1 after rerun, got %d", ver2)
+	if ver2 != 2 {
+		t.Errorf("expected version 2 after rerun, got %d", ver2)
+	}
+}
+
+func TestStoreMigration0001To0002(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "v1.db")
+
+	initSQL, err := os.ReadFile(filepath.Join("migrations", "0001_init.sql"))
+	if err != nil {
+		t.Fatalf("reading 0001_init.sql: %v", err)
+	}
+
+	rawDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open failed: %v", err)
+	}
+	if _, err := rawDB.Exec(string(initSQL)); err != nil {
+		t.Fatalf("exec 0001_init.sql: %v", err)
+	}
+	if _, err := rawDB.Exec(`INSERT INTO schema_migrations (version) VALUES (1)`); err != nil {
+		t.Fatalf("insert schema_migrations: %v", err)
+	}
+	if _, err := rawDB.Exec(`INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES ('old-hash', 'admin', '2026-12-01T00:00:00Z', '2026-11-25T10:00:00Z')`); err != nil {
+		t.Fatalf("insert v1 session: %v", err)
+	}
+	_ = rawDB.Close()
+
+	s, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatalf("store.Open upgrade failed: %v", err)
+	}
+	defer s.Close()
+
+	ctx := context.Background()
+	ver, err := s.CurrentVersion(ctx)
+	if err != nil || ver != 2 {
+		t.Fatalf("expected upgraded version 2, got %d (err=%v)", ver, err)
+	}
+
+	sess, err := s.GetSession(ctx, "old-hash")
+	if err != nil {
+		t.Fatalf("GetSession on upgraded row failed: %v", err)
+	}
+	if sess.LastSeenAt.IsZero() || !sess.LastSeenAt.Equal(sess.CreatedAt) {
+		t.Errorf("expected last_seen_at backfilled to created_at (%v), got %v", sess.CreatedAt, sess.LastSeenAt)
+	}
+}
+
+func TestStoreSessionsMetadataAndRevokeOthers_ADM5(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(filepath.Join(t.TempDir(), "sessions.db"))
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer s.Close()
+
+	longUA := strings.Repeat("Mozilla/5.0 ", 40)
+	exp := time.Now().Add(time.Hour)
+	if err := s.CreateSessionWithMeta(ctx, "h1", "admin", longUA, exp); err != nil {
+		t.Fatalf("CreateSessionWithMeta 1 failed: %v", err)
+	}
+	if err := s.CreateSessionWithMeta(ctx, "h2", "admin", "Firefox/132.0", exp); err != nil {
+		t.Fatalf("CreateSessionWithMeta 2 failed: %v", err)
+	}
+
+	list, err := s.ListSessions(ctx)
+	if err != nil || len(list) != 2 {
+		t.Fatalf("expected 2 sessions, got %d (err=%v)", len(list), err)
+	}
+	for _, sess := range list {
+		if sess.ID == "h1" && len(sess.UserAgent) > 256 {
+			t.Errorf("expected UserAgent truncated <= 256, got %d", len(sess.UserAgent))
+		}
+	}
+
+	if err := s.DeleteOtherSessions(ctx, "h1"); err != nil {
+		t.Fatalf("DeleteOtherSessions failed: %v", err)
+	}
+	list, _ = s.ListSessions(ctx)
+	if len(list) != 1 || list[0].ID != "h1" {
+		t.Fatalf("expected only h1 remaining, got %+v", list)
 	}
 }
 

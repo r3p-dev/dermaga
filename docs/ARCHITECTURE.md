@@ -315,6 +315,8 @@ CREATE TABLE deployments (
 CREATE TABLE sessions (
     id TEXT PRIMARY KEY,                       -- SHA-256 hash of session token (SEC-7)
     user_id TEXT NOT NULL,
+    user_agent TEXT NOT NULL DEFAULT '',       -- Truncated User-Agent (migration 0002, ADM-5)
+    last_seen_at TEXT NOT NULL DEFAULT '',     -- Throttled <= 1/min (migration 0002, ADM-5)
     expires_at TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
