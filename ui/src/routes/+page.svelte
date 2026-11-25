@@ -1,12 +1,16 @@
 <script lang="ts">
-	import { getSession, getServerStatus } from '#lib/api.js';
-	import type { ServerStatus, SessionInfo } from '#lib/types/api.js';
+	import { getSession, getServerStatus, listApps } from '#lib/api.js';
+	import AppsList from '#lib/components/AppsList.svelte';
+	import type { AppSummary, ServerStatus, SessionInfo } from '#lib/types/api.js';
 	import { onMount } from 'svelte';
 
 	let session = $state<SessionInfo | null>(null);
 	let status = $state<ServerStatus | null>(null);
+	let apps = $state<AppSummary[]>([]);
 	let loading = $state(true);
+	let appsLoading = $state(true);
 	let error = $state<string | null>(null);
+	let appsError = $state<string | null>(null);
 
 	function formatUptime(seconds: number): string {
 		const days = Math.floor(seconds / 86400);
@@ -40,10 +44,19 @@
 				return;
 			}
 			status = await getServerStatus();
+			try {
+				const appRes = await listApps();
+				apps = appRes.apps || [];
+			} catch (appErr) {
+				appsError = appErr instanceof Error ? appErr.message : 'Failed to load apps';
+			} finally {
+				appsLoading = false;
+			}
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load dashboard';
 		} finally {
 			loading = false;
+			appsLoading = false;
 		}
 	});
 </script>
@@ -118,5 +131,9 @@
 				<span class="text-xs text-stone-500 dark:text-stone-400 mt-2 block truncate">Commit: {status.commit}</span>
 			</div>
 		</div>
+	{/if}
+
+	{#if !error && session?.authenticated}
+		<AppsList {apps} loading={appsLoading} error={appsError} />
 	{/if}
 </div>

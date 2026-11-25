@@ -24,6 +24,21 @@ import type {
   GitHubCallbackResponse,
   GitHubDisconnectRequest,
   GitHubDisconnectResponse,
+  RepoBranchesResponse,
+  RepoInspectResponse,
+  DomainCheckRequest,
+  DomainCheckResponse,
+  AppsListResponse,
+  AppDetailResponse,
+  CreateAppRequest,
+  CreateAppResponse,
+  UpdateAppSettingsRequest,
+  UpdateAppEnvRequest,
+  EnvRevealRequest,
+  EnvRevealResponse,
+  EnvVarMetadata,
+  DeleteAppRequest,
+  DeploymentInfo,
 } from "./types/api.js";
 
 export async function verifySetupToken(
@@ -312,4 +327,272 @@ export async function disconnectGitHub(
     body: JSON.stringify(req),
   });
   return res.json();
+}
+
+export async function listRepoBranches(
+  owner: string,
+  repo: string,
+): Promise<RepoBranchesResponse> {
+  const res = await fetch(
+    `/api/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/branches`,
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || `Failed to load branches: ${res.statusText}`);
+  }
+  return data;
+}
+
+export async function inspectRepo(
+  owner: string,
+  repo: string,
+  branch: string,
+): Promise<RepoInspectResponse> {
+  const params = new URLSearchParams();
+  if (branch) params.set("branch", branch);
+  const res = await fetch(
+    `/api/github/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/inspect?${params.toString()}`,
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(
+      data.error || `Failed to inspect repository: ${res.statusText}`,
+    );
+  }
+  return data;
+}
+
+export async function checkDomainDNS(
+  req: DomainCheckRequest,
+): Promise<DomainCheckResponse & { error?: string }> {
+  const res = await fetch("/api/domains/check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  return res.json();
+}
+
+export async function listApps(): Promise<AppsListResponse> {
+  const res = await fetch("/api/apps");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || `Failed to load apps: ${res.statusText}`);
+  }
+  return data;
+}
+
+export async function createApp(req: CreateAppRequest): Promise<{
+  ok: boolean;
+  data?: CreateAppResponse;
+  error?: string;
+  fields?: Record<string, string>;
+}> {
+  const res = await fetch("/api/apps", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return {
+      ok: false,
+      error: data.error || `Failed to create app: ${res.statusText}`,
+      fields: data.fields || {},
+    };
+  }
+  return { ok: true, data };
+}
+
+export async function getApp(id: string): Promise<AppDetailResponse> {
+  const res = await fetch(`/api/apps/${encodeURIComponent(id)}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || `Failed to load app: ${res.statusText}`);
+  }
+  return data;
+}
+
+export async function updateAppSettings(
+  id: string,
+  req: UpdateAppSettingsRequest,
+): Promise<AppDetailResponse> {
+  const res = await fetch(`/api/apps/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(
+      data.error || `Failed to update settings: ${res.statusText}`,
+    );
+  }
+  return data;
+}
+
+export async function updateAppEnv(
+  id: string,
+  req: UpdateAppEnvRequest,
+): Promise<{ env: EnvVarMetadata[] }> {
+  const res = await fetch(`/api/apps/${encodeURIComponent(id)}/env`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(
+      data.error || `Failed to update environment: ${res.statusText}`,
+    );
+  }
+  return data;
+}
+
+export async function revealAppEnv(
+  id: string,
+  req: EnvRevealRequest,
+): Promise<EnvRevealResponse> {
+  const res = await fetch(`/api/apps/${encodeURIComponent(id)}/env/reveal`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(
+      data.error || `Failed to reveal variable: ${res.statusText}`,
+    );
+  }
+  return data;
+}
+
+export async function triggerDeploy(id: string): Promise<DeploymentInfo> {
+  const res = await fetch(`/api/apps/${encodeURIComponent(id)}/deploy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(
+      data.error || `Failed to trigger deploy: ${res.statusText}`,
+    );
+  }
+  return data;
+}
+
+export async function cancelDeployment(depId: string): Promise<void> {
+  const res = await fetch(
+    `/api/deployments/${encodeURIComponent(depId)}/cancel`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    },
+  );
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(
+      data.error || `Failed to cancel deployment: ${res.statusText}`,
+    );
+  }
+}
+
+export async function deleteApp(
+  id: string,
+  req: DeleteAppRequest,
+): Promise<void> {
+  const res = await fetch(`/api/apps/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(data.error || `Failed to delete app: ${res.statusText}`);
+  }
+}
+
+export function streamBuildLogs(
+  depId: string,
+  handlers: {
+    onLog: (chunk: string) => void;
+    onStatus?: (statusLabel: string) => void;
+    onDone?: (errorMessage: string) => void;
+    onError?: () => void;
+  },
+): () => void {
+  const es = new EventSource(
+    `/api/deployments/${encodeURIComponent(depId)}/logs/stream`,
+  );
+  es.addEventListener("log", (ev) => {
+    try {
+      handlers.onLog(JSON.parse((ev as MessageEvent).data));
+    } catch {
+      handlers.onLog((ev as MessageEvent).data);
+    }
+  });
+  es.addEventListener("status", (ev) => {
+    try {
+      handlers.onStatus?.(JSON.parse((ev as MessageEvent).data));
+    } catch {
+      handlers.onStatus?.((ev as MessageEvent).data);
+    }
+  });
+  es.addEventListener("done", (ev) => {
+    let errMsg = "";
+    try {
+      errMsg = JSON.parse((ev as MessageEvent).data);
+    } catch {
+      errMsg = "";
+    }
+    es.close();
+    handlers.onDone?.(errMsg);
+  });
+  es.onerror = () => {
+    es.close();
+    handlers.onError?.();
+  };
+  return () => es.close();
+}
+
+export function streamRuntimeLogs(
+  appId: string,
+  lines: number,
+  follow: boolean,
+  handlers: {
+    onLog: (line: string) => void;
+    onError?: (msg: string) => void;
+    onDone?: () => void;
+  },
+): () => void {
+  const params = new URLSearchParams({
+    lines: lines.toString(),
+    follow: follow ? "true" : "false",
+  });
+  const es = new EventSource(
+    `/api/apps/${encodeURIComponent(appId)}/logs/stream?${params.toString()}`,
+  );
+  es.addEventListener("log", (ev) => {
+    try {
+      handlers.onLog(JSON.parse((ev as MessageEvent).data));
+    } catch {
+      handlers.onLog((ev as MessageEvent).data);
+    }
+  });
+  es.addEventListener("error", (ev) => {
+    const me = ev as MessageEvent;
+    if (me.data) {
+      try {
+        handlers.onError?.(JSON.parse(me.data));
+      } catch {
+        handlers.onError?.(me.data);
+      }
+    }
+    es.close();
+  });
+  es.addEventListener("done", () => {
+    es.close();
+    handlers.onDone?.();
+  });
+  return () => es.close();
 }
