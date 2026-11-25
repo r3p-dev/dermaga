@@ -25,6 +25,10 @@ export interface Server {
 }
 
 //////////
+// source: setup.go
+
+
+//////////
 // source: types.go
 
 /**
@@ -39,6 +43,7 @@ export interface LoginRequest {
  */
 export interface LoginResponse {
   success: boolean;
+  totp_required?: boolean;
   error?: string;
 }
 /**
@@ -49,6 +54,43 @@ export interface SessionInfo {
   user_id?: string;
   expires_at?: any /* time.Time */;
   setup_required: boolean;
+  setup_authenticated: boolean;
+  setup_state?: string;
+  totp_enabled: boolean;
+}
+/**
+ * SetupVerifyTokenRequest exchanges a single-use setup token for a setup session cookie (SETUP-1, SEC-8).
+ */
+export interface SetupVerifyTokenRequest {
+  token: string;
+}
+/**
+ * SetupPasswordRequest sets the initial admin password during first-run setup (SETUP-2).
+ */
+export interface SetupPasswordRequest {
+  password: string;
+}
+/**
+ * SetupTOTPInitResponse returns the one-time TOTP enrolment secret, URI, and QR SVG (SETUP-2).
+ */
+export interface SetupTOTPInitResponse {
+  secret: string;
+  otpauth_uri: string;
+  qr_svg: string;
+}
+/**
+ * SetupTOTPVerifyRequest verifies a 6-digit TOTP code during setup enrolment (SETUP-2).
+ */
+export interface SetupTOTPVerifyRequest {
+  code: string;
+}
+/**
+ * SetupStepResponse reports the outcome of a setup mutation.
+ */
+export interface SetupStepResponse {
+  success: boolean;
+  next_step?: string;
+  error?: string;
 }
 /**
  * ServerStatus provides operational status of the server and daemon (DASH-1).
@@ -90,7 +132,7 @@ export interface AuditLogsResponse {
  * RecoveryRequest is sent over the local daemon.sock for CLI commands (SRV-2).
  */
 export interface RecoveryRequest {
-  action: string; // "set-password", "totp-disable", "status"
+  action: string; // "set-password", "totp-disable", "status", "setup-token"
   password?: string;
 }
 /**
@@ -99,4 +141,5 @@ export interface RecoveryRequest {
 export interface RecoveryResponse {
   success: boolean;
   message: string;
+  token?: string;
 }

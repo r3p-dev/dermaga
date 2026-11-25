@@ -25,12 +25,15 @@ func DistHandler() http.Handler {
 			path = "index.html"
 		}
 
-		// Check if file exists in embedded assets
+		// Check if file exists in embedded assets (static assets like /_app/*, /logo.svg, /favicon*)
 		f, err := sub.Open(path)
 		if err == nil {
+			info, statErr := f.Stat()
 			_ = f.Close()
-			fileServer.ServeHTTP(w, r)
-			return
+			if statErr == nil && !info.IsDir() {
+				fileServer.ServeHTTP(w, r)
+				return
+			}
 		}
 
 		// Fallback to index.html for SPA client-side routes

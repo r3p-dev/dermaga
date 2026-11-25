@@ -13,16 +13,49 @@ type LoginRequest struct {
 
 // LoginResponse defines the outcome of a login attempt.
 type LoginResponse struct {
-	Success bool   `json:"success"`
-	Error   string `json:"error,omitempty"`
+	Success      bool   `json:"success"`
+	TOTPRequired bool   `json:"totp_required,omitempty"`
+	Error        string `json:"error,omitempty"`
 }
 
 // SessionInfo provides the client's current session state.
 type SessionInfo struct {
-	Authenticated bool      `json:"authenticated"`
-	UserID        string    `json:"user_id,omitempty"`
-	ExpiresAt     time.Time `json:"expires_at,omitempty"`
-	SetupRequired bool      `json:"setup_required"`
+	Authenticated      bool      `json:"authenticated"`
+	UserID             string    `json:"user_id,omitempty"`
+	ExpiresAt          time.Time `json:"expires_at,omitempty"`
+	SetupRequired      bool      `json:"setup_required"`
+	SetupAuthenticated bool      `json:"setup_authenticated"`
+	SetupState         string    `json:"setup_state,omitempty"`
+	TOTPEnabled        bool      `json:"totp_enabled"`
+}
+
+// SetupVerifyTokenRequest exchanges a single-use setup token for a setup session cookie (SETUP-1, SEC-8).
+type SetupVerifyTokenRequest struct {
+	Token string `json:"token"`
+}
+
+// SetupPasswordRequest sets the initial admin password during first-run setup (SETUP-2).
+type SetupPasswordRequest struct {
+	Password string `json:"password"`
+}
+
+// SetupTOTPInitResponse returns the one-time TOTP enrolment secret, URI, and QR SVG (SETUP-2).
+type SetupTOTPInitResponse struct {
+	Secret     string `json:"secret"`
+	OTPAuthURI string `json:"otpauth_uri"`
+	QRSVG      string `json:"qr_svg"`
+}
+
+// SetupTOTPVerifyRequest verifies a 6-digit TOTP code during setup enrolment (SETUP-2).
+type SetupTOTPVerifyRequest struct {
+	Code string `json:"code"`
+}
+
+// SetupStepResponse reports the outcome of a setup mutation.
+type SetupStepResponse struct {
+	Success  bool   `json:"success"`
+	NextStep string `json:"next_step,omitempty"`
+	Error    string `json:"error,omitempty"`
 }
 
 // ServerStatus provides operational status of the server and daemon (DASH-1).
@@ -60,7 +93,7 @@ type AuditLogsResponse struct {
 
 // RecoveryRequest is sent over the local daemon.sock for CLI commands (SRV-2).
 type RecoveryRequest struct {
-	Action   string `json:"action"` // "set-password", "totp-disable", "status"
+	Action   string `json:"action"` // "set-password", "totp-disable", "status", "setup-token"
 	Password string `json:"password,omitempty"`
 }
 
@@ -68,4 +101,5 @@ type RecoveryRequest struct {
 type RecoveryResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
+	Token   string `json:"token,omitempty"`
 }

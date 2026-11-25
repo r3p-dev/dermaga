@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"dermaga/internal/auth"
+	"dermaga/internal/crypto"
 	"dermaga/internal/store"
 )
 
@@ -132,6 +133,13 @@ func (s *Server) securityMiddleware(next http.Handler) http.Handler {
 
 // registerRoutes configures all HTTP endpoints.
 func (s *Server) registerRoutes(mux *http.ServeMux) {
+	// Setup routes (SETUP-1, SETUP-2, SEC-8)
+	mux.HandleFunc("POST /api/setup/verify-token", s.handleSetupVerifyToken)
+	mux.HandleFunc("POST /api/setup/password", s.requireSetupSession(s.handleSetupPassword))
+	mux.HandleFunc("POST /api/setup/totp/init", s.requireSetupSession(s.handleSetupTOTPInit))
+	mux.HandleFunc("POST /api/setup/totp/verify", s.requireSetupSession(s.handleSetupTOTPVerify))
+	mux.HandleFunc("POST /api/setup/totp/skip", s.requireSetupSession(s.handleSetupTOTPSkip))
+
 	// Authentication routes
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
@@ -143,13 +151,63 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	// Server status
 	mux.HandleFunc("GET /api/server/status", s.requireAuth(s.handleServerStatus))
 
-	// Embedded UI
-	mux.Handle("/", DistHandler())
+	// Embedded UI with server-enforced setup mode redirect (SETUP-1)
+	mux.Handle("/", s.setupRedirectMiddleware(DistHandler()))
 }
 
-// requireAuth middleware validates the session cookie.
+func isStaticAssetPath(path string) bool {
+	if strings.HasPrefix(path, "/_app/") {
+		return true
+	}
+	switch path {
+	case "/logo.svg", "/favicon.ico", "/favicon.png", "/favicon-16x16.png", "/favicon.svg", "/robots.txt":
+		return true
+	}
+	return false
+}
+
+func (s *Server) setupRedirectMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			http.NotFound(w, r)
+			return
+		}
+		if !isStaticAssetPath(r.URL.Path) {
+			setupMode, err := auth.IsSetupMode(r.Context(), s.cfg.Store)
+			if err == nil {
+				isSetupRoute := r.URL.Path == "/setup" || r.URL.Path == "/setup/"
+				if setupMode && !isSetupRoute {
+					http.Redirect(w, r, "/setup", http.StatusFound)
+					return
+				}
+				if !setupMode && isSetupRoute && !s.hasValidSetupSession(r) {
+					http.Redirect(w, r, "/login", http.StatusFound)
+					return
+				}
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func clientIPFromRequest(r *http.Request) string {
+	clientIP, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return clientIP
+}
+
+// requireAuth middleware validates the session cookie and refuses API access in setup mode.
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if setupMode, err := auth.IsSetupMode(r.Context(), s.cfg.Store); err == nil && setupMode {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":"setup required"}`))
+			return
+		}
+
 		cookie, err := r.Cookie(auth.SessionCookieName)
 		if err != nil || cookie.Value == "" {
 			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
@@ -181,12 +239,9 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// handleLogin handles admin password authentication (ADM-1, ADM-2).
+// handleLogin handles admin password and optional TOTP authentication (ADM-1, ADM-2).
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	clientIP, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		clientIP = r.RemoteAddr
-	}
+	clientIP := clientIPFromRequest(r)
 
 	// Rate limit check
 	if delay, allowed := s.rateLimiter.Check(clientIP); !allowed {
@@ -209,8 +264,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	// Verify admin password
 	storedHash, err := s.cfg.Store.GetSetting(r.Context(), auth.SettingAdminPassword)
 	if errors.Is(err, store.ErrNotFound) {
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(LoginResponse{Success: false, Error: "Admin password not set. Setup required."})
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(LoginResponse{Success: false, Error: "Setup required. Open /setup to configure the server."})
 		return
 	} else if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -232,34 +287,59 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Verify TOTP when enabled (ADM-1)
+	if auth.IsTOTPEnabled(r.Context(), s.cfg.Store) {
+		if strings.TrimSpace(req.TOTPCode) == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			_ = json.NewEncoder(w).Encode(LoginResponse{
+				Success:      false,
+				TOTPRequired: true,
+				Error:        "Enter your 6-digit authenticator code.",
+			})
+			return
+		}
+
+		sealed, err := s.cfg.Store.GetSetting(r.Context(), auth.SettingTOTPSecret)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(LoginResponse{Success: false, Error: "Failed to load TOTP configuration"})
+			return
+		}
+		secretBytes, err := crypto.Decrypt(s.cfg.MasterKey, auth.SettingTOTPSecret, sealed)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			_ = json.NewEncoder(w).Encode(LoginResponse{Success: false, Error: "Failed to decrypt TOTP configuration"})
+			return
+		}
+
+		step, err := auth.VerifyTOTPCode(string(secretBytes), req.TOTPCode, time.Now(), auth.LastTOTPStep(r.Context(), s.cfg.Store))
+		if err != nil {
+			backoff := s.rateLimiter.RecordFailure(clientIP)
+			_ = s.cfg.Store.RecordAudit(r.Context(), "panel", clientIP, "login_failed", "Failed admin TOTP verification", nil, nil)
+
+			w.WriteHeader(http.StatusUnauthorized)
+			msg := "Invalid authenticator code"
+			if errors.Is(err, auth.ErrTOTPCodeReused) {
+				msg = "That code was already used. Wait for the next code."
+			}
+			if backoff > 0 {
+				msg = fmt.Sprintf("%s. Backoff delay: %d seconds.", msg, int(backoff.Seconds()))
+			}
+			_ = json.NewEncoder(w).Encode(LoginResponse{Success: false, TOTPRequired: true, Error: msg})
+			return
+		}
+		_ = auth.SaveLastTOTPStep(r.Context(), s.cfg.Store, step)
+	}
+
 	// Clear failure count on successful authentication
 	s.rateLimiter.RecordSuccess(clientIP)
 
 	// Create session
-	token, err := auth.GenerateSessionToken()
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		_ = json.NewEncoder(w).Encode(LoginResponse{Success: false, Error: "Failed to generate session"})
-		return
-	}
-
-	tokenHash := auth.HashSessionToken(token)
-	expiresAt := time.Now().Add(auth.IdleTimeout)
-	if err := s.cfg.Store.CreateSession(r.Context(), tokenHash, "admin", expiresAt); err != nil {
+	if err := s.issueAdminSessionCookie(w, r); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		_ = json.NewEncoder(w).Encode(LoginResponse{Success: false, Error: "Failed to record session"})
 		return
 	}
-
-	// Set session cookie (SEC-7)
-	http.SetCookie(w, &http.Cookie{
-		Name:     auth.SessionCookieName,
-		Value:    token,
-		Path:     "/",
-		Expires:  time.Now().Add(auth.AbsoluteTimeout),
-		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
-	})
 
 	_ = s.cfg.Store.RecordAudit(r.Context(), "panel", "admin", "login", "Admin logged in successfully", nil, nil)
 
@@ -292,18 +372,22 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
-// handleSession returns authentication status.
+// handleSession returns authentication and setup status.
 func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
-	resp := SessionInfo{}
+	state, err := auth.GetSetupState(r.Context(), s.cfg.Store)
+	if err != nil {
+		state = auth.SetupStateUninitialized
+	}
 
-	// Check if setup is needed
-	_, err := s.cfg.Store.GetSetting(r.Context(), auth.SettingAdminPassword)
-	if errors.Is(err, store.ErrNotFound) {
-		resp.SetupRequired = true
+	resp := SessionInfo{
+		SetupRequired:      state == auth.SetupStateUninitialized,
+		SetupAuthenticated: s.hasValidSetupSession(r),
+		SetupState:         string(state),
+		TOTPEnabled:        auth.IsTOTPEnabled(r.Context(), s.cfg.Store),
 	}
 
 	cookie, err := r.Cookie(auth.SessionCookieName)
-	if err == nil && cookie.Value != "" {
+	if err == nil && cookie.Value != "" && !resp.SetupRequired {
 		tokenHash := auth.HashSessionToken(cookie.Value)
 		sess, err := s.cfg.Store.GetSession(r.Context(), tokenHash)
 		if err == nil && sess != nil {
@@ -510,6 +594,14 @@ func (s *Server) handleUnixConn(conn net.Conn) {
 		ver, _ := s.cfg.Store.CurrentVersion(ctx)
 		msg := fmt.Sprintf("dermaga daemon is active (uptime: %s, schema: v%d)", time.Since(s.startedAt).Round(time.Second), ver)
 		_ = json.NewEncoder(conn).Encode(RecoveryResponse{Success: true, Message: msg})
+
+	case "setup-token":
+		token, err := auth.IssueSetupToken(ctx, s.cfg.Store, "server_command", time.Now())
+		if err != nil {
+			_ = json.NewEncoder(conn).Encode(RecoveryResponse{Success: false, Message: err.Error()})
+			return
+		}
+		_ = json.NewEncoder(conn).Encode(RecoveryResponse{Success: true, Token: token})
 
 	default:
 		_ = json.NewEncoder(conn).Encode(RecoveryResponse{Success: false, Message: fmt.Sprintf("unknown action %q", req.Action)})
