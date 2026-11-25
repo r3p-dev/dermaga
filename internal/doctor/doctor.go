@@ -9,7 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"dermaga/internal/auth"
 	"dermaga/internal/host"
+	"dermaga/internal/store"
 )
 
 // MinPodmanVersion is the oldest Podman dermaga supports: Debian 13's, the only one tested.
@@ -34,15 +36,16 @@ type Result struct {
 
 // Checker runs the checks for one user through the host boundary.
 type Checker struct {
-	Host host.Host
-	User string // the Linux user dermaga runs as
-	Home string // that user's home directory
+	Host  host.Host
+	Store *store.Store // optional; enables database-backed checks (TOTP, domains)
+	User  string       // the Linux user dermaga runs as
+	Home  string       // that user's home directory
 }
 
 // Run executes every check in a fixed order. Checks for domains, GitHub, TOTP and certificates
 // join when those features exist.
 func (c Checker) Run(ctx context.Context) []Result {
-	return []Result{
+	results := []Result{
 		c.linger(),
 		c.subIDs("/etc/subuid", "subuids"),
 		c.subIDs("/etc/subgid", "subgids"),
@@ -53,6 +56,10 @@ func (c Checker) Run(ctx context.Context) []Result {
 		c.clockSynced(ctx),
 		c.diskUsage(ctx),
 	}
+	if c.Store != nil {
+		results = append(results, c.totpStatus(ctx))
+	}
+	return results
 }
 
 // Failed reports whether any result is a failure.
@@ -162,6 +169,30 @@ func (c Checker) diskUsage(ctx context.Context) Result {
 		r.Status, r.Fix = Warn, "Free space soon: podman system df"
 	}
 	return r
+}
+
+func (c Checker) totpStatus(ctx context.Context) Result {
+	state, err := auth.GetSetupState(ctx, c.Store)
+	if err != nil {
+		return Result{Name: "totp", Status: Warn, Detail: "could not read setup state", Fix: "Check dermaga database permissions."}
+	}
+	if state == auth.SetupStateUninitialized {
+		return Result{
+			Name:   "totp",
+			Status: Warn,
+			Detail: "first-run setup not completed yet",
+			Fix:    "Open the first-run setup link from `dermaga panel` to set an admin password and enable TOTP.",
+		}
+	}
+	if !auth.IsTOTPEnabled(ctx, c.Store) {
+		return Result{
+			Name:   "totp",
+			Status: Warn,
+			Detail: "two-factor authentication is disabled",
+			Fix:    "Enable TOTP in Settings -> Security to protect admin login.",
+		}
+	}
+	return Result{Name: "totp", Status: OK, Detail: "two-factor authentication is enabled"}
 }
 
 // olderThan compares dotted numeric versions such as 5.4.2.

@@ -109,10 +109,10 @@ func TestCLIPanel_InactiveDaemon(t *testing.T) {
 	t.Setenv("HOME", tmpDir)
 	t.Setenv("XDG_RUNTIME_DIR", filepath.Join(tmpDir, "run"))
 
-	// Calling runPanel when daemon is not running should cleanly inform the user without crashing
+	// Calling runPanel when daemon is not running should fail with a clear message (never write SQLite directly).
 	err := runPanel(nil)
-	if err != nil {
-		t.Errorf("expected runPanel to handle inactive daemon cleanly, got error: %v", err)
+	if err == nil || !strings.Contains(err.Error(), "not reachable") {
+		t.Errorf("expected runPanel to fail with not-reachable error, got: %v", err)
 	}
 }
 

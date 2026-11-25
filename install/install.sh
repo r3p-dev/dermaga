@@ -1160,7 +1160,7 @@ print_summary() {
   step "Done"
   as_server dermaga panel >&2
   info ""
-  info "The panel has no admin password yet. On the server, set one with: dermaga admin set-password"
+  info "Fallback if you cannot open the setup link: dermaga admin set-password"
   if [[ -n ${SUDO_USER:-} && $SUDO_USER != "$SERVER_USER" && $SUDO_USER != root ]]; then
     info "Once ssh dermaga works, the provider's account is no longer needed: sudo deluser --remove-home $SUDO_USER"
   fi

@@ -371,7 +371,7 @@ func runInstallSettings(args []string) error {
 	return nil
 }
 
-// runPanel prints the laptop command (LAP-1) and where to open the panel (INST-12, SRV-1).
+// runPanel prints the laptop command (LAP-1), setup link if uninitialized (SETUP-3), and panel URL (INST-12, SRV-1).
 func runPanel(args []string) error {
 	paths := config.ResolvePaths()
 
@@ -382,7 +382,7 @@ func runPanel(args []string) error {
 		fmt.Println("Check daemon status or start it with:")
 		fmt.Println("  systemctl --user status dermaga")
 		fmt.Println("  systemctl --user start dermaga")
-		return nil
+		return fmt.Errorf("dermaga daemon is not reachable at %s", paths.DaemonSock)
 	}
 
 	st, err := store.Open(paths.DBPath)
@@ -404,7 +404,15 @@ func runPanel(args []string) error {
 	fmt.Println(cmd)
 	fmt.Println()
 	fmt.Printf("It adds a \"Host dermaga\" entry for server@%s port %d to ~/.ssh/config.\n", t.Address, t.Port)
-	fmt.Printf("From then on: ssh dermaga, then open %s in your browser.\n", access.PanelURL)
+
+	tokenResp, tokenErr := callDaemon(paths.DaemonSock, server.RecoveryRequest{Action: "setup-token"})
+	if tokenErr == nil && tokenResp.Success && tokenResp.Token != "" {
+		fmt.Printf("From then on: ssh dermaga, then open the first-run setup link (expires in 24 h):\n")
+		fmt.Printf("  %s/setup?token=%s\n", access.PanelURL, tokenResp.Token)
+	} else {
+		fmt.Printf("From then on: ssh dermaga, then open %s in your browser.\n", access.PanelURL)
+	}
+
 	fmt.Println()
 	fmt.Println("Lost this? Run `dermaga panel` on the server.")
 	return nil
@@ -539,7 +547,15 @@ func runDoctor() error {
 	if err != nil {
 		return fmt.Errorf("reading the current user: %w", err)
 	}
-	results := doctor.Checker{Host: host.NewRealHost(), User: u.Username, Home: u.HomeDir}.Run(context.Background())
+	paths := config.ResolvePaths()
+	var st *store.Store
+	if _, statErr := os.Stat(paths.DBPath); statErr == nil {
+		if opened, openErr := store.Open(paths.DBPath); openErr == nil {
+			st = opened
+			defer st.Close()
+		}
+	}
+	results := doctor.Checker{Host: host.NewRealHost(), Store: st, User: u.Username, Home: u.HomeDir}.Run(context.Background())
 	fmt.Print(doctor.Print(results))
 	if doctor.Failed(results) {
 		return errors.New("some checks failed; see the hints above")

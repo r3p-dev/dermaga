@@ -2,10 +2,13 @@ package doctor
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"dermaga/internal/auth"
 	"dermaga/internal/host"
+	"dermaga/internal/store"
 )
 
 // healthyHost answers every command the way a healthy Debian 13 server does.
@@ -99,5 +102,34 @@ func TestOlderThan(t *testing.T) {
 		if got := olderThan(c.v, "5.4.2"); got != c.want {
 			t.Errorf("olderThan(%q) = %v", c.v, got)
 		}
+	}
+}
+
+func TestDoctorTOTPWarning_DOC2(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(filepath.Join(t.TempDir(), "doc.db"))
+	if err != nil {
+		t.Fatalf("store.Open failed: %v", err)
+	}
+	defer st.Close()
+
+	c := Checker{Host: healthyHost(nil), Store: st, User: "server", Home: "/home/server"}
+
+	if got := statusByName(c.Run(ctx))["totp"]; got != Warn {
+		t.Fatalf("uninitialized totp status = %s, want warn", got)
+	}
+
+	if err := auth.SetAdminPassword(ctx, st, "panel", "correct-horse-battery"); err != nil {
+		t.Fatalf("SetAdminPassword failed: %v", err)
+	}
+	if got := statusByName(c.Run(ctx))["totp"]; got != Warn {
+		t.Fatalf("disabled totp status = %s, want warn", got)
+	}
+
+	if err := st.SetSetting(ctx, auth.SettingTOTPEnabled, "true"); err != nil {
+		t.Fatalf("SetSetting failed: %v", err)
+	}
+	if got := statusByName(c.Run(ctx))["totp"]; got != OK {
+		t.Fatalf("enabled totp status = %s, want ok", got)
 	}
 }
