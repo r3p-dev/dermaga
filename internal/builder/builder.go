@@ -180,8 +180,18 @@ func (b *Builder) Build(ctx context.Context, req BuildRequest) (string, error) {
 
 	emit(fmt.Sprintf("==> Building image %s (memory=%s, cpus=%s)", imageRef, mem, cpus))
 
+	var lineBuf strings.Builder
 	sm := NewStreamMasker(masker, func(chunk string) {
-		for _, line := range strings.Split(strings.TrimRight(chunk, "\n"), "\n") {
+		lineBuf.WriteString(chunk)
+		for {
+			s := lineBuf.String()
+			idx := strings.IndexByte(s, '\n')
+			if idx < 0 {
+				break
+			}
+			line := s[:idx]
+			lineBuf.Reset()
+			lineBuf.WriteString(s[idx+1:])
 			if line != "" {
 				b.logs.Append(req.DeploymentID, line)
 			}
@@ -191,6 +201,9 @@ func (b *Builder) Build(ctx context.Context, req BuildRequest) (string, error) {
 		_, _ = sm.Write([]byte(line + "\n"))
 	}, "podman", args...)
 	sm.Flush()
+	if rem := strings.TrimRight(lineBuf.String(), "\n"); rem != "" {
+		b.logs.Append(req.DeploymentID, rem)
+	}
 
 	if err != nil {
 		if errors.Is(ctx.Err(), context.Canceled) {

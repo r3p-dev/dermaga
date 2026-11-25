@@ -265,6 +265,9 @@ func (e *Engine) runOne(parentCtx context.Context, depID string) {
 	}
 
 	failOrCancel := func(err error, imageRef string) {
+		if imageRef == "" {
+			imageRef = builder.ImageRef(app.Name, dep.ReleaseNumber)
+		}
 		e.cleanupCandidate(app, dep.ReleaseNumber, imageRef)
 		if app.ActiveReleaseID == nil {
 			_ = e.host.Remove(filepath.Join(e.cfg.TraefikDynamicDir, name.AppDynamicFilename(app.Name)))
@@ -634,7 +637,11 @@ func (e *Engine) RemoveApp(ctx context.Context, appID string) error {
 
 	deps, _ := e.store.ListDeploymentsByApp(ctx, appID)
 	for _, d := range deps {
-		e.cleanupCandidate(app, d.ReleaseNumber, d.ImageRef)
+		img := d.ImageRef
+		if img == "" {
+			img = builder.ImageRef(app.Name, d.ReleaseNumber)
+		}
+		e.cleanupCandidate(app, d.ReleaseNumber, img)
 		e.builder.Logs().Delete(d.ID)
 	}
 	_ = e.host.Remove(filepath.Join(e.cfg.TraefikDynamicDir, name.AppDynamicFilename(app.Name)))
