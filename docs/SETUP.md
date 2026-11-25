@@ -274,6 +274,7 @@ From M3 on, the VM is set up by the installer itself, from the `fresh` snapshot.
    `dermaga-vm-init` (port 22, user `debian`) is refused.
 4. Checks from the workstation: `test/vm/port_scan.sh` (during the install), `test/vm/m3_check.sh
    access|state|running|control 192.168.122.217 4222 ~/.ssh/dermaga-vm`.
+5. **Local ACME (Pebble) for TLS tests:** run `./test/vm/setup_pebble.sh dermaga-vm` to start Pebble on network `web`, export `pebble-minica.pem` and `pebble-api-ca.pem`, point Traefik's `le` resolver to `https://pebble:14000/dir`, and restart `traefik.service`.
 
 **Recovery if SSH is lost:** the old login stays open until the new one is proven (`LOCK-1`–`LOCK-5`).
 If the VM still cannot be reached, use the libvirt console (`virsh --connect qemu:///system console

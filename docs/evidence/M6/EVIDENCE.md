@@ -15,7 +15,9 @@ Commit under review: `HEAD` (working tree). Checkpoint: **M6a** (build pipeline 
 | VM (`v0.6.0-rc.2` from `fresh`): items 1–6 & 8 (Pebble TLS live, `DEC-07` history/inspect, `DEC-31` 0 cmdline/config/DB/log hits, `DEC-05` limits, timeout, fail/cancel cleanup, restart recovery, empty repo 409) | PASS | `tmp/evidence/M6/logs/vm-m6a-podman-rc2.log` | `PASS [1c]: HTTPS via Pebble cert returned: healthy`, `PASS [2]`/`[3]`/`[4a]`/`[4b]`/`[5a]`/`[5b]`/`[6]`/`[8]` |
 | VM (`v0.6.0-rc.2`): item 7 (`APP-9` remove app) | FAIL | `tmp/evidence/M6/logs/vm-m6a-podman-rc2.log` | `testapp residue: ps=0 img=1 unit=0 tr=0 env=0 mir=0` (`localhost/dermaga/testapp:r2` from timed-out build had empty `image_ref`; fixed in `internal/deploy/deploy.go` for next rc/M6b) |
 | VM `m3_check.sh access` (run last) | PASS | `tmp/evidence/M6/logs/vm-m6a-m3-access.log` | `all checks passed` |
-| M6b: Wizard stepper, App tabs, Playwright E2E, VM journey from `fresh` (`v0.6.0-rc.N`), `0.6.0` bump | NOT RUN | — | Pending M6b |
+| M6b: `make check` (`LineAccumulator` bounded flush + split secret, runtime log masking, SvelteKit UI) | PASS | `tmp/evidence/M6/logs/make-check-m6b.log` | `=== make check passed successfully ===` |
+| M6b: Playwright E2E (`apps.test.ts` + full suite, desktop + narrow, light + dark, axe WCAG AA) | PASS | `tmp/evidence/M6/logs/playwright-e2e-m6b.log` | `8 passed` (Firefox + axe WCAG AA) |
+| M6b VM journey (`v0.6.0-rc.3` from `fresh`: items 4, 5, 7 with 0 leftover images + browser wizard via tunnel + `m3_check.sh access`) | NOT RUN | — | Pending `v0.6.0-rc.3` tag |
 
 ### `tmp/evidence/M6/logs/make-check-m6a.log`
 
@@ -58,7 +60,13 @@ AssertionError: testapp residue: ps=0 img=1 unit=0 tr=0 env=0 mir=0
 
 ## Screens
 
-- Deferred to M6b (UI views & Playwright E2E).
+| Local file | Page | Width | Theme | Shows |
+| --- | --- | --- | --- | --- |
+| `tmp/evidence/M6/screenshots/m6b-wizard-step2-light-desktop.png` | `/apps/new` (Step 2) | 1280 | light | 4-step wizard with detected `Containerfile`, build context `.`, and suggested port `8080` |
+| `tmp/evidence/M6/screenshots/m6b-wizard-step3-light-desktop.png` | `/apps/new` (Step 3) | 1280 | light | Health check, domain DNS match banner, and build-time `--build-arg` warning with hidden value |
+| `tmp/evidence/M6/screenshots/m6b-wizard-step4-live-light-desktop.png` | `/apps/new` (Step 4) | 1280 | light | Summary card, `live` status badge, clickable live URL, and streamed build log |
+| `tmp/evidence/M6/screenshots/m6b-app-env-light-desktop.png` | `/apps/[id]` (Environment) | 1280 | light | 6 active M6 tabs, `PUBLIC_SITE` with `Runtime` & `Build time (--build-arg)` badges and revealed value |
+| `tmp/evidence/M6/screenshots/m6b-app-settings-dark-narrow.png` | `/apps/[id]` (Settings) | 375 | dark | Horizontally scrollable tab bar and stacked Health/Resources/Build settings with zero horizontal overflow |
 
 ## How it works
 

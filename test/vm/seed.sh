@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# test/vm/seed.sh - Brings dermaga-vm (after M4a installer) to a usable demo state for M4a.
+# test/vm/seed.sh - Brings dermaga-vm to a usable demo state for M6 (apps, daemon, Traefik).
 # Idempotent: safe to run multiple times.
 
-echo "=== Seeding dermaga-vm for Milestone M4a ==="
+echo "=== Seeding dermaga-vm for Milestone M6 ==="
 echo "Timestamp: $(date -Is)"
 echo "Host: $(hostname)"
 echo "Commit: $(git rev-parse --short HEAD)"
@@ -37,11 +37,19 @@ systemctl --user is-active --quiet dermaga.service traefik.service traefik-http.
 
 ~/.local/bin/dermaga doctor || true
 ~/.local/bin/dermaga panel
+python3 -c '
+import os, sqlite3
+db = os.path.expanduser("~/.local/share/dermaga/dermaga.db")
+if os.path.exists(db):
+    c = sqlite3.connect(db)
+    apps = c.execute("SELECT a.name, d.domain, a.active_release_id FROM apps a LEFT JOIN domains d ON d.app_id=a.id AND d.is_primary=1").fetchall()
+    print("Apps:", apps)
+'
 echo "PASS: dermaga daemon, Traefik, and panel ready"
 EOF
 
 echo ""
-echo "=== Dermaga M4a Demo State Ready ==="
+echo "=== Dermaga M6 Demo State Ready ==="
 echo "Access the web panel:"
 echo "  1. Start SSH tunnel: ssh -N -L 7070:127.0.0.1:7070 $VM_HOST"
 echo "  2. If uninitialized, open the http://localhost:7070/setup?token=... link printed above"
