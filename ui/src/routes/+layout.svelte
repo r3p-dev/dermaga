@@ -91,6 +91,12 @@
 						>
 							Audit Log
 						</a>
+						<a
+							href="/settings"
+							class="px-3 py-1.5 rounded-md transition {page.url.pathname === '/settings' ? 'bg-stone-100 dark:bg-stone-800 text-stone-900 dark:text-stone-100' : 'text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100'}"
+						>
+							Settings
+						</a>
 					</nav>
 				{/if}
 			</div>
@@ -139,6 +145,12 @@
 				>
 					Audit Log
 				</a>
+				<a
+					href="/settings"
+					class="px-3 py-1.5 rounded-md transition {page.url.pathname === '/settings' ? 'bg-stone-100 dark:bg-stone-800 text-stone-900 dark:text-stone-100' : 'text-stone-600 dark:text-stone-400'}"
+				>
+					Settings
+				</a>
 			</nav>
 		{/if}
 	</header>
@@ -157,8 +169,9 @@
 						</div>
 					{/if}
 					{#if session.setup_state === 'admin_created'}
-						<div role="status" class="p-3.5 rounded-lg bg-stone-100 dark:bg-stone-900 border border-stone-300 dark:border-stone-700 text-stone-800 dark:text-stone-200 text-xs">
-							Setup incomplete: hook domain is not configured yet (required before connecting GitHub).
+						<div role="status" class="p-3.5 rounded-lg bg-stone-100 dark:bg-stone-900 border border-stone-300 dark:border-stone-700 text-stone-800 dark:text-stone-200 text-xs flex flex-wrap items-center justify-between gap-2">
+							<span>Setup incomplete: hook domain is not configured yet (required before connecting GitHub).</span>
+							<a href="/settings?tab=hook-domain" class="font-medium text-brand-text hover:underline">Configure hook domain</a>
 						</div>
 					{/if}
 				</div>

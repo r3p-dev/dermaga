@@ -182,7 +182,32 @@
 			{/if}
 		</div>
 	{:else}
-		<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden shadow-sm">
+		<!-- Narrow screen stacked rows (CONVENTIONS §5.2) -->
+		<div class="md:hidden space-y-3" aria-label="Audit log list">
+			{#each logs as log (log.id)}
+				{@const badge = getOriginBadge(log.origin)}
+				<article class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-4 shadow-sm space-y-2">
+					<div class="flex items-center justify-between gap-2">
+						<span class="inline-flex px-2 py-0.5 rounded text-[11px] font-medium border {badge.bg} {badge.text}">
+							{log.origin}
+						</span>
+						<span class="text-[11px] font-mono text-stone-600 dark:text-stone-400">
+							{formatDate(log.created_at)}
+						</span>
+					</div>
+					<div class="flex items-baseline justify-between gap-2 text-xs font-mono">
+						<span class="font-semibold text-stone-900 dark:text-stone-100">{log.event}</span>
+						<span class="text-stone-600 dark:text-stone-400">{log.actor}</span>
+					</div>
+					<p class="text-xs text-stone-700 dark:text-stone-300 break-words">
+						{log.description}
+					</p>
+				</article>
+			{/each}
+		</div>
+
+		<!-- Desktop table -->
+		<div class="hidden md:block bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden shadow-sm">
 			<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 			<div class="overflow-x-auto focus:outline-none focus:ring-1 focus:ring-brand-ring" tabindex="0" role="region" aria-label="Audit log table">
 				<table class="w-full text-left text-xs border-collapse">

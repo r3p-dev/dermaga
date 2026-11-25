@@ -185,8 +185,14 @@ test.describe("First-Run Setup Journey (M4a: SETUP-1, SETUP-2, SETUP-3, SEC-8)",
       await page.fill("#setup-totp-code", code);
       await page.click('button:has-text("Verify & Complete Setup")');
 
-      // 4. Lands on authenticated Dashboard with hook-domain pending notice (no TOTP warning)
+      // 3b. Step 3: Hook Domain (skip to dashboard)
       await page.setViewportSize({ width: 1280, height: 800 });
+      await expect(page.locator("#hook-domain-input")).toBeVisible();
+      await assertAxeAA(page, "Setup hook domain step (light, desktop)");
+      await evidenceShot(page, "m4b-setup-hook-domain-light-desktop.png");
+      await page.click('button:has-text("Skip for now")');
+
+      // 4. Lands on authenticated Dashboard with hook-domain pending notice (no TOTP warning)
       await expect(page).toHaveURL(`${daemon.baseURL}/`);
       await expect(page.locator("h1")).toHaveText("Server Overview");
       await expect(
@@ -234,6 +240,9 @@ test.describe("First-Run Setup Journey (M4a: SETUP-1, SETUP-2, SETUP-3, SEC-8)",
       await page.click('button[type="submit"]');
 
       await expect(page.locator("#setup-totp-code")).toBeVisible();
+      await page.click('button:has-text("Skip for now")');
+
+      await expect(page.locator("#hook-domain-input")).toBeVisible();
       await page.click('button:has-text("Skip for now")');
 
       await expect(page).toHaveURL(`${daemon.baseURL}/`);

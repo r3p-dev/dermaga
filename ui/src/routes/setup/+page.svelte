@@ -8,9 +8,10 @@
 		skipSetupTOTP
 	} from '#lib/api.js';
 	import type { SetupTOTPInitResponse } from '#lib/types/api.js';
+	import HookDomainForm from '#lib/components/HookDomainForm.svelte';
 	import { onMount } from 'svelte';
 
-	type Step = 'loading' | 'token' | 'password' | 'totp';
+	type Step = 'loading' | 'token' | 'password' | 'totp' | 'hook-domain';
 
 	let step = $state<Step>('loading');
 	let tokenInput = $state('');
@@ -63,6 +64,10 @@
 
 			const session = await getSession();
 			if (session.authenticated) {
+				if (session.setup_state === 'admin_created') {
+					step = 'hook-domain';
+					return;
+				}
 				window.location.href = '/';
 				return;
 			}
@@ -157,7 +162,7 @@
 		try {
 			const res = await verifySetupTOTP({ code: totpCode.trim() });
 			if (res.success) {
-				window.location.href = '/';
+				step = 'hook-domain';
 			} else {
 				error = res.error || 'Invalid verification code.';
 			}
@@ -174,7 +179,7 @@
 		try {
 			const res = await skipSetupTOTP();
 			if (res.success) {
-				window.location.href = '/';
+				step = 'hook-domain';
 			} else {
 				error = res.error || 'Failed to skip TOTP.';
 			}
@@ -210,7 +215,7 @@
 			<p class="text-xs text-stone-600 dark:text-stone-400 mt-1">Secure your server before accessing the panel</p>
 		</div>
 
-		{#if step === 'password' || step === 'totp'}
+		{#if step === 'password' || step === 'totp' || step === 'hook-domain'}
 			<ol class="grid grid-cols-3 gap-2 mb-6 text-xs font-medium" aria-label="Setup steps">
 				<li
 					class="px-2.5 py-2 rounded-md border text-center {step === 'password'
@@ -222,12 +227,18 @@
 				<li
 					class="px-2.5 py-2 rounded-md border text-center {step === 'totp'
 						? 'border-brand-primary bg-brand-primary/10 text-brand-text'
-						: 'border-stone-200 dark:border-stone-800 text-stone-600 dark:text-stone-400'}"
+						: step === 'hook-domain'
+							? 'border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300'
+							: 'border-stone-200 dark:border-stone-800 text-stone-600 dark:text-stone-400'}"
 				>
 					2. Two-Factor Auth
 				</li>
-				<li class="px-2.5 py-2 rounded-md border border-stone-200 dark:border-stone-800 text-center text-stone-600 dark:text-stone-400">
-					3. Hook Domain (next)
+				<li
+					class="px-2.5 py-2 rounded-md border text-center {step === 'hook-domain'
+						? 'border-brand-primary bg-brand-primary/10 text-brand-text'
+						: 'border-stone-200 dark:border-stone-800 text-stone-600 dark:text-stone-400'}"
+				>
+					3. Hook Domain
 				</li>
 			</ol>
 		{/if}
@@ -406,6 +417,15 @@
 					</div>
 				</form>
 			</div>
+		{:else if step === 'hook-domain'}
+			<HookDomainForm
+				onSaved={() => {
+					window.location.href = '/';
+				}}
+				onSkip={() => {
+					window.location.href = '/';
+				}}
+			/>
 		{/if}
 	</div>
 </div>
