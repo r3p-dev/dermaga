@@ -11,6 +11,7 @@
 		disableSettingsTOTP
 	} from '#lib/api.js';
 	import HookDomainForm from '#lib/components/HookDomainForm.svelte';
+	import GitHubSettings from '#lib/components/GitHubSettings.svelte';
 	import type {
 		SessionInfo,
 		AccessSettingsResponse,
@@ -19,7 +20,7 @@
 	} from '#lib/types/api.js';
 	import { onMount } from 'svelte';
 
-	type Tab = 'access' | 'security' | 'hook-domain';
+	type Tab = 'access' | 'security' | 'hook-domain' | 'github';
 
 	let tab = $state<Tab>('access');
 	let session = $state<SessionInfo | null>(null);
@@ -79,7 +80,7 @@
 	onMount(() => {
 		const params = new URLSearchParams(window.location.search);
 		const t = params.get('tab');
-		if (t === 'security' || t === 'hook-domain' || t === 'access') {
+		if (t === 'security' || t === 'hook-domain' || t === 'github' || t === 'access') {
 			tab = t;
 		}
 		loadAll();
@@ -302,6 +303,17 @@
 		>
 			Hook Domain
 		</button>
+		<button
+			type="button"
+			role="tab"
+			aria-selected={tab === 'github'}
+			onclick={() => switchTab('github')}
+			class="px-3.5 py-2 rounded-md text-xs font-medium transition {tab === 'github'
+				? 'bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900'
+				: 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'}"
+		>
+			GitHub
+		</button>
 	</div>
 
 	{#if error}
@@ -516,5 +528,7 @@
 			<h2 class="text-base font-semibold">Reserved Hook Domain</h2>
 			<HookDomainForm onSaved={() => loadAll()} />
 		</section>
+	{:else if tab === 'github'}
+		<GitHubSettings onSwitchToHookDomain={() => switchTab('hook-domain')} />
 	{/if}
 </div>

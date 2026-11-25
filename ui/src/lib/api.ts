@@ -18,6 +18,12 @@ import type {
   HookDomainDNSInfo,
   HookDomainResponse,
   HookDomainSaveRequest,
+  GitHubStatusResponse,
+  GitHubManifestStartResponse,
+  GitHubCallbackRequest,
+  GitHubCallbackResponse,
+  GitHubDisconnectRequest,
+  GitHubDisconnectResponse,
 } from "./types/api.js";
 
 export async function verifySetupToken(
@@ -248,6 +254,60 @@ export async function saveHookDomain(
 ): Promise<HookDomainResponse & { error?: string }> {
   const res = await fetch("/api/settings/hook-domain", {
     method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  return res.json();
+}
+
+export async function getGitHubStatus(): Promise<GitHubStatusResponse> {
+  const res = await fetch("/api/settings/github");
+  if (!res.ok) {
+    throw new Error(`Failed to fetch GitHub status: ${res.statusText}`);
+  }
+  return res.json();
+}
+
+export async function startGitHubManifest(): Promise<GitHubManifestStartResponse> {
+  const res = await fetch("/api/settings/github/manifest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(
+      data.error || `Failed to start GitHub connection: ${res.statusText}`,
+    );
+  }
+  return data;
+}
+
+export async function completeGitHubCallback(
+  req: GitHubCallbackRequest,
+): Promise<GitHubCallbackResponse> {
+  const res = await fetch("/api/settings/github/callback", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  return res.json();
+}
+
+export async function syncGitHub(): Promise<
+  GitHubStatusResponse & { error?: string }
+> {
+  const res = await fetch("/api/settings/github/sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+  return res.json();
+}
+
+export async function disconnectGitHub(
+  req: GitHubDisconnectRequest,
+): Promise<GitHubDisconnectResponse> {
+  const res = await fetch("/api/settings/github", {
+    method: "DELETE",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   });

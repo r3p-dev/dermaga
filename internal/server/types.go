@@ -176,3 +176,86 @@ type HookDomainResponse struct {
 type HookDomainSaveRequest struct {
 	Domain string `json:"domain"`
 }
+
+// GitHubAppInfo summarizes the connected GitHub App metadata (GHA-6).
+type GitHubAppInfo struct {
+	ID         int64  `json:"id"`
+	Slug       string `json:"slug"`
+	Name       string `json:"name"`
+	HTMLURL    string `json:"html_url"`
+	InstallURL string `json:"install_url"`
+}
+
+// GitHubInstallationInfo represents a GitHub App installation for UI display (GHA-6, GHA-7).
+type GitHubInstallationInfo struct {
+	ID                  int64   `json:"id"`
+	AccountLogin        string  `json:"account_login"`
+	AccountType         string  `json:"account_type"`
+	RepositorySelection string  `json:"repository_selection"`
+	SuspendedAt         *string `json:"suspended_at,omitempty"`
+	HTMLURL             string  `json:"html_url"`
+}
+
+// GitHubRepositoryInfo represents a repository visible to the GitHub App (GHA-6).
+type GitHubRepositoryInfo struct {
+	ID             int64  `json:"id"`
+	InstallationID int64  `json:"installation_id"`
+	FullName       string `json:"full_name"`
+	Owner          string `json:"owner"`
+	Name           string `json:"name"`
+	Private        bool   `json:"private"`
+	DefaultBranch  string `json:"default_branch"`
+	HTMLURL        string `json:"html_url"`
+}
+
+// GitHubDeliveryInfo summarizes the most recent webhook delivery (GHA-8).
+type GitHubDeliveryInfo struct {
+	DeliveryID         string `json:"delivery_id"`
+	Event              string `json:"event"`
+	Action             string `json:"action"`
+	RepositoryFullName string `json:"repository_full_name"`
+	Status             string `json:"status"`
+	ReceivedAt         string `json:"received_at"`
+}
+
+// GitHubStatusResponse returns the current GitHub App connection state, installations, and repos (GHA-6, GHA-8).
+type GitHubStatusResponse struct {
+	Connected     bool                     `json:"connected"`
+	HookDomain    string                   `json:"hook_domain"`
+	App           *GitHubAppInfo           `json:"app,omitempty"`
+	Installations []GitHubInstallationInfo `json:"installations"`
+	Repositories  []GitHubRepositoryInfo   `json:"repositories"`
+	LastDelivery  *GitHubDeliveryInfo      `json:"last_delivery,omitempty"`
+}
+
+// GitHubManifestStartResponse returns the GitHub form action URL and manifest JSON (GHA-1).
+type GitHubManifestStartResponse struct {
+	ActionURL    string `json:"action_url"`
+	ManifestJSON string `json:"manifest_json"`
+}
+
+// GitHubCallbackRequest exchanges the temporary manifest code with CSRF state verification (GHA-1).
+type GitHubCallbackRequest struct {
+	Code  string `json:"code"`
+	State string `json:"state"`
+}
+
+// GitHubCallbackResponse returns the connected App metadata and installation URL (GHA-1, GHA-3).
+type GitHubCallbackResponse struct {
+	Success    bool           `json:"success"`
+	App        *GitHubAppInfo `json:"app,omitempty"`
+	InstallURL string         `json:"install_url,omitempty"`
+	Error      string         `json:"error,omitempty"`
+}
+
+// GitHubDisconnectRequest requires typed confirmation to disconnect GitHub (GHA-6).
+type GitHubDisconnectRequest struct {
+	Confirm string `json:"confirm"`
+}
+
+// GitHubDisconnectResponse confirms disconnection and provides GitHub App deletion guidance (GHA-6).
+type GitHubDisconnectResponse struct {
+	Success      bool   `json:"success"`
+	DeleteAppURL string `json:"delete_app_url,omitempty"`
+	Error        string `json:"error,omitempty"`
+}

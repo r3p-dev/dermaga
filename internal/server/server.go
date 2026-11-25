@@ -21,6 +21,7 @@ import (
 	"dermaga/internal/access"
 	"dermaga/internal/auth"
 	"dermaga/internal/crypto"
+	"dermaga/internal/github"
 	"dermaga/internal/reconciler"
 	"dermaga/internal/store"
 )
@@ -39,6 +40,7 @@ type Config struct {
 	SocketPath string // Defaults to "$XDG_RUNTIME_DIR/dermaga/daemon.sock"
 	Store      *store.Store
 	Reconciler *reconciler.Reconciler
+	GitHub     *github.Client
 	DNSLookup  access.DNSLookup
 	MasterKey  []byte
 	Version    string
@@ -47,12 +49,13 @@ type Config struct {
 
 // Server encapsulates the HTTP and Unix socket listeners.
 type Server struct {
-	cfg          Config
-	httpServer   *http.Server
-	unixListener net.Listener
-	rateLimiter  *auth.RateLimiter
-	startedAt    time.Time
-	mu           sync.Mutex
+	cfg           Config
+	httpServer    *http.Server
+	unixListener  net.Listener
+	rateLimiter   *auth.RateLimiter
+	startedAt     time.Time
+	mu            sync.Mutex
+	manifestState map[string]pendingManifestState
 }
 
 // NewServer initializes the Server instance.
@@ -69,9 +72,10 @@ func NewServer(cfg Config) (*Server, error) {
 	}
 
 	s := &Server{
-		cfg:         cfg,
-		rateLimiter: auth.NewRateLimiter(),
-		startedAt:   time.Now(),
+		cfg:           cfg,
+		rateLimiter:   auth.NewRateLimiter(),
+		startedAt:     time.Now(),
+		manifestState: make(map[string]pendingManifestState),
 	}
 
 	mux := http.NewServeMux()
@@ -161,6 +165,11 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/settings/hook-domain", s.requireAuth(s.handleGetHookDomain))
 	mux.HandleFunc("POST /api/settings/hook-domain/check", s.requireAuth(s.handleCheckHookDomainDNS))
 	mux.HandleFunc("PUT /api/settings/hook-domain", s.requireAuth(s.handleSaveHookDomain))
+	mux.HandleFunc("GET /api/settings/github", s.requireAuth(s.handleGetGitHubStatus))
+	mux.HandleFunc("POST /api/settings/github/manifest", s.requireAuth(s.handleStartGitHubManifest))
+	mux.HandleFunc("POST /api/settings/github/callback", s.requireAuth(s.handleGitHubCallback))
+	mux.HandleFunc("POST /api/settings/github/sync", s.requireAuth(s.handleSyncGitHub))
+	mux.HandleFunc("DELETE /api/settings/github", s.requireAuth(s.handleDisconnectGitHub))
 
 	// Audit logs
 	mux.HandleFunc("GET /api/audit-logs", s.requireAuth(s.handleAuditLogs))

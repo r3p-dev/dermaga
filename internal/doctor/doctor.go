@@ -57,7 +57,7 @@ func (c Checker) Run(ctx context.Context) []Result {
 		c.diskUsage(ctx),
 	}
 	if c.Store != nil {
-		results = append(results, c.totpStatus(ctx))
+		results = append(results, c.totpStatus(ctx), c.githubStatus(ctx))
 	}
 	return results
 }
@@ -193,6 +193,32 @@ func (c Checker) totpStatus(ctx context.Context) Result {
 		}
 	}
 	return Result{Name: "totp", Status: OK, Detail: "two-factor authentication is enabled"}
+}
+
+func (c Checker) githubStatus(ctx context.Context) Result {
+	appID, err := c.Store.GetSetting(ctx, auth.SettingGitHubAppID)
+	if err != nil || appID == "" {
+		return Result{
+			Name:   "github",
+			Status: OK,
+			Detail: "not connected (configure in Settings -> GitHub)",
+		}
+	}
+	pemEnc, err := c.Store.GetSetting(ctx, "github_app_pem_encrypted")
+	if err != nil || pemEnc == "" {
+		return Result{
+			Name:   "github",
+			Status: Fail,
+			Detail: "GitHub App key is missing",
+			Fix:    "Disconnect and reconnect GitHub in Settings -> GitHub.",
+		}
+	}
+	slug, _ := c.Store.GetSetting(ctx, "github_app_slug")
+	return Result{
+		Name:   "github",
+		Status: OK,
+		Detail: fmt.Sprintf("connected (%s, app_id=%s)", slug, appID),
+	}
 }
 
 // olderThan compares dotted numeric versions such as 5.4.2.
