@@ -362,8 +362,8 @@ release workflow stamps the tag into `install.sh`; answers come from `/dev/tty`.
    "Lost this? Run `dermaga panel` on the server.").
 
 ### 5.2 First-Run Setup & GitHub Connection Flow
-1. Operator connects to `http://localhost:7070/setup` over SSH tunnel.
-2. Operator creates admin password and configures TOTP 2FA (mandatory, `SEC-1`).
+1. Operator connects to `http://localhost:7070/setup` over SSH tunnel using the single-use setup token (`SETUP-1`, `SEC-8`).
+2. Operator creates admin password and optionally enrolls TOTP 2FA (skippable with a persistent warning in the panel and `doctor`, `SETUP-2`, `DOC-2`).
 3. Operator sets reserved hook domain (e.g. `hook.example.com`).
 4. Panel renders GitHub App Manifest creation form with `redirect_url` pointing to `http://localhost:7070/setup/github/callback`.
 5. Operator submits form to GitHub; GitHub redirects back with temporary code.
@@ -458,7 +458,7 @@ All state transitions are explicit, strictly validated, and modified in exactly 
 ### 6.3 Setup Mode (`SETUP-1`)
 | State | Event / Trigger | Next State | Action / Side Effect |
 |---|---|---|---|
-| `uninitialized` | Fresh installation boots | `admin_created` | Admin password and TOTP secret established |
+| `uninitialized` | Fresh installation boots | `admin_created` | Admin password set and TOTP enrolled or skipped (`SETUP-2`); panel login unlocked with hook-domain pending notice |
 | `admin_created` | Operator sets hook domain | `domain_set` | Dedicated hook host reserved; Traefik router created |
 | `domain_set` | GitHub App manifest flow completed | `ready` | Credentials saved; webhook secret pushed via API |
 | `ready` | Normal operational mode | `ready` | Admin panel unlocked; apps and deployments enabled |

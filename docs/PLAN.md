@@ -13,21 +13,21 @@ and may propose a different split; the plan is final once approved.
 deploys, domains with automatic HTTPS, headers and middleware, server care and updates. Databases with
 backups come in v1.1.
 
-| #   | Version | Milestone                                        | Status      | Confirmed | Hours |
-| --- | ------- | ------------------------------------------------ | ----------- | --------- | ----- |
-| M0  | –       | Spikes and plan                                  | completed   | yes: confirmed by owner, 2026-11-17 (next milestone started) | 28    |
-| M1  | 0.1.0   | Foundation: daemon, login, panel shell           | completed   | yes: confirmed by owner, 2026-11-17 (owner tags v0.1.0–v0.1.4; M2 started) | 36    |
-| M2  | 0.2.0   | Generators and reconciliation                    | completed   | yes: confirmed by owner, 2026-11-17 (owner tags v0.2.0, v0.2.1; M3 started) | 28    |
-| M3  | 0.3.0   | Installer, hardening, lockout guard              | completed | M3a yes: confirmed by owner, 2026-11-17 (owner tags v0.3.0-rc, v0.3.0-rc.2; M3b started); M3b yes: confirmed by owner, 2026-11-25 (owner tags v0.3.0-rc.3, v0.3.0-rc.4, v0.3.0) | 24    |
-| M4  | 0.4.0   | First-run setup and panel access                 | not started | –         | 20    |
-| M5  | 0.5.0   | Connect GitHub                                   | not started | –         | 28    |
-| M6  | 0.6.0   | First deploy: wizard, build, env, logs           | not started | –         | 36    |
-| M7  | 0.7.0   | Zero downtime: push-to-deploy, redeploy, rollback | not started | –         | 32    |
-| M8  | 0.8.0   | Domains, HTTPS, headers, middleware              | not started | –         | 28    |
-| M9  | 0.9.0   | Server care: app status, disk, dashboard, doctor | not started | –         | 24    |
-| M10 | 0.10.0  | Updating dermaga, migration guide                | not started | –         | 24    |
-| M11 | 1.0.0   | Hardening and release                            | not started | –         | 32    |
-|     |         | **Total**                                        |             |           | **330** |
+| #   | Version | Milestone                                         | Status            | Confirmed                                                                                                                                                                       | Hours   |
+| --- | ------- | ------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| M0  | –       | Spikes and plan                                   | completed         | yes: confirmed by owner, 2026-11-17 (next milestone started)                                                                                                                    | 28      |
+| M1  | 0.1.0   | Foundation: daemon, login, panel shell            | completed         | yes: confirmed by owner, 2026-11-17 (owner tags v0.1.0–v0.1.4; M2 started)                                                                                                      | 36      |
+| M2  | 0.2.0   | Generators and reconciliation                     | completed         | yes: confirmed by owner, 2026-11-17 (owner tags v0.2.0, v0.2.1; M3 started)                                                                                                     | 28      |
+| M3  | 0.3.0   | Installer, hardening, lockout guard               | completed         | M3a yes: confirmed by owner, 2026-11-17 (owner tags v0.3.0-rc, v0.3.0-rc.2; M3b started); M3b yes: confirmed by owner, 2026-11-25 (owner tags v0.3.0-rc.3, v0.3.0-rc.4, v0.3.0) | 24      |
+| M4  | 0.4.0   | First-run setup and panel access                  | in progress (M4a) | –                                                                                                                                                                               | 20      |
+| M5  | 0.5.0   | Connect GitHub                                    | not started       | –                                                                                                                                                                               | 28      |
+| M6  | 0.6.0   | First deploy: wizard, build, env, logs            | not started       | –                                                                                                                                                                               | 36      |
+| M7  | 0.7.0   | Zero downtime: push-to-deploy, redeploy, rollback | not started       | –                                                                                                                                                                               | 32      |
+| M8  | 0.8.0   | Domains, HTTPS, headers, middleware               | not started       | –                                                                                                                                                                               | 28      |
+| M9  | 0.9.0   | Server care: app status, disk, dashboard, doctor  | not started       | –                                                                                                                                                                               | 24      |
+| M10 | 0.10.0  | Updating dermaga, migration guide                 | not started       | –                                                                                                                                                                               | 24      |
+| M11 | 1.0.0   | Hardening and release                             | not started       | –                                                                                                                                                                               | 32      |
+|     |         | **Total**                                         |                   |                                                                                                                                                                                 | **330** |
 
 Hours are the implementer's estimate for building, testing and writing the evidence of each
 milestone; review time is not included. **Confirmed** is filled only from a written record of the
@@ -46,27 +46,21 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
 
 ## Active milestone
 
-**M3b** (checkpoint of M3, 0.3.0): scenarios a–h on `dermaga-vm` from `fresh` with the
-`v0.3.0-rc.2` pre-release.
+**M4a** (checkpoint of M4, 0.4.0): first-run setup.
 
-- **Requirement IDs (VM side):** INST-1–INST-12 (INST-10 removed, DEC-23), HOST-1–HOST-7,
-  LOCK-1–LOCK-5, LAP-1–LAP-2, SEC-22 (installer side).
-- **Likely touched:** `test/vm/` (`m3_check.sh`, `port_scan.sh`, `drive_install.py`, `seed.sh`),
-  `docs/evidence/M3/EVIDENCE.md` (logs and screenshots in `tmp/evidence/M3/`), `docs/SETUP.md` §7, this file; `install/install.sh`
-  only if a scenario finds a bug.
-- **Acceptance criteria:** the eight scenarios of M3 below, each run separately from `fresh`: (a)
-  provider key present, only Enter plus the sudo password; (b) no key, guided paste; (c) wrong key,
-  confirmation can't complete, old access works, re-run succeeds; (d) confirmation window closed, old
-  access works; (e) a port scan during the whole install never shows 7070; (f) laptop command pasted
-  twice in bash and in fish gives one block; (g) re-run is a no-op; (h) after a reboot the daemon and
-  Traefik are back.
-- **Out of scope:** the first-run link and `SETUP-1` (M4); ACME without an e-mail, checked with Pebble
-  (M4, DEC-20); the upgrades of DEC-25 (`prettier-plugin-svelte` 4.x, Go 1.27, Bun 1.4.4: a separate
-  change between M3 and M4); `doctor` checks for DNS, GitHub, TOTP and certificates (M4–M9); M3a code
-  changes not required by a failing scenario.
-- **Handoff** (2026-11-25, DEC-25 toolchain upgrade completed):
-  - Done: M3 completed and confirmed (`v0.3.0`). Completed the DEC-25 toolchain upgrade as a separate change between M3 and M4: Go `1.26.0`/`1.26.11` → `1.27.4` (`go.mod`, CI/Release workflows), Bun `1.4.2` → `1.4.4` (CI/Release workflows), and `prettier-plugin-svelte` `3.5.2` → `4.2.0` (`ui/package.json`, `ui/bun.lock`; zero Svelte file reformatting needed).
-  - Remaining: **M4 (0.4.0)** is next and **not started**. Start M4 in a new session.
+- **Requirement IDs:** SETUP-1, SETUP-2 (password + TOTP steps, persistent warning), SETUP-3, SEC-8,
+  INST-12 (first-run link), DOC-2 (TOTP warning in `doctor`).
+- **Likely touched:** `internal/auth/`, `internal/store/`, `internal/server/`, `internal/doctor/`,
+  `cmd/dermaga/main.go`, `install/install.sh`, `ui/src/routes/setup/`, `ui/src/routes/login/`,
+  `ui/src/routes/+layout.svelte`, `ui/e2e/`, `test/vm/seed.sh`, `docs/`.
+- **Acceptance criteria:** from a fresh install on `dermaga-vm`, `ssh dermaga` + browser → `/setup` →
+  panel without any command typed on the server; token reuse, expiry and use after setup are refused
+  (API tests and browser journey); persistent TOTP warning in panel and `doctor` when skipped.
+- **Out of scope (M4b):** hook-domain step of SETUP-2 with DNS check, TLS-5 and ACME without e-mail
+  with Pebble (DEC-20), LAP-3, ADM-4, ADM-5, SEC-10, narrow-screen stacked audit log rows.
+- **Handoff** (2026-11-25, M4a code & local verification complete):
+  - Done: `SETUP-1`–`SETUP-3`, `SEC-8`, `INST-12` first-run link, `DOC-2` TOTP warning, TOTP enrolment & login (`internal/auth`, `internal/server`, `internal/doctor`, `cmd/dermaga`, `install/install.sh`, `ui/src/routes/setup/`), unit/API/Playwright+axe tests, `make check` green.
+  - Remaining: VM fresh-install journey on `dermaga-vm` after owner tags `v0.4.0-rc.1`, then **M4b** (hook-domain step + DNS check, `TLS-5` + Pebble ACME no-email check `DEC-20`, `LAP-3`, `ADM-4`, `ADM-5`, `SEC-10`, narrow-screen stacked audit log rows).
 
 **Every milestone** also meets the general acceptance criteria of `AGENTS.md` "Milestone loop": tests for its
 criteria (unit, golden, fake-host, fake-GitHub, API with authentication and the PRD rule, browser tests
@@ -173,6 +167,7 @@ Acceptance criteria:
   block; (g) re-run is a no-op; (h) reboot → the daemon and Traefik are back.
 
 Open items / decisions for M3:
+
 - **LAP-1 laptop command identity matching**: The `LAP-1` laptop command should get the login public key's
   fingerprint embedded by the installer, look for a matching `~/.ssh/*.pub` on the laptop, and write
   `IdentityFile` (with `IdentitiesOnly yes`) only for a real match; with no match it writes no `IdentityFile`
@@ -200,6 +195,11 @@ Acceptance criteria:
   its ACME account when `email` is empty, and record the result.
 - Carried over from M1 (owner decision, 2026-11-17): the audit log table becomes stacked rows on
   narrow screens, per `docs/CONVENTIONS.md` §5.2, with a narrow-width screenshot.
+
+Checkpoints: **M4a (~10 h)** first-run setup (SETUP-1, SEC-8, SETUP-2 password + TOTP steps with
+persistent warning and `doctor` check, SETUP-3 `dermaga panel`, INST-12 first-run link, login TOTP);
+**M4b (~10 h)** hook-domain step with DNS check, TLS-5 and ACME without e-mail with Pebble (DEC-20),
+LAP-3, ADM-4, ADM-5, SEC-10, and narrow-screen stacked audit-log rows.
 
 ## M5 (0.5.0): Connect GitHub
 

@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **First-run setup mode (`SETUP-1`, `SEC-8`)**: server-enforced redirect to `/setup` while no admin password exists, API refusal in setup mode, single-use 32-byte setup tokens stored as SHA-256 hashes with 24 h expiry, constant-time verification, rate limiting, and exchange for a short-lived `HttpOnly; SameSite=Strict` setup session cookie (with URL token stripped via `history.replaceState`).
+- **Setup wizard & TOTP enrolment (`SETUP-2`, `ADM-1`)**: `/setup` UI with token paste fallback + PRD guidance, admin password step with strength meter and server-side policy enforcement, optional TOTP enrolment (`crypto/hmac` RFC 6238 + `github.com/skip2/go-qrcode` inline SVG, ±1 step skew, replay protection, copyable Base32 secret and `otpauth://` URI), persistent TOTP-disabled warning banner in the panel and `dermaga doctor` (`DOC-2`), and TOTP verification on `/login`.
+- **Setup link in CLI & installer (`SETUP-3`, `INST-12`)**: `dermaga panel` requests a fresh setup token over `daemon.sock` when uninitialized and prints `http://localhost:7070/setup?token=...`; `install/install.sh` prints the first-run link with `dermaga admin set-password` as fallback.
+
 ### Changed
 - **Toolchain upgrade (DEC-25)**: upgraded Go to `1.27.4` (`go.mod`, CI/Release workflows), Bun to `1.4.4` (CI/Release workflows), and `prettier-plugin-svelte` to `4.2.0` (`ui/package.json`, `ui/bun.lock`).
 
