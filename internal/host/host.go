@@ -3,21 +3,25 @@
 package host
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 )
 
 // Host abstracts host-level interactions for dependency injection and testability.
 type Host interface {
 	RunCommand(ctx context.Context, name string, args ...string) ([]byte, error)
 	RunCommandWithEnv(ctx context.Context, env []string, name string, args ...string) ([]byte, error)
+	StreamCommandWithEnv(ctx context.Context, env []string, onLine func(string), name string, args ...string) error
 	WriteFileAtomic(path string, data []byte, perm os.FileMode) error
 	ReadFile(path string) ([]byte, error)
 	Stat(path string) (os.FileInfo, error)
 	Remove(path string) error
+	RemoveAll(path string) error
 	MkdirAll(path string, perm os.FileMode) error
 	ReadDir(path string) ([]os.DirEntry, error)
 }
@@ -46,6 +50,50 @@ func (h *RealHost) RunCommandWithEnv(ctx context.Context, env []string, name str
 		return out, fmt.Errorf("command %s %v failed: %w: %s", name, args, err, string(out))
 	}
 	return out, nil
+}
+
+// StreamCommandWithEnv runs a command in its own process group without shell interpolation (SEC-16),
+// streaming combined stdout/stderr line by line and killing the process group on ctx cancellation (DEP-6).
+func (h *RealHost) StreamCommandWithEnv(ctx context.Context, env []string, onLine func(string), name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...)
+	if len(env) > 0 {
+		cmd.Env = append(os.Environ(), env...)
+	}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process != nil {
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		return nil
+	}
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		return fmt.Errorf("creating output pipe: %w", err)
+	}
+	cmd.Stdout = pw
+	cmd.Stderr = pw
+
+	if err := cmd.Start(); err != nil {
+		_ = pr.Close()
+		_ = pw.Close()
+		return fmt.Errorf("starting %s: %w", name, err)
+	}
+	_ = pw.Close()
+
+	scanner := bufio.NewScanner(pr)
+	scanner.Buffer(make([]byte, 0, 64*1024), 512*1024)
+	for scanner.Scan() {
+		if onLine != nil {
+			onLine(scanner.Text())
+		}
+	}
+	scanErr := scanner.Err()
+	_ = pr.Close()
+
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("command %s %v failed: %w", name, args, err)
+	}
+	return scanErr
 }
 
 // WriteFileAtomic writes data to a temporary file in the same directory, fsyncs it,
@@ -110,6 +158,11 @@ func (h *RealHost) Stat(path string) (os.FileInfo, error) {
 // Remove removes the named file or empty directory.
 func (h *RealHost) Remove(path string) error {
 	return os.Remove(path)
+}
+
+// RemoveAll removes path and any children it contains.
+func (h *RealHost) RemoveAll(path string) error {
+	return os.RemoveAll(path)
 }
 
 // MkdirAll creates a directory named path, along with any necessary parents.

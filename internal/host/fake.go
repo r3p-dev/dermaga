@@ -23,6 +23,7 @@ type FakeHost struct {
 	FileModes   map[string]os.FileMode
 	Commands    []CommandCall
 	CommandMock func(name string, args ...string) ([]byte, error)
+	StreamMock  func(ctx context.Context, env []string, onLine func(string), name string, args ...string) error
 }
 
 // NewFakeHost initializes a memory-backed FakeHost.
@@ -47,6 +48,47 @@ func (f *FakeHost) RunCommandWithEnv(ctx context.Context, env []string, name str
 		return f.CommandMock(name, args...)
 	}
 	return []byte("ok"), nil
+}
+
+// StreamCommandWithEnv records the call and streams mocked output lines.
+func (f *FakeHost) StreamCommandWithEnv(ctx context.Context, env []string, onLine func(string), name string, args ...string) error {
+	f.mu.Lock()
+	f.Commands = append(f.Commands, CommandCall{Name: name, Args: args, Env: env})
+	streamFn := f.StreamMock
+	cmdFn := f.CommandMock
+	f.mu.Unlock()
+
+	if streamFn != nil {
+		return streamFn(ctx, env, onLine, name, args...)
+	}
+	if cmdFn != nil {
+		out, err := cmdFn(name, args...)
+		if onLine != nil && len(out) > 0 {
+			for _, line := range splitLines(string(out)) {
+				onLine(line)
+			}
+		}
+		return err
+	}
+	if onLine != nil {
+		onLine("ok")
+	}
+	return nil
+}
+
+func splitLines(s string) []string {
+	var out []string
+	start := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			out = append(out, s[start:i])
+			start = i + 1
+		}
+	}
+	if start < len(s) {
+		out = append(out, s[start:])
+	}
+	return out
 }
 
 // WriteFileAtomic stores file content in memory.
@@ -90,6 +132,21 @@ func (f *FakeHost) Remove(path string) error {
 	}
 	delete(f.Files, path)
 	delete(f.FileModes, path)
+	return nil
+}
+
+// RemoveAll deletes path and any files under it from memory.
+func (f *FakeHost) RemoveAll(path string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	clean := filepath.Clean(path)
+	prefix := clean + string(filepath.Separator)
+	for k := range f.Files {
+		if k == clean || len(k) > len(prefix) && k[:len(prefix)] == prefix {
+			delete(f.Files, k)
+			delete(f.FileModes, k)
+		}
+	}
 	return nil
 }
 

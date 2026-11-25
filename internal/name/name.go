@@ -60,6 +60,16 @@ func AppServiceName(appName string, releaseNum int) string {
 	return fmt.Sprintf("%s%s-r%d.service", AppPrefix, appName, releaseNum)
 }
 
+// AppQuadletFilename returns the Quadlet .container filename for an app release.
+func AppQuadletFilename(appName string, releaseNum int) string {
+	return fmt.Sprintf("%s%s-r%d.container", AppPrefix, appName, releaseNum)
+}
+
+// AppDynamicFilename returns the Traefik dynamic config filename for an app.
+func AppDynamicFilename(appName string) string {
+	return fmt.Sprintf("%s%s.yml", AppPrefix, appName)
+}
+
 // SystemdUserUnitName returns the systemd user service name for dermaga daemon.
 func SystemdUserUnitName() string {
 	return fmt.Sprintf("%s.service", ProjectName)
