@@ -14,6 +14,8 @@ export interface Config {
   ListenAddr: string; // Defaults to "127.0.0.1:7070"
   SocketPath: string; // Defaults to "$XDG_RUNTIME_DIR/dermaga/daemon.sock"
   Store?: any /* store.Store */;
+  Reconciler?: any /* reconciler.Reconciler */;
+  DNSLookup: any /* access.DNSLookup */;
   MasterKey: string /* []byte */;
   Version: string;
   Commit: string;
@@ -142,4 +144,87 @@ export interface RecoveryResponse {
   success: boolean;
   message: string;
   token?: string;
+}
+/**
+ * ActiveSessionEntry describes an active admin session (ADM-5).
+ */
+export interface ActiveSessionEntry {
+  id: string;
+  user_agent: string;
+  created_at: any /* time.Time */;
+  last_seen_at: any /* time.Time */;
+  expires_at: any /* time.Time */;
+  current: boolean;
+}
+/**
+ * ActiveSessionsResponse lists all active sessions (ADM-5).
+ */
+export interface ActiveSessionsResponse {
+  sessions: ActiveSessionEntry[];
+}
+/**
+ * AccessSettingsResponse provides SSH tunnel and laptop setup instructions (LAP-3).
+ */
+export interface AccessSettingsResponse {
+  address: string;
+  port: number /* int */;
+  laptop_command: string;
+  direct_ssh: string;
+  panel_url: string;
+  windows_hint: string;
+  mobile_hint: string;
+}
+/**
+ * ChangePasswordRequest updates the admin password after re-authentication (ADM-4, SEC-10).
+ */
+export interface ChangePasswordRequest {
+  current_password: string;
+  new_password: string;
+  totp_code?: string;
+}
+/**
+ * SettingsTOTPInitRequest requires current password before generating a new TOTP secret (SEC-10).
+ */
+export interface SettingsTOTPInitRequest {
+  current_password: string;
+}
+/**
+ * SettingsTOTPDisableRequest requires both current password and current TOTP code (ADM-4, SEC-10).
+ */
+export interface SettingsTOTPDisableRequest {
+  current_password: string;
+  totp_code: string;
+}
+/**
+ * HookDomainCheckRequest checks DNS A/AAAA records for a candidate hook domain (SETUP-2).
+ */
+export interface HookDomainCheckRequest {
+  domain: string;
+}
+/**
+ * HookDomainDNSInfo mirrors access.DNSCheckResult for tygo generation (SETUP-2).
+ */
+export interface HookDomainDNSInfo {
+  domain: string;
+  server_ip: string;
+  a_records: string[];
+  aaaa_records: string[];
+  a_matches: boolean;
+  aaaa_mismatch: boolean;
+  warning?: string;
+}
+/**
+ * HookDomainResponse returns the current hook domain, server IP, and DNS status (SETUP-2).
+ */
+export interface HookDomainResponse {
+  hook_domain: string;
+  server_ip: string;
+  setup_state: string;
+  dns_check?: HookDomainDNSInfo;
+}
+/**
+ * HookDomainSaveRequest persists the reserved hook domain and renders its Traefik router (SETUP-2, TLS-5).
+ */
+export interface HookDomainSaveRequest {
+  domain: string;
 }

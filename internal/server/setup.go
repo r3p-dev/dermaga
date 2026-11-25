@@ -76,7 +76,7 @@ func (s *Server) issueAdminSessionCookie(w http.ResponseWriter, r *http.Request)
 	}
 	tokenHash := auth.HashSessionToken(token)
 	expiresAt := time.Now().Add(auth.IdleTimeout)
-	if err := s.cfg.Store.CreateSession(r.Context(), tokenHash, "admin", expiresAt); err != nil {
+	if err := s.cfg.Store.CreateSessionWithMeta(r.Context(), tokenHash, "admin", r.UserAgent(), expiresAt); err != nil {
 		return err
 	}
 	http.SetCookie(w, &http.Cookie{

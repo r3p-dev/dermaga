@@ -18,8 +18,10 @@ import (
 	"sync"
 	"time"
 
+	"dermaga/internal/access"
 	"dermaga/internal/auth"
 	"dermaga/internal/crypto"
+	"dermaga/internal/reconciler"
 	"dermaga/internal/store"
 )
 
@@ -36,6 +38,8 @@ type Config struct {
 	ListenAddr string // Defaults to "127.0.0.1:7070"
 	SocketPath string // Defaults to "$XDG_RUNTIME_DIR/dermaga/daemon.sock"
 	Store      *store.Store
+	Reconciler *reconciler.Reconciler
+	DNSLookup  access.DNSLookup
 	MasterKey  []byte
 	Version    string
 	Commit     string
@@ -144,6 +148,19 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/login", s.handleLogin)
 	mux.HandleFunc("POST /api/auth/logout", s.handleLogout)
 	mux.HandleFunc("GET /api/auth/session", s.handleSession)
+	mux.HandleFunc("GET /api/auth/sessions", s.requireAuth(s.handleListSessions))
+	mux.HandleFunc("DELETE /api/auth/sessions/{id}", s.requireAuth(s.handleRevokeSession))
+	mux.HandleFunc("POST /api/auth/sessions/revoke-others", s.requireAuth(s.handleRevokeOtherSessions))
+
+	// Settings routes (LAP-3, ADM-4, SEC-10, SETUP-2)
+	mux.HandleFunc("GET /api/settings/access", s.requireAuth(s.handleGetAccessSettings))
+	mux.HandleFunc("POST /api/settings/password", s.requireAuth(s.handleChangePassword))
+	mux.HandleFunc("POST /api/settings/totp/init", s.requireAuth(s.handleSettingsTOTPInit))
+	mux.HandleFunc("POST /api/settings/totp/enable", s.requireAuth(s.handleSettingsTOTPEnable))
+	mux.HandleFunc("POST /api/settings/totp/disable", s.requireAuth(s.handleSettingsTOTPDisable))
+	mux.HandleFunc("GET /api/settings/hook-domain", s.requireAuth(s.handleGetHookDomain))
+	mux.HandleFunc("POST /api/settings/hook-domain/check", s.requireAuth(s.handleCheckHookDomainDNS))
+	mux.HandleFunc("PUT /api/settings/hook-domain", s.requireAuth(s.handleSaveHookDomain))
 
 	// Audit logs
 	mux.HandleFunc("GET /api/audit-logs", s.requireAuth(s.handleAuditLogs))
@@ -181,8 +198,18 @@ func (s *Server) setupRedirectMiddleware(next http.Handler) http.Handler {
 					return
 				}
 				if !setupMode && isSetupRoute && !s.hasValidSetupSession(r) {
-					http.Redirect(w, r, "/login", http.StatusFound)
-					return
+					allowStep3 := false
+					if state, stateErr := auth.GetSetupState(r.Context(), s.cfg.Store); stateErr == nil && state == auth.SetupStateAdminCreated {
+						if hash := sessionTokenHashFromRequest(r); hash != "" {
+							if sess, sessErr := s.cfg.Store.GetSession(r.Context(), hash); sessErr == nil && sess != nil && time.Now().Before(sess.ExpiresAt) {
+								allowStep3 = true
+							}
+						}
+					}
+					if !allowStep3 {
+						http.Redirect(w, r, "/login", http.StatusFound)
+						return
+					}
 				}
 			}
 		}
@@ -222,17 +249,23 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		// Check idle timeout
-		if time.Now().After(sess.ExpiresAt) {
+		now := time.Now()
+		if now.After(sess.ExpiresAt) {
 			_ = s.cfg.Store.DeleteSession(r.Context(), tokenHash)
 			http.Error(w, `{"error":"session expired"}`, http.StatusUnauthorized)
 			return
 		}
 
 		// Check absolute timeout (7 days from creation)
-		if time.Now().After(sess.CreatedAt.Add(auth.AbsoluteTimeout)) {
+		if now.After(sess.CreatedAt.Add(auth.AbsoluteTimeout)) {
 			_ = s.cfg.Store.DeleteSession(r.Context(), tokenHash)
 			http.Error(w, `{"error":"absolute session timeout reached"}`, http.StatusUnauthorized)
 			return
+		}
+
+		// Update last_seen_at at most once per minute (ADM-5)
+		if now.Sub(sess.LastSeenAt) >= time.Minute {
+			_ = s.cfg.Store.TouchSession(r.Context(), tokenHash, now, now.Add(auth.IdleTimeout))
 		}
 
 		next.ServeHTTP(w, r)

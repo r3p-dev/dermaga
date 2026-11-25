@@ -150,6 +150,7 @@ func runDaemon(args []string) error {
 		ListenAddr: *addr,
 		SocketPath: *sockPath,
 		Store:      st,
+		Reconciler: rec,
 		MasterKey:  masterKey,
 		Version:    Version,
 		Commit:     Commit,

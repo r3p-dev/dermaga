@@ -103,3 +103,76 @@ type RecoveryResponse struct {
 	Message string `json:"message"`
 	Token   string `json:"token,omitempty"`
 }
+
+// ActiveSessionEntry describes an active admin session (ADM-5).
+type ActiveSessionEntry struct {
+	ID         string    `json:"id"`
+	UserAgent  string    `json:"user_agent"`
+	CreatedAt  time.Time `json:"created_at"`
+	LastSeenAt time.Time `json:"last_seen_at"`
+	ExpiresAt  time.Time `json:"expires_at"`
+	Current    bool      `json:"current"`
+}
+
+// ActiveSessionsResponse lists all active sessions (ADM-5).
+type ActiveSessionsResponse struct {
+	Sessions []ActiveSessionEntry `json:"sessions"`
+}
+
+// AccessSettingsResponse provides SSH tunnel and laptop setup instructions (LAP-3).
+type AccessSettingsResponse struct {
+	Address       string `json:"address"`
+	Port          int    `json:"port"`
+	LaptopCommand string `json:"laptop_command"`
+	DirectSSH     string `json:"direct_ssh"`
+	PanelURL      string `json:"panel_url"`
+	WindowsHint   string `json:"windows_hint"`
+	MobileHint    string `json:"mobile_hint"`
+}
+
+// ChangePasswordRequest updates the admin password after re-authentication (ADM-4, SEC-10).
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+	TOTPCode        string `json:"totp_code,omitempty"`
+}
+
+// SettingsTOTPInitRequest requires current password before generating a new TOTP secret (SEC-10).
+type SettingsTOTPInitRequest struct {
+	CurrentPassword string `json:"current_password"`
+}
+
+// SettingsTOTPDisableRequest requires both current password and current TOTP code (ADM-4, SEC-10).
+type SettingsTOTPDisableRequest struct {
+	CurrentPassword string `json:"current_password"`
+	TOTPCode        string `json:"totp_code"`
+}
+
+// HookDomainCheckRequest checks DNS A/AAAA records for a candidate hook domain (SETUP-2).
+type HookDomainCheckRequest struct {
+	Domain string `json:"domain"`
+}
+
+// HookDomainDNSInfo mirrors access.DNSCheckResult for tygo generation (SETUP-2).
+type HookDomainDNSInfo struct {
+	Domain       string   `json:"domain"`
+	ServerIP     string   `json:"server_ip"`
+	ARecords     []string `json:"a_records"`
+	AAAARecords  []string `json:"aaaa_records"`
+	AMatches     bool     `json:"a_matches"`
+	AAAAMismatch bool     `json:"aaaa_mismatch"`
+	Warning      string   `json:"warning,omitempty"`
+}
+
+// HookDomainResponse returns the current hook domain, server IP, and DNS status (SETUP-2).
+type HookDomainResponse struct {
+	HookDomain string             `json:"hook_domain"`
+	ServerIP   string             `json:"server_ip"`
+	SetupState string             `json:"setup_state"`
+	DNSCheck   *HookDomainDNSInfo `json:"dns_check,omitempty"`
+}
+
+// HookDomainSaveRequest persists the reserved hook domain and renders its Traefik router (SETUP-2, TLS-5).
+type HookDomainSaveRequest struct {
+	Domain string `json:"domain"`
+}
