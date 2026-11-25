@@ -101,9 +101,20 @@ def main():
             note(f"the installer printed the login test: {printed}")
             if a.at_wait == "hangup":
                 time.sleep(3)
-                note("closing the installer's terminal: closing pty fd and SIGHUP to its ssh client")
-                os.kill(pid, signal.SIGHUP)
+                note("closing the installer's terminal: SIGHUP -> SIGTERM -> SIGKILL to its ssh client")
                 os.close(fd)
+                for sig in (signal.SIGHUP, signal.SIGTERM, signal.SIGKILL):
+                    try:
+                        os.kill(pid, sig)
+                    except ProcessLookupError:
+                        break
+                    for _ in range(10):
+                        wpid, status = os.waitpid(pid, os.WNOHANG)
+                        if wpid == pid:
+                            code = os.waitstatus_to_exitcode(status)
+                            note(f"installer terminal closed: exit={code}")
+                            sys.exit(code)
+                        time.sleep(0.1)
                 break
             words = printed.split()  # ssh -p PORT server@ADDR; extra options go before the destination
             login = words[:1] + a.login_args.split() + [
@@ -116,9 +127,18 @@ def main():
                 send(b"\x03", "Ctrl+C")
     if time.time() >= deadline:
         note(f"no end after {a.timeout} s: closing the installer's terminal")
-        os.kill(pid, signal.SIGHUP)
-    _, status = os.waitpid(pid, 0)
-    code = os.waitstatus_to_exitcode(status)
+        os.kill(pid, signal.SIGTERM)
+    code = 0
+    for _ in range(50):
+        wpid, status = os.waitpid(pid, os.WNOHANG)
+        if wpid == pid:
+            code = os.waitstatus_to_exitcode(status)
+            break
+        time.sleep(0.1)
+    else:
+        os.kill(pid, signal.SIGKILL)
+        _, status = os.waitpid(pid, 0)
+        code = os.waitstatus_to_exitcode(status)
     note(f"installer terminal closed: exit={code}")
     sys.exit(code)
 
