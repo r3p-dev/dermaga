@@ -150,7 +150,10 @@ explanations.**
   everything.
 - **shellcheck:** every shell script (`*.sh`, `scripts/*`) passes `shellcheck`. CI installs it and
   enforces it (`make shellcheck SHELLCHECK_REQUIRED=1`); locally `make check` runs it when it is
-  installed and prints `SKIP shellcheck (not installed)` otherwise (DEC-27).
+  installed and prints `SKIP shellcheck (not installed)` otherwise (DEC-27). It runs at all
+  severities; findings are fixed, not hidden. Only targeted directives, each with a one-line reason;
+  no file-wide disables and no repo-wide `.shellcheckrc`. `test/vm/.shellcheckrc` disables SC2029
+  only, because VM scripts expand their local variables on the client on purpose (DEC-28).
 
 ## 8. Comments and documentation
 

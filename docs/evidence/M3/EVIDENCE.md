@@ -915,3 +915,150 @@ history before this change":
 - shellcheck findings in the older scripts are unknown until the first CI run; the CI step fails on
   any finding.
 - The newly pinned socat and curl images run only in M3b.
+
+### Follow-up 2 (CI shellcheck)
+
+The owner pushed the follow-up's commits; CI run `44018910439` (commit `a7074a3`) failed at
+`make shellcheck SHELLCHECK_REQUIRED=1` (shellcheck 0.10.0). Failing log, read with
+`gh run view 44018910439 --log-failed`: `tmp/evidence/M3/logs/ci-shellcheck-failure.log` (60 findings).
+Logs of this part: `tmp/evidence/M3/logs/process3-*.log`. No behavior changed except the SC2140 fix,
+which makes the script send the YAML it already showed. Nothing ran on `dermaga-vm`, nothing as root.
+
+| Where | Code | Fix |
+| --- | --- | --- |
+| `install/install.sh:141` (`. "$ROOT/etc/os-release"`) | SC1091 (info) | targeted directive `# shellcheck source=/dev/null` with a reason: the file is the target system's, under `$ROOT` |
+| `install/install.sh:841`, `:843` (`want` in `supported_algos`) | SC2178, SC2128 (warning) | rename to `wanted_list` inside `supported_algos` only. `want` there is a scalar (a space-separated algorithm list split on purpose in the `for`); the array is a different local `want` in the package step (`local -a missing=() want=(…)`, now line 472), which shellcheck can't scope apart |
+| `scripts/evidence-run:39` (`sed 's/^/#   /'`) | SC2001 (style) | fixed: `while IFS= read -r line; do printf '#   %s\n' "$line"; done`, output byte-identical |
+| `test/vm/m3_check.sh:56` | SC2016 (info) | targeted directive with a reason: the single-quoted script runs on the VM |
+| `test/vm/m3_check.sh:67` (`'~/.local/bin/dermaga doctor'`) | SC2088 (warning) | targeted directive with a reason: the remote shell expands `~`; the command is unchanged |
+| `test/vm/measure_nfr2.sh`, `test_quadlet_dryrun.sh`, `test_reconciliation.sh`, `test_traefik_configs.sh` (49 places) | SC2029 (info) | `test/vm/.shellcheckrc` with `disable=SC2029` and a reason (DEC-28). The shellcheck 0.10.0 manual: it looks for `.shellcheckrc` "in the script's directory and each parent directory" and reads `key=value` pairs "as file-wide directives" |
+| `test/vm/test_reconciliation.sh:135`, `:153` (`- url: "http://127.0.0.1:9090"` inside `ssh dermaga-vm "…"`) | SC2140 (warning) | fixed: inner quotes escaped (`\"…\"`); the YAML sent to the VM now keeps its quotes, as the script shows |
+
+| Check | Status | Log file | Excerpt (≤20 lines) |
+| --- | --- | --- | --- |
+| Local shellcheck, as `make shellcheck` runs it | NOT RUN (not installed; CI is the gate, owner decision) | `tmp/evidence/M3/logs/process3-shellcheck-local.log` | below |
+| `bash -n` on every changed script | PASS | `tmp/evidence/M3/logs/process3-bash-syntax.log` | below |
+| `install.sh`: `bash -n`, diff, `supported_algos` output before and after, every installer test | PASS | `tmp/evidence/M3/logs/process3-install-proof.log` | below |
+| `evidence-run` output byte-identical before and after SC2001 | PASS | `tmp/evidence/M3/logs/process3-evidence-run-identical.log` | below |
+| SC2140 dry render of the remote script, before and after | PASS | `tmp/evidence/M3/logs/process3-sc2140-render.log` | below |
+| `scripts/selftest` (4 cases) | PASS | `tmp/evidence/M3/logs/process3-selftest-*.log` | each ends `# Exit: 0` (5, 4, 4 and 1 `ok:` lines) |
+| `make check` | PASS | `tmp/evidence/M3/logs/process3-make-check.log` | below |
+| Suggested commits checked one by one | PASS | `tmp/evidence/M3/logs/process3-check-commits.log` | below |
+
+#### process3-shellcheck-local.log
+
+```text
+$ command -v shellcheck
+not installed
+$ make -s shellcheck
+SKIP shellcheck (not installed)
+# Exit: 0
+```
+
+#### process3-bash-syntax.log
+
+```text
+bash -n ok: install/install.sh
+bash -n ok: scripts/evidence-run
+bash -n ok: test/vm/m3_check.sh
+bash -n ok: test/vm/test_reconciliation.sh
+# Exit: 0
+```
+
+#### process3-install-proof.log
+
+The diff has two hunks: the SC1091 directive (comment lines only) and the rename.
+
+```text
+-  local kind=$1 want=$2 have a out=()
++  local kind=$1 wanted_list=$2 have a out=()
+   have=$(ssh -Q "$kind" 2>/dev/null)
+-  for a in $want; do
++  for a in $wanted_list; do
+== want is still an array only in the package function (line numbers after the change)
+472:  local -a missing=() want=("${PACKAGES[@]}") p
+473:  if ! dpkg -s chrony >/dev/null 2>&1; then want+=(systemd-timesyncd); fi
+474:  for p in "${want[@]}"; do
+supported_algos output: identical
+--- PASS: TestInstallFreshServer (1.55s)
+--- PASS: TestInstallTimeoutKeepsOldAccess (3.61s)
+--- PASS: TestInstallRejectedSSHDConfigRolledBack (0.55s)
+--- PASS: TestSSHDOpenPhaseWithRealSSHD (0.03s)
+--- PASS: TestSSHDFinalWithRealSSHD (0.09s)
+--- PASS: TestInstallScriptSyntax (0.00s)
+PASS
+ok  	dermaga/install	10.203s
+```
+
+All 14 installer tests passed (the other eight `--- PASS` lines are in the log). `TestSSHDFinalWithRealSSHD`
+renders the final sshd configuration, which uses `supported_algos`, and checks it with real `sshd -T`.
+
+#### process3-evidence-run-identical.log
+
+The committed `evidence-run` (with `sed`) and the new one ran back to back on the same dirty tree.
+
+```text
+== working tree is dirty: 8 changed paths
+== header lines compared (Timestamp dropped, log name normalised): 14
+status lines: 8
+headers byte-identical
+== edge input (backslash, double space, leading spaces): sed vs read loop
+edge input byte-identical
+# Exit: 0
+```
+
+#### process3-sc2140-render.log
+
+`ssh` is replaced by a function that prints the remote command, so the script's lines 109–155 render
+locally with no VM contact and nothing written.
+
+```text
+== YAML url lines before the fix (HEAD)
+28:          - url: http://127.0.0.1:9090
+46:          - url: http://127.0.0.1:9090
+== YAML url lines after the fix
+28:          - url: "http://127.0.0.1:9090"
+46:          - url: "http://127.0.0.1:9090"
+28c28
+<           - url: http://127.0.0.1:9090
+---
+>           - url: "http://127.0.0.1:9090"
+46c46
+<           - url: http://127.0.0.1:9090
+---
+>           - url: "http://127.0.0.1:9090"
+```
+
+The full diff has only these two lines besides the header line naming the rendered file.
+
+#### process3-make-check.log
+
+```text
+ok   ui
+ok   lint
+ok   test
+ok   vulncheck
+ok   build-all
+ok   policy
+SKIP shellcheck (not installed)
+=== make check passed successfully ===
+# Exit: 0
+```
+
+#### process3-check-commits.log
+
+```text
+PASS static checks: 4 commits, 9 paths
+PASS commit 1: fix(install): rename the algorithm list in supported_algos (log: .check-logs/commits/commit1.log)
+PASS commit 2: fix(test): keep the YAML quotes in the reconciliation VM script (log: .check-logs/commits/commit2.log)
+PASS commit 3: build: resolve the remaining shellcheck findings (log: .check-logs/commits/commit3.log)
+PASS commit 4: docs: record the shellcheck policy, DEC-28 and the M4 audit log item (log: .check-logs/commits/commit4.log)
+# Exit: 0
+```
+
+Plan: `tmp/evidence/M3/commits3.plan`. The excerpt was pasted after the run (documentation-only edit).
+
+Owner decisions recorded here: local shellcheck is not required (CI is the gate); the narrow audit-log
+table is carried over to M4's acceptance criteria in `docs/PLAN.md`; the CHANGELOG mention of
+`docs/evidence/M1/brand/` stays. `install/install.sh` holds both the rename and the SC1091 directive,
+and a path belongs to exactly one commit, so the directive is in the `fix(install)` commit.

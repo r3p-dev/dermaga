@@ -76,7 +76,7 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
     `test/vm/test_traefik_configs.sh` are now pinned by tag and digest but not yet exercised on the VM.
     Then EVIDENCE.md, the report and the version bump to 0.3.0.
   - New decisions: DEC-25 (upgrades after M3, `test/ci/`), DEC-26 (only EVIDENCE.md is committed;
-    raw artifacts in `tmp/evidence/`), DEC-27 (shellcheck enforced in CI, optional locally). Process:
+    raw artifacts in `tmp/evidence/`), DEC-27 (shellcheck enforced in CI, optional locally), DEC-28 (`test/vm/.shellcheckrc` disables SC2029). Process:
     session-start reading set, evidence and check scripts slimmed down (`docs/evidence/M3/EVIDENCE.md`,
     "Process checkpoint"); the open questions of that checkpoint are resolved by the owner; no
     application behavior changed.
@@ -211,6 +211,8 @@ Acceptance criteria:
   link; the `dermaga admin set-password` hint from M3 becomes the fallback only.
 - ACME without an e-mail (DEC-20, owner agreed): with Pebble, check how Traefik registers and reuses
   its ACME account when `email` is empty, and record the result.
+- Carried over from M1 (owner decision, 2026-11-17): the audit log table becomes stacked rows on
+  narrow screens, per `docs/CONVENTIONS.md` §5.2, with a narrow-width screenshot.
 
 ## M5 (0.5.0): Connect GitHub
 
