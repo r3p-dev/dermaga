@@ -141,3 +141,54 @@ func (sm *StreamMasker) Flush() {
 	}
 	sm.buf = nil
 }
+
+const maxLogLineBytes = 4096
+
+// LineAccumulator buffers already-masked chunks into newline-delimited lines,
+// flushing at maxLogLineBytes if a stream emits a long line without a newline.
+type LineAccumulator struct {
+	maxBytes int
+	buf      strings.Builder
+	onLine   func(string)
+}
+
+// NewLineAccumulator creates a LineAccumulator with the default 4 KiB line bound.
+func NewLineAccumulator(onLine func(string)) *LineAccumulator {
+	return &LineAccumulator{maxBytes: maxLogLineBytes, onLine: onLine}
+}
+
+// Write appends a masked chunk and emits complete lines or bounded chunks.
+func (la *LineAccumulator) Write(chunk string) {
+	la.buf.WriteString(chunk)
+	for {
+		s := la.buf.String()
+		if idx := strings.IndexByte(s, '\n'); idx >= 0 {
+			line := s[:idx]
+			la.buf.Reset()
+			la.buf.WriteString(s[idx+1:])
+			if line != "" && la.onLine != nil {
+				la.onLine(line)
+			}
+			continue
+		}
+		if la.maxBytes > 0 && len(s) >= la.maxBytes {
+			part := s[:la.maxBytes]
+			la.buf.Reset()
+			la.buf.WriteString(s[la.maxBytes:])
+			if la.onLine != nil {
+				la.onLine(part)
+			}
+			continue
+		}
+		break
+	}
+}
+
+// Flush emits any remaining buffered partial line.
+func (la *LineAccumulator) Flush() {
+	rem := strings.TrimRight(la.buf.String(), "\n")
+	la.buf.Reset()
+	if rem != "" && la.onLine != nil {
+		la.onLine(rem)
+	}
+}

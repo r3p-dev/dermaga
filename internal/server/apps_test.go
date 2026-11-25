@@ -170,3 +170,36 @@ func TestAppsAPI_CreateEnvRevealDelete_WIZ6_APP1_UI5_APP9(t *testing.T) {
 		t.Fatalf("expected 200 on delete, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
+
+func TestAppsAPI_RuntimeLogMasking_SEC9_LOG1(t *testing.T) {
+	srv, s, fh, token := setupAppsTestServer(t)
+	ctx := context.Background()
+
+	envSealed, _ := deploy.SealEnvMap(srv.cfg.MasterKey, "env_encrypted", map[string]string{"DB_PASS": "rt_secret_val_456"})
+	_ = s.CreateApp(ctx, &store.App{
+		ID: "app_rt", Name: "rtapp", RepoOwner: "octo", RepoName: "portfolio",
+		Port: 8080, HealthType: "none", EnvEncrypted: envSealed,
+	})
+	_ = s.CreateDeployment(ctx, &store.Deployment{
+		ID: "dep_rt1", AppID: "app_rt", ReleaseNumber: 1, Status: "active",
+		Trigger: "manual", CommitHash: "abc", CommitMessage: "init",
+	})
+	_ = s.SetActiveRelease(ctx, "app_rt", "dep_rt1")
+
+	fh.StreamMock = func(ctx context.Context, env []string, onLine func(string), name string, args ...string) error {
+		onLine("2026-11-26T00:00:00Z connecting with rt_secret_val_456")
+		return nil
+	}
+
+	rr := doAPIReq(srv, http.MethodGet, "/api/apps/app_rt/logs/stream?follow=false&lines=50", token, nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	body := rr.Body.String()
+	if strings.Contains(body, "rt_secret_val_456") {
+		t.Fatalf("runtime secret leaked in runtime log stream: %s", body)
+	}
+	if !strings.Contains(body, "[MASKED]") {
+		t.Fatalf("expected [MASKED] in runtime log stream: %s", body)
+	}
+}

@@ -180,30 +180,15 @@ func (b *Builder) Build(ctx context.Context, req BuildRequest) (string, error) {
 
 	emit(fmt.Sprintf("==> Building image %s (memory=%s, cpus=%s)", imageRef, mem, cpus))
 
-	var lineBuf strings.Builder
-	sm := NewStreamMasker(masker, func(chunk string) {
-		lineBuf.WriteString(chunk)
-		for {
-			s := lineBuf.String()
-			idx := strings.IndexByte(s, '\n')
-			if idx < 0 {
-				break
-			}
-			line := s[:idx]
-			lineBuf.Reset()
-			lineBuf.WriteString(s[idx+1:])
-			if line != "" {
-				b.logs.Append(req.DeploymentID, line)
-			}
-		}
+	la := NewLineAccumulator(func(line string) {
+		b.logs.Append(req.DeploymentID, line)
 	})
+	sm := NewStreamMasker(masker, la.Write)
 	err = b.host.StreamCommandWithEnv(buildCtx, buildProcEnv, func(line string) {
 		_, _ = sm.Write([]byte(line + "\n"))
 	}, "podman", args...)
 	sm.Flush()
-	if rem := strings.TrimRight(lineBuf.String(), "\n"); rem != "" {
-		b.logs.Append(req.DeploymentID, rem)
-	}
+	la.Flush()
 
 	if err != nil {
 		if errors.Is(ctx.Err(), context.Canceled) {

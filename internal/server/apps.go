@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"dermaga/internal/builder"
 	"dermaga/internal/deploy"
 	"dermaga/internal/name"
 	"dermaga/internal/store"
@@ -840,6 +841,23 @@ func (s *Server) handleStreamRuntimeLogs(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	runtimeEnv, _ := deploy.OpenEnvMap(s.cfg.MasterKey, "env_encrypted", app.EnvEncrypted)
+	buildEnv, _ := deploy.OpenEnvMap(s.cfg.MasterKey, "build_env_encrypted", app.BuildEnvEncrypted)
+	secrets := make([]string, 0, len(runtimeEnv)+len(buildEnv))
+	for _, v := range runtimeEnv {
+		secrets = append(secrets, v)
+	}
+	for _, v := range buildEnv {
+		secrets = append(secrets, v)
+	}
+	masker := builder.NewMasker(secrets)
+	la := builder.NewLineAccumulator(func(maskedLine string) {
+		b, _ := json.Marshal(maskedLine)
+		_, _ = fmt.Fprintf(w, "event: log\ndata: %s\n\n", b)
+		flusher.Flush()
+	})
+	sm := builder.NewStreamMasker(masker, la.Write)
+
 	serviceName := name.AppServiceName(app.Name, dep.ReleaseNumber)
 	args := []string{"--user", "-u", serviceName, "-n", strconv.Itoa(lines), "--no-pager", "-o", "short-iso"}
 	if follow {
@@ -847,12 +865,12 @@ func (s *Server) handleStreamRuntimeLogs(w http.ResponseWriter, r *http.Request)
 	}
 
 	err = s.cfg.Host.StreamCommandWithEnv(r.Context(), nil, func(line string) {
-		b, _ := json.Marshal(line)
-		_, _ = fmt.Fprintf(w, "event: log\ndata: %s\n\n", b)
-		flusher.Flush()
+		_, _ = sm.Write([]byte(line + "\n"))
 	}, "journalctl", args...)
-	if err != nil && !errors.Is(r.Context().Err(), r.Context().Err()) {
-		b, _ := json.Marshal(err.Error())
+	sm.Flush()
+	la.Flush()
+	if err != nil && r.Context().Err() == nil {
+		b, _ := json.Marshal(masker.MaskString(err.Error()))
 		_, _ = fmt.Fprintf(w, "event: error\ndata: %s\n\n", b)
 		flusher.Flush()
 	}

@@ -39,6 +39,34 @@ func TestMasker_ChunkBoundaryAndLongestFirst_SEC9(t *testing.T) {
 	}
 }
 
+func TestLineAccumulator_BoundedFlushAndSplitSecret_SEC9(t *testing.T) {
+	secret := "top_secret_across_flush_boundary_999"
+	m := NewMasker([]string{secret})
+	var lines []string
+	la := NewLineAccumulator(func(line string) {
+		lines = append(lines, line)
+	})
+	sm := NewStreamMasker(m, la.Write)
+
+	// Emit > 4096 bytes without any newline, with secret split across the 4096-byte boundary.
+	prefix := strings.Repeat("a", maxLogLineBytes-10)
+	_, _ = sm.Write([]byte(prefix + secret[:15]))
+	_, _ = sm.Write([]byte(secret[15:] + strings.Repeat("b", 100)))
+	sm.Flush()
+	la.Flush()
+
+	if len(lines) < 2 {
+		t.Fatalf("expected long line without newline to flush at size bound, got %d line(s)", len(lines))
+	}
+	joined := strings.Join(lines, "")
+	if strings.Contains(joined, secret) {
+		t.Fatalf("secret leaked across bounded flush boundary")
+	}
+	if !strings.Contains(joined, "[MASKED]") {
+		t.Fatalf("expected [MASKED] in flushed output")
+	}
+}
+
 func TestBuilder_BuildAndMasking_GHA5_DEP7_DEP8(t *testing.T) {
 	fh := host.NewFakeHost()
 	fh.StreamMock = func(ctx context.Context, env []string, onLine func(string), name string, args ...string) error {
