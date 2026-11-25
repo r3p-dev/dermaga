@@ -18,7 +18,7 @@ backups come in v1.1.
 | M0  | –       | Spikes and plan                                  | completed   | yes: confirmed by owner, 2026-11-17 (next milestone started) | 28    |
 | M1  | 0.1.0   | Foundation: daemon, login, panel shell           | completed   | yes: confirmed by owner, 2026-11-17 (owner tags v0.1.0–v0.1.4; M2 started) | 36    |
 | M2  | 0.2.0   | Generators and reconciliation                    | completed   | yes: confirmed by owner, 2026-11-17 (owner tags v0.2.0, v0.2.1; M3 started) | 28    |
-| M3  | 0.3.0   | Installer, hardening, lockout guard              | completed | M3a yes: confirmed by owner, 2026-11-17 (owner tags v0.3.0-rc, v0.3.0-rc.2; M3b started); M3b: – | 24    |
+| M3  | 0.3.0   | Installer, hardening, lockout guard              | completed | M3a yes: confirmed by owner, 2026-11-17 (owner tags v0.3.0-rc, v0.3.0-rc.2; M3b started); M3b yes: confirmed by owner, 2026-11-25 (owner tags v0.3.0-rc.3, v0.3.0-rc.4, v0.3.0) | 24    |
 | M4  | 0.4.0   | First-run setup and panel access                 | not started | –         | 20    |
 | M5  | 0.5.0   | Connect GitHub                                   | not started | –         | 28    |
 | M6  | 0.6.0   | First deploy: wizard, build, env, logs           | not started | –         | 36    |
