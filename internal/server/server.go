@@ -21,7 +21,9 @@ import (
 	"dermaga/internal/access"
 	"dermaga/internal/auth"
 	"dermaga/internal/crypto"
+	"dermaga/internal/deploy"
 	"dermaga/internal/github"
+	"dermaga/internal/host"
 	"dermaga/internal/reconciler"
 	"dermaga/internal/store"
 )
@@ -40,6 +42,8 @@ type Config struct {
 	SocketPath string // Defaults to "$XDG_RUNTIME_DIR/dermaga/daemon.sock"
 	Store      *store.Store
 	Reconciler *reconciler.Reconciler
+	Deploy     *deploy.Engine
+	Host       host.Host
 	GitHub     *github.Client
 	DNSLookup  access.DNSLookup
 	MasterKey  []byte
@@ -171,6 +175,23 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/settings/github/callback", s.requireAuth(s.handleGitHubCallback))
 	mux.HandleFunc("POST /api/settings/github/sync", s.requireAuth(s.handleSyncGitHub))
 	mux.HandleFunc("DELETE /api/settings/github", s.requireAuth(s.handleDisconnectGitHub))
+
+	// Wizard & Apps routes (WIZ-1–WIZ-6, APP-1, APP-5–APP-7, APP-9, DEP-3, DEP-5–DEP-9, LOG-1–LOG-2)
+	mux.HandleFunc("GET /api/github/repos/{owner}/{repo}/branches", s.requireAuth(s.handleListRepoBranches))
+	mux.HandleFunc("GET /api/github/repos/{owner}/{repo}/inspect", s.requireAuth(s.handleInspectRepo))
+	mux.HandleFunc("POST /api/domains/check", s.requireAuth(s.handleCheckDomainDNS))
+	mux.HandleFunc("GET /api/apps", s.requireAuth(s.handleListApps))
+	mux.HandleFunc("POST /api/apps", s.requireAuth(s.handleCreateApp))
+	mux.HandleFunc("GET /api/apps/{id}", s.requireAuth(s.handleGetApp))
+	mux.HandleFunc("PATCH /api/apps/{id}", s.requireAuth(s.handleUpdateAppSettings))
+	mux.HandleFunc("DELETE /api/apps/{id}", s.requireAuth(s.handleDeleteApp))
+	mux.HandleFunc("PUT /api/apps/{id}/env", s.requireAuth(s.handleUpdateAppEnv))
+	mux.HandleFunc("POST /api/apps/{id}/env/reveal", s.requireAuth(s.handleRevealAppEnv))
+	mux.HandleFunc("POST /api/apps/{id}/deploy", s.requireAuth(s.handleTriggerDeploy))
+	mux.HandleFunc("GET /api/apps/{id}/deployments", s.requireAuth(s.handleListAppDeployments))
+	mux.HandleFunc("GET /api/apps/{id}/logs/stream", s.requireAuth(s.handleStreamRuntimeLogs))
+	mux.HandleFunc("POST /api/deployments/{id}/cancel", s.requireAuth(s.handleCancelDeployment))
+	mux.HandleFunc("GET /api/deployments/{id}/logs/stream", s.requireAuth(s.handleStreamBuildLogs))
 
 	// Audit logs
 	mux.HandleFunc("GET /api/audit-logs", s.requireAuth(s.handleAuditLogs))

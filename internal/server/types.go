@@ -259,3 +259,182 @@ type GitHubDisconnectResponse struct {
 	DeleteAppURL string `json:"delete_app_url,omitempty"`
 	Error        string `json:"error,omitempty"`
 }
+
+// RepoBranchesResponse lists branches for a GitHub repository (WIZ-2).
+type RepoBranchesResponse struct {
+	Branches []string `json:"branches"`
+}
+
+// RepoContainerfileCandidate describes a detected Containerfile/Dockerfile (WIZ-3).
+type RepoContainerfileCandidate struct {
+	Path         string `json:"path"`
+	BuildContext string `json:"build_context"`
+	ExposedPort  int    `json:"exposed_port"`
+}
+
+// RepoInspectResponse returns Containerfile detection and submodule/LFS warnings (WIZ-3).
+type RepoInspectResponse struct {
+	Branch           string                       `json:"branch"`
+	HasContainerfile bool                         `json:"has_containerfile"`
+	Containerfile    string                       `json:"containerfile"`
+	BuildContext     string                       `json:"build_context"`
+	SuggestedPort    int                          `json:"suggested_port"`
+	Candidates       []RepoContainerfileCandidate `json:"candidates"`
+	HasSubmodules    bool                         `json:"has_submodules"`
+	HasLFS           bool                         `json:"has_lfs"`
+	TreeTruncated    bool                         `json:"tree_truncated"`
+}
+
+// DomainCheckRequest checks DNS resolution for a domain in the wizard (WIZ-4).
+type DomainCheckRequest struct {
+	Domain string `json:"domain"`
+}
+
+// DomainCheckResponse reports DNS check status and expected record (WIZ-4).
+type DomainCheckResponse struct {
+	Domain     string   `json:"domain"`
+	Matches    bool     `json:"matches"`
+	ExpectedIP string   `json:"expected_ip"`
+	ResolvedIP []string `json:"resolved_ips,omitempty"`
+	Message    string   `json:"message"`
+}
+
+// EnvVarInput represents an environment variable submitted by the panel (APP-1).
+type EnvVarInput struct {
+	Key       string `json:"key"`
+	Value     string `json:"value"`
+	Runtime   bool   `json:"runtime"`
+	BuildTime bool   `json:"build_time"`
+}
+
+// EnvVarMetadata describes a stored environment variable without exposing its secret value (UI-5).
+type EnvVarMetadata struct {
+	Key       string `json:"key"`
+	Runtime   bool   `json:"runtime"`
+	BuildTime bool   `json:"build_time"`
+}
+
+// EnvRevealRequest requests the plaintext value of a single env variable (UI-5).
+type EnvRevealRequest struct {
+	Key   string `json:"key"`
+	Scope string `json:"scope"` // "runtime" or "build_time"
+}
+
+// EnvRevealResponse returns the revealed env variable value.
+type EnvRevealResponse struct {
+	Key   string `json:"key"`
+	Scope string `json:"scope"`
+	Value string `json:"value"`
+}
+
+// CreateAppRequest creates a new app and triggers its first deployment (WIZ-1–WIZ-6).
+type CreateAppRequest struct {
+	Name              string        `json:"name"`
+	RepoFullName      string        `json:"repo_full_name"`
+	Branch            string        `json:"branch"`
+	ContainerfilePath string        `json:"containerfile_path"`
+	BuildContext      string        `json:"build_context"`
+	Port              int           `json:"port"`
+	HealthType        string        `json:"health_type"`
+	HealthPath        string        `json:"health_path"`
+	HealthCmd         string        `json:"health_cmd"`
+	HealthTimeoutSec  int           `json:"health_timeout_sec"`
+	HealthConsecutive int           `json:"health_consecutive"`
+	Domain            string        `json:"domain"`
+	Env               []EnvVarInput `json:"env"`
+}
+
+// UpdateAppSettingsRequest updates mutable app settings (APP-5, APP-6, APP-7).
+type UpdateAppSettingsRequest struct {
+	Branch            string   `json:"branch"`
+	ContainerfilePath string   `json:"containerfile_path"`
+	BuildContext      string   `json:"build_context"`
+	Port              int      `json:"port"`
+	HealthType        string   `json:"health_type"`
+	HealthPath        string   `json:"health_path"`
+	HealthCmd         string   `json:"health_cmd"`
+	HealthTimeoutSec  int      `json:"health_timeout_sec"`
+	HealthConsecutive int      `json:"health_consecutive"`
+	MemoryLimit       string   `json:"memory_limit"`
+	CPULimit          string   `json:"cpu_limit"`
+	PidsLimit         int      `json:"pids_limit"`
+	ReadOnlyRoot      bool     `json:"read_only_root"`
+	AddCapabilities   []string `json:"add_capabilities"`
+}
+
+// UpdateAppEnvRequest replaces an app's environment variables (APP-1).
+type UpdateAppEnvRequest struct {
+	Env []EnvVarInput `json:"env"`
+}
+
+// DeleteAppRequest requires typed confirmation of the app name (APP-9, UI-6).
+type DeleteAppRequest struct {
+	ConfirmName string `json:"confirm_name"`
+}
+
+// DeploymentInfo is the API representation of a deployment (DEP-9).
+type DeploymentInfo struct {
+	ID            string  `json:"id"`
+	AppID         string  `json:"app_id"`
+	ReleaseNumber int     `json:"release_number"`
+	Status        string  `json:"status"`
+	StatusLabel   string  `json:"status_label"`
+	Trigger       string  `json:"trigger"`
+	CommitHash    string  `json:"commit_hash"`
+	CommitMessage string  `json:"commit_message"`
+	BuildLogs     string  `json:"build_logs,omitempty"`
+	ErrorMessage  string  `json:"error_message,omitempty"`
+	StartedAt     string  `json:"started_at"`
+	FinishedAt    *string `json:"finished_at,omitempty"`
+}
+
+// AppSummary is returned by GET /api/apps.
+type AppSummary struct {
+	ID             string          `json:"id"`
+	Name           string          `json:"name"`
+	RepoFullName   string          `json:"repo_full_name"`
+	Branch         string          `json:"branch"`
+	PrimaryDomain  string          `json:"primary_domain"`
+	Port           int             `json:"port"`
+	HealthType     string          `json:"health_type"`
+	LastDeployment *DeploymentInfo `json:"last_deployment,omitempty"`
+	CreatedAt      string          `json:"created_at"`
+}
+
+// AppsListResponse lists all apps.
+type AppsListResponse struct {
+	Apps []AppSummary `json:"apps"`
+}
+
+// AppDetailResponse returns full app configuration, env metadata, and deployments.
+type AppDetailResponse struct {
+	ID                string           `json:"id"`
+	Name              string           `json:"name"`
+	RepoFullName      string           `json:"repo_full_name"`
+	Branch            string           `json:"branch"`
+	ContainerfilePath string           `json:"containerfile_path"`
+	BuildContext      string           `json:"build_context"`
+	Port              int              `json:"port"`
+	HealthType        string           `json:"health_type"`
+	HealthPath        string           `json:"health_path"`
+	HealthCmd         string           `json:"health_cmd"`
+	HealthTimeoutSec  int              `json:"health_timeout_sec"`
+	HealthConsecutive int              `json:"health_consecutive"`
+	MemoryLimit       string           `json:"memory_limit"`
+	CPULimit          string           `json:"cpu_limit"`
+	PidsLimit         int              `json:"pids_limit"`
+	ReadOnlyRoot      bool             `json:"read_only_root"`
+	AddCapabilities   []string         `json:"add_capabilities"`
+	PrimaryDomain     string           `json:"primary_domain"`
+	ActiveReleaseID   *string          `json:"active_release_id,omitempty"`
+	Env               []EnvVarMetadata `json:"env"`
+	Deployments       []DeploymentInfo `json:"deployments"`
+	CreatedAt         string           `json:"created_at"`
+	UpdatedAt         string           `json:"updated_at"`
+}
+
+// CreateAppResponse returns the created app and its initial deployment.
+type CreateAppResponse struct {
+	App        AppSummary     `json:"app"`
+	Deployment DeploymentInfo `json:"deployment"`
+}

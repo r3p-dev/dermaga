@@ -1,0 +1,172 @@
+package server
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"dermaga/internal/auth"
+	"dermaga/internal/builder"
+	"dermaga/internal/deploy"
+	"dermaga/internal/github"
+	"dermaga/internal/host"
+	"dermaga/internal/store"
+)
+
+func setupAppsTestServer(t *testing.T) (*Server, *store.Store, *host.FakeHost, string) {
+	t.Helper()
+	tmp := t.TempDir()
+	s, err := store.Open(filepath.Join(tmp, "test.db"))
+	if err != nil {
+		t.Fatalf("store.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	masterKey := make([]byte, 32)
+	_, _ = rand.Read(masterKey)
+
+	ctx := context.Background()
+	hash, _ := auth.HashPassword("StrongPassword!123")
+	_ = s.SetSetting(ctx, "admin_password_hash", hash)
+	_ = s.SetSetting(ctx, "hook_domain", "hooks.example.com")
+	_ = s.ReplaceGitHubInstallationsAndRepos(ctx,
+		[]store.GitHubInstallation{{ID: 42, AccountLogin: "octo", AccountType: "User"}},
+		[]store.GitHubRepository{{ID: 1, InstallationID: 42, FullName: "octo/portfolio", Owner: "octo", Name: "portfolio", DefaultBranch: "main"}},
+	)
+
+	token, err := auth.GenerateSessionToken()
+	if err != nil {
+		t.Fatalf("GenerateSessionToken: %v", err)
+	}
+	_ = s.CreateSession(ctx, auth.HashSessionToken(token), "admin", time.Now().Add(time.Hour))
+
+	fh := host.NewFakeHost()
+	bld := builder.New(fh, builder.BuildConfig{
+		MirrorsDir: filepath.Join(tmp, "mirrors"),
+		BuildsDir:  filepath.Join(tmp, "builds"),
+	}, nil)
+	eng := deploy.NewEngine(s, fh, github.NewClient(), bld, deploy.Config{
+		QuadletDir:        filepath.Join(tmp, "quadlet"),
+		TraefikDynamicDir: filepath.Join(tmp, "traefik"),
+		EnvDir:            filepath.Join(tmp, "env"),
+		MirrorsDir:        filepath.Join(tmp, "mirrors"),
+		BuildsDir:         filepath.Join(tmp, "builds"),
+		BinaryPath:        "/usr/local/bin/dermaga",
+		MasterKey:         masterKey,
+		StabilityWindow:   5 * time.Millisecond,
+		ProbeInterval:     5 * time.Millisecond,
+	})
+
+	srv, err := NewServer(Config{
+		Store:     s,
+		Deploy:    eng,
+		Host:      fh,
+		MasterKey: masterKey,
+	})
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+	return srv, s, fh, token
+}
+
+func doAPIReq(srv *Server, method, path, token string, body any) *httptest.ResponseRecorder {
+	var buf bytes.Buffer
+	if body != nil {
+		_ = json.NewEncoder(&buf).Encode(body)
+	}
+	req := httptest.NewRequest(method, "http://127.0.0.1:7070"+path, &buf)
+	req.Host = "127.0.0.1:7070"
+	if method != http.MethodGet {
+		req.Header.Set("Origin", "http://127.0.0.1:7070")
+	}
+	if token != "" {
+		req.AddCookie(&http.Cookie{Name: auth.SessionCookieName, Value: token})
+	}
+	rr := httptest.NewRecorder()
+	srv.httpServer.Handler.ServeHTTP(rr, req)
+	return rr
+}
+
+func TestAppsAPI_CreateEnvRevealDelete_WIZ6_APP1_UI5_APP9(t *testing.T) {
+	srv, s, _, token := setupAppsTestServer(t)
+
+	// Unauthenticated rejected (401)
+	if rr := doAPIReq(srv, http.MethodGet, "/api/apps", "", nil); rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 unauthenticated, got %d", rr.Code)
+	}
+
+	// Hook domain rejected as app domain (WIZ-6 / APP-2)
+	rr := doAPIReq(srv, http.MethodPost, "/api/apps", token, CreateAppRequest{
+		Name:         "portfolio",
+		RepoFullName: "octo/portfolio",
+		Branch:       "main",
+		Port:         3000,
+		HealthType:   "http",
+		HealthPath:   "/health",
+		Domain:       "hooks.example.com",
+	})
+	if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "hook domain") {
+		t.Fatalf("expected hook domain validation error, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// Valid creation
+	rr = doAPIReq(srv, http.MethodPost, "/api/apps", token, CreateAppRequest{
+		Name:         "portfolio",
+		RepoFullName: "octo/portfolio",
+		Branch:       "main",
+		Port:         3000,
+		HealthType:   "http",
+		HealthPath:   "/health",
+		Domain:       "portfolio.example.com",
+		Env: []EnvVarInput{
+			{Key: "API_KEY", Value: "secret-123", Runtime: true, BuildTime: false},
+			{Key: "PUBLIC_URL", Value: "https://portfolio.example.com", Runtime: true, BuildTime: true},
+		},
+	})
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 Created, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var created CreateAppResponse
+	_ = json.Unmarshal(rr.Body.Bytes(), &created)
+
+	// GET /api/apps/{id} hides secret values (UI-5)
+	rr = doAPIReq(srv, http.MethodGet, "/api/apps/"+created.App.ID, token, nil)
+	if rr.Code != http.StatusOK || strings.Contains(rr.Body.String(), "secret-123") {
+		t.Fatalf("GET app leaked secret or failed: %d %s", rr.Code, rr.Body.String())
+	}
+
+	// Explicit reveal returns value and writes audit log (UI-5, AUD-1)
+	rr = doAPIReq(srv, http.MethodPost, "/api/apps/"+created.App.ID+"/env/reveal", token, EnvRevealRequest{
+		Key: "API_KEY", Scope: "runtime",
+	})
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), "secret-123") {
+		t.Fatalf("reveal failed: %d %s", rr.Code, rr.Body.String())
+	}
+	logs, _ := s.ListAuditLogs(context.Background(), store.AuditFilter{Limit: 10})
+	foundReveal := false
+	for _, l := range logs {
+		if l.Event == "secret_reveal" && !strings.Contains(l.Description, "secret-123") {
+			foundReveal = true
+		}
+	}
+	if !foundReveal {
+		t.Fatalf("expected secret_reveal audit log without secret value, got %+v", logs)
+	}
+
+	// Delete requires typed confirmation (APP-9, UI-6)
+	rr = doAPIReq(srv, http.MethodDelete, "/api/apps/"+created.App.ID, token, DeleteAppRequest{ConfirmName: "wrong"})
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 on wrong confirm_name, got %d", rr.Code)
+	}
+	rr = doAPIReq(srv, http.MethodDelete, "/api/apps/"+created.App.ID, token, DeleteAppRequest{ConfirmName: "portfolio"})
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 on delete, got %d: %s", rr.Code, rr.Body.String())
+	}
+}

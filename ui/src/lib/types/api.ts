@@ -19,6 +19,8 @@ export interface Config {
   SocketPath: string; // Defaults to "$XDG_RUNTIME_DIR/dermaga/daemon.sock"
   Store?: any /* store.Store */;
   Reconciler?: any /* reconciler.Reconciler */;
+  Deploy?: any /* deploy.Engine */;
+  Host: any /* host.Host */;
   GitHub?: any /* github.Client */;
   DNSLookup: any /* access.DNSLookup */;
   MasterKey: string /* []byte */;
@@ -326,4 +328,201 @@ export interface GitHubDisconnectResponse {
   success: boolean;
   delete_app_url?: string;
   error?: string;
+}
+/**
+ * RepoBranchesResponse lists branches for a GitHub repository (WIZ-2).
+ */
+export interface RepoBranchesResponse {
+  branches: string[];
+}
+/**
+ * RepoContainerfileCandidate describes a detected Containerfile/Dockerfile (WIZ-3).
+ */
+export interface RepoContainerfileCandidate {
+  path: string;
+  build_context: string;
+  exposed_port: number /* int */;
+}
+/**
+ * RepoInspectResponse returns Containerfile detection and submodule/LFS warnings (WIZ-3).
+ */
+export interface RepoInspectResponse {
+  branch: string;
+  has_containerfile: boolean;
+  containerfile: string;
+  build_context: string;
+  suggested_port: number /* int */;
+  candidates: RepoContainerfileCandidate[];
+  has_submodules: boolean;
+  has_lfs: boolean;
+  tree_truncated: boolean;
+}
+/**
+ * DomainCheckRequest checks DNS resolution for a domain in the wizard (WIZ-4).
+ */
+export interface DomainCheckRequest {
+  domain: string;
+}
+/**
+ * DomainCheckResponse reports DNS check status and expected record (WIZ-4).
+ */
+export interface DomainCheckResponse {
+  domain: string;
+  matches: boolean;
+  expected_ip: string;
+  resolved_ips?: string[];
+  message: string;
+}
+/**
+ * EnvVarInput represents an environment variable submitted by the panel (APP-1).
+ */
+export interface EnvVarInput {
+  key: string;
+  value: string;
+  runtime: boolean;
+  build_time: boolean;
+}
+/**
+ * EnvVarMetadata describes a stored environment variable without exposing its secret value (UI-5).
+ */
+export interface EnvVarMetadata {
+  key: string;
+  runtime: boolean;
+  build_time: boolean;
+}
+/**
+ * EnvRevealRequest requests the plaintext value of a single env variable (UI-5).
+ */
+export interface EnvRevealRequest {
+  key: string;
+  scope: string; // "runtime" or "build_time"
+}
+/**
+ * EnvRevealResponse returns the revealed env variable value.
+ */
+export interface EnvRevealResponse {
+  key: string;
+  scope: string;
+  value: string;
+}
+/**
+ * CreateAppRequest creates a new app and triggers its first deployment (WIZ-1–WIZ-6).
+ */
+export interface CreateAppRequest {
+  name: string;
+  repo_full_name: string;
+  branch: string;
+  containerfile_path: string;
+  build_context: string;
+  port: number /* int */;
+  health_type: string;
+  health_path: string;
+  health_cmd: string;
+  health_timeout_sec: number /* int */;
+  health_consecutive: number /* int */;
+  domain: string;
+  env: EnvVarInput[];
+}
+/**
+ * UpdateAppSettingsRequest updates mutable app settings (APP-5, APP-6, APP-7).
+ */
+export interface UpdateAppSettingsRequest {
+  branch: string;
+  containerfile_path: string;
+  build_context: string;
+  port: number /* int */;
+  health_type: string;
+  health_path: string;
+  health_cmd: string;
+  health_timeout_sec: number /* int */;
+  health_consecutive: number /* int */;
+  memory_limit: string;
+  cpu_limit: string;
+  pids_limit: number /* int */;
+  read_only_root: boolean;
+  add_capabilities: string[];
+}
+/**
+ * UpdateAppEnvRequest replaces an app's environment variables (APP-1).
+ */
+export interface UpdateAppEnvRequest {
+  env: EnvVarInput[];
+}
+/**
+ * DeleteAppRequest requires typed confirmation of the app name (APP-9, UI-6).
+ */
+export interface DeleteAppRequest {
+  confirm_name: string;
+}
+/**
+ * DeploymentInfo is the API representation of a deployment (DEP-9).
+ */
+export interface DeploymentInfo {
+  id: string;
+  app_id: string;
+  release_number: number /* int */;
+  status: string;
+  status_label: string;
+  trigger: string;
+  commit_hash: string;
+  commit_message: string;
+  build_logs?: string;
+  error_message?: string;
+  started_at: string;
+  finished_at?: string;
+}
+/**
+ * AppSummary is returned by GET /api/apps.
+ */
+export interface AppSummary {
+  id: string;
+  name: string;
+  repo_full_name: string;
+  branch: string;
+  primary_domain: string;
+  port: number /* int */;
+  health_type: string;
+  last_deployment?: DeploymentInfo;
+  created_at: string;
+}
+/**
+ * AppsListResponse lists all apps.
+ */
+export interface AppsListResponse {
+  apps: AppSummary[];
+}
+/**
+ * AppDetailResponse returns full app configuration, env metadata, and deployments.
+ */
+export interface AppDetailResponse {
+  id: string;
+  name: string;
+  repo_full_name: string;
+  branch: string;
+  containerfile_path: string;
+  build_context: string;
+  port: number /* int */;
+  health_type: string;
+  health_path: string;
+  health_cmd: string;
+  health_timeout_sec: number /* int */;
+  health_consecutive: number /* int */;
+  memory_limit: string;
+  cpu_limit: string;
+  pids_limit: number /* int */;
+  read_only_root: boolean;
+  add_capabilities: string[];
+  primary_domain: string;
+  active_release_id?: string;
+  env: EnvVarMetadata[];
+  deployments: DeploymentInfo[];
+  created_at: string;
+  updated_at: string;
+}
+/**
+ * CreateAppResponse returns the created app and its initial deployment.
+ */
+export interface CreateAppResponse {
+  app: AppSummary;
+  deployment: DeploymentInfo;
 }

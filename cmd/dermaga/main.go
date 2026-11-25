@@ -24,9 +24,12 @@ import (
 
 	"dermaga/internal/access"
 	"dermaga/internal/auth"
+	"dermaga/internal/builder"
 	"dermaga/internal/config"
 	"dermaga/internal/crypto"
+	"dermaga/internal/deploy"
 	"dermaga/internal/doctor"
+	"dermaga/internal/github"
 	"dermaga/internal/host"
 	"dermaga/internal/reconciler"
 	"dermaga/internal/server"
@@ -136,7 +139,8 @@ func runDaemon(args []string) error {
 
 	// DEP-10: Self-healing startup reconciliation
 	execPath, _ := os.Executable()
-	rec := reconciler.New(host.NewRealHost(), st, reconciler.Config{
+	realHost := host.NewRealHost()
+	rec := reconciler.New(realHost, st, reconciler.Config{
 		QuadletDir:         paths.QuadletDir,
 		TraefikDynamicDir:  paths.TraefikDynamicDir,
 		UserUnitDir:        paths.UserUnitDir,
@@ -152,11 +156,35 @@ func runDaemon(args []string) error {
 			len(recReport.OrphansRemoved), len(recReport.FilesReRendered), len(recReport.UnitsStarted), len(recReport.VerifyRoutersCleaned))
 	}
 
+	daemonCtx, daemonCancel := context.WithCancel(context.Background())
+	defer daemonCancel()
+
+	ghClient := github.NewClient()
+	bld := builder.New(realHost, builder.BuildConfig{
+		MirrorsDir: paths.MirrorsDir,
+		BuildsDir:  paths.BuildsDir,
+	}, nil)
+	depEng := deploy.NewEngine(st, realHost, ghClient, bld, deploy.Config{
+		QuadletDir:        paths.QuadletDir,
+		TraefikDynamicDir: paths.TraefikDynamicDir,
+		EnvDir:            paths.EnvDir,
+		MirrorsDir:        paths.MirrorsDir,
+		BuildsDir:         paths.BuildsDir,
+		BinaryPath:        execPath,
+		MasterKey:         masterKey,
+	})
+	if err := depEng.Start(daemonCtx); err != nil {
+		return fmt.Errorf("starting deployment engine: %w", err)
+	}
+
 	srv, err := server.NewServer(server.Config{
 		ListenAddr: *addr,
 		SocketPath: *sockPath,
 		Store:      st,
 		Reconciler: rec,
+		Deploy:     depEng,
+		Host:       realHost,
+		GitHub:     ghClient,
 		MasterKey:  masterKey,
 		Version:    Version,
 		Commit:     Commit,
