@@ -597,6 +597,61 @@ func TestSSHDOpenPhaseWithRealSSHD(t *testing.T) {
 	}
 }
 
+// TestEffectiveSSHPortsWithRealSSHD checks effective_ssh_ports against real sshd -T when
+// render_sshd_open includes Match LocalPort, and verifies a missing port is still reported.
+func TestEffectiveSSHPortsWithRealSSHD(t *testing.T) {
+	realSSHD, err := exec.LookPath("sshd")
+	if err != nil {
+		if _, statErr := os.Stat("/usr/sbin/sshd"); statErr != nil {
+			t.Skip("sshd not installed")
+		}
+		realSSHD = "/usr/sbin/sshd"
+	}
+	dir := t.TempDir()
+	if out, err := exec.Command("ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", filepath.Join(dir, "hostkey")).CombinedOutput(); err != nil {
+		t.Fatalf("%v %s", err, out)
+	}
+	main, err := os.ReadFile("testdata/debian13_sshd_config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dropinDir := filepath.Join(dir, "d")
+	_ = os.MkdirAll(dropinDir, 0755)
+	cfg := strings.Replace(string(main), "/etc/ssh/sshd_config.d", dropinDir, 1)
+	cfgPath := filepath.Join(dir, "sshd_config")
+	_ = os.WriteFile(cfgPath, []byte(cfg), 0644)
+
+	binDir := filepath.Join(dir, "bin")
+	_ = os.MkdirAll(binDir, 0755)
+	wrapper := fmt.Sprintf("#!/bin/sh\nexec %s -f %s -h %s \"$@\"\n", realSSHD, cfgPath, filepath.Join(dir, "hostkey"))
+	_ = os.WriteFile(filepath.Join(binDir, "sshd"), []byte(wrapper), 0755)
+
+	open, err := bashFn(t, nil, "render_sshd_open 4222 22")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(dropinDir, "00-dermaga.conf"), []byte(open), 0644)
+	env := []string{"PATH=" + binDir + ":" + os.Getenv("PATH")}
+	got, err := bashFn(t, env, "SSH_PORT=4222; effective_ssh_ports")
+	if err != nil {
+		t.Fatalf("effective_ssh_ports failed: %v (%s)", err, got)
+	}
+	if strings.TrimSpace(got) != "22\n4222" {
+		t.Errorf("effective_ssh_ports = %q, want %q", got, "22\\n4222")
+	}
+
+	// Negative control: -C must not hide a missing Port line.
+	missingPort := strings.Replace(open, "Port 4222\n", "", 1)
+	_ = os.WriteFile(filepath.Join(dropinDir, "00-dermaga.conf"), []byte(missingPort), 0644)
+	gotMissing, err := bashFn(t, env, "SSH_PORT=4222; effective_ssh_ports")
+	if err != nil {
+		t.Fatalf("effective_ssh_ports (missing port) failed: %v (%s)", err, gotMissing)
+	}
+	if strings.TrimSpace(gotMissing) != "22" {
+		t.Errorf("effective_ssh_ports (missing port) = %q, want %q", gotMissing, "22")
+	}
+}
+
 // HOST-2 with the real sshd: key-only on the chosen port, modern algorithms, AllowUsers server,
 // LogLevel VERBOSE, root login off, TCP forwarding local only, no stream-local forwarding.
 func TestSSHDFinalWithRealSSHD(t *testing.T) {

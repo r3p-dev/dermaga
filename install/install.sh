@@ -342,8 +342,9 @@ choose_key() {
 }
 
 # --- port and address (INST-6) ---------------------------------------------------
-# effective_ssh_ports: the ports sshd listens on with its current configuration.
-effective_ssh_ports() { sshd -T 2>/dev/null | awk '$1 == "port" {print $2}' | sort -un; }
+# effective_ssh_ports: the ports sshd listens on with its current configuration. The -C spec
+# satisfies `sshd -T` when `Match LocalPort` is active without affecting global `Port` lines.
+effective_ssh_ports() { sshd -T -C "user=$SERVER_USER,host=localhost,addr=127.0.0.1,lport=${SSH_PORT:-22}" 2>/dev/null | awk '$1 == "port" {print $2}' | sort -un; }
 
 dropin_port() { awk '$1 == "Port" {p = $2} END {print p}' "$SSHD_DROPIN" 2>/dev/null || true; }
 
