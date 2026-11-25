@@ -17,7 +17,7 @@ Commit under review for VM run: `23486bc` (`v0.5.0-rc.1`).
 | VM `hook-relay` live security (`Uid=1001` host / container UID 0, `CapEff=0`, `NoNewPrivs=1`, `01-hook-domain.yml`) | PASS | `tmp/evidence/M5/logs/vm-m5b-relay-and-state.log` | `CapEff: 0000000000000000`, `NoNewPrivs: 1`, `http://hook-relay:8080` |
 | VM real GitHub App + smee push + Pebble HTTPS replay/dedupe + bad-sig `401` (`GHA-1`, `GHA-3`, `GHA-8`, `SEC-11`, `SEC-13`) | PASS | `tmp/evidence/M5/logs/vm-m5b-webhook-delivery.log` | `smee->hooks.sock status=202`, `pebble-https->relay->hooks.sock replay status=202`, `bad-sig status=401`, 1 deduped row |
 | VM `GHA-7` repo removal reflected via panel **Refresh** + `m3_check.sh` (`control`, `state`, `running`, `access` last) | PASS | `tmp/evidence/M5/logs/vm-m5b-final-checks.log` | `PASS: GHA-7 removal of r3p-dev/dermaga-test-app reflected in panel`, `all checks passed` |
-| VM `GHA-7` live webhook-path (`installation_repositories` removed, `installation` `suspend`/`unsuspend`) | NOT RUN | — | Covered by unit tests (`TestWebhookInstallationEvents_GHA7`). Live VM webhook steps: point GitHub App Webhook URL to smee channel, run smee->`hooks.sock` forwarder, click **Suspend**/**Unsuspend** and remove repo on GitHub, verify `webhook_deliveries` and `GET /api/settings/github` reflect `suspended_at` and repo removal without clicking Refresh |
+| VM `GHA-7` live webhook-path (`installation_repositories` removed, `installation` `suspend`/`unsuspend`) | PASS | `tmp/evidence/M5/logs/vm-step0-gha7-suspend.log`, `tmp/evidence/M5/logs/vm-step0-gha7-unsuspend.log` | `v0.5.0` from `fresh` + `gosmee` -> `hooks.sock`: `removed` (`dermaga-test-empty` deleted), `suspend` (`suspended_at=2026-11-25T14:18:34Z`), `unsuspend` (`suspended_at=None`) reflected in DB, `webhook_deliveries`, and `audit_logs` before any Refresh |
 | VM `v0.5.0` smoke run from `fresh` (hook-domain blocker without `hook_domain` + `m3_check.sh access` last) | PASS | `tmp/evidence/M5/logs/vm-v050-smoke.log` | `POST /api/settings/github/manifest` -> `400`, `all checks passed` |
 | VM secret greps (journal, DB, `dermaga` cmdlines) & safe reboot (`virsh shutdown` + `virsh start`) | PASS | `tmp/evidence/M5/logs/vm-m5b-greps.log` | `0 hits in journal`, `0 plaintext secret hits in DB`, `0 secret hits in dermaga cmdlines`, all 3 units `active` after reboot (`vm-m5b-reboot-and-greps.log`) |
 
@@ -74,6 +74,18 @@ github_client_secret_encrypted len= 92 encrypted= True
 github_webhook_secret_encrypted len= 124 encrypted= True
 0 plaintext secret hits in DB
 0 secret hits in dermaga cmdlines
+# Exit: 0
+```
+
+### `tmp/evidence/M5/logs/vm-step0-gha7-unsuspend.log`
+
+```text
+2026-11-25T14:20:32+00:00
+dermaga-vm
+installations: [(185789752, 'r3p-dev', None)]
+repos: [(1458365617, 'r3p-dev/dermaga-test-app')]
+deliveries: [('044f05f4-e8db-11f1-87b7-7d6b682a0ff8', 'installation_repositories', 'removed', '', 'accepted', '2026-11-25T14:17:59Z'), ('192daa2a-e8db-11f1-8500-3ae4b3dfed13', 'installation', 'suspend', '', 'accepted', '2026-11-25T14:18:35Z'), ('55ab91ce-e8db-11f1-8347-4dae8e8ac44c', 'installation', 'unsuspend', '', 'accepted', '2026-11-25T14:20:17Z')]
+audit_logs: [('webhook', 'github_installation_unsuspended', 'github', 'GitHub App installation 185789752 (r3p-dev) unsuspended', '2026-11-25T14:20:17Z'), ('webhook', 'github_installation_suspended', 'github', 'GitHub App installation 185789752 (r3p-dev) suspended', '2026-11-25T14:18:35Z'), ('webhook', 'github_repos_removed', '044f05f4-e8db-11f1-87b7-7d6b682a0ff8', 'Removed 1 repository access(es) from installation 185789752', '2026-11-25T14:17:59Z'), ...]
 # Exit: 0
 ```
 
