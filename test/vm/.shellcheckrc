@@ -1,0 +1,3 @@
+# VM scenario scripts build their ssh commands from local variables (paths, names, ports defined in
+# the script) on purpose, so client-side expansion is intended (DEC-28). Applies to test/vm/ only.
+disable=SC2029

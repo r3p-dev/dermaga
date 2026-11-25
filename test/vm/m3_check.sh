@@ -53,6 +53,8 @@ case $cmd in
     check "firewall rules open only ssh, 80, 443/tcp, 443/udp" bash -c "ssh ${ssh_opts[*]} -i $key server@$host cat /etc/nftables.conf | grep -E 'dport' | tee /dev/stderr | grep -qx '    tcp dport { $port } accept comment \"ssh\"'"
     ;;
   state)
+    # The script runs on the VM, so $u and $(…) must expand there, not here.
+    # shellcheck disable=SC2016
     as_server 'sha256sum /etc/ssh/sshd_config.d/00-dermaga.conf /etc/nftables.conf /etc/fail2ban/jail.d/90-dermaga.local \
       /etc/sysctl.d/90-dermaga.conf ~/.ssh/authorized_keys ~/.local/bin/dermaga ~/.config/systemd/user/dermaga.service \
       ~/.config/containers/systemd/traefik.container ~/.config/systemd/user/traefik-http.socket \
@@ -64,6 +66,8 @@ case $cmd in
     check "dermaga, Traefik and its sockets active" as_server systemctl --user is-active dermaga.service traefik.service traefik-http.socket traefik-https.socket
     check "panel answers on 127.0.0.1:7070" bash -c "[[ \$(ssh ${ssh_opts[*]} -i $key server@$host curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:7070/) == 200 ]]"
     check "Traefik answers on :80 from the laptop" bash -c "curl -s -o /dev/null --max-time 5 http://$host/"
+    # The remote shell expands ~ to server's home on the VM.
+    # shellcheck disable=SC2088
     check "dermaga doctor passes" as_server '~/.local/bin/dermaga doctor'
     ;;
   control)

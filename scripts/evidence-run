@@ -36,7 +36,7 @@ changes=$(git -C "$root" status --short)
   echo "# Commit: $(git -C "$root" rev-parse --short HEAD)"
   if [[ -n $changes ]]; then
     echo "# Status: dirty"
-    sed 's/^/#   /' <<<"$changes"
+    while IFS= read -r line; do printf '#   %s\n' "$line"; done <<<"$changes"
   else
     echo "# Status: clean"
   fi
