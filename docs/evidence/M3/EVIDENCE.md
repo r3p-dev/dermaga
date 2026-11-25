@@ -25,7 +25,7 @@ in M3a is a VM result; every VM item is **NOT RUN** until M3b.
 | INST-5 key choice, current key marked, guided paste | PASS: `TestInstallInteractiveEnterOnly`, `TestInstallNoKeyGuidedPaste` | PASS (a, b): `scenario-a-driver.log`, `scenario-b-driver.log` |
 | INST-6 port, address without third parties, stored | PASS: `TestInstallInteractiveEnterOnly`, `TestInstallPublicAddressNotAsked`, `TestCLIInstallSettingsFeedsLaptopCommand` | PASS (a): `scenario-a-driver.log` |
 | INST-7 plan before changes | PASS: `.../plan_declined` | PASS: `scenario-a-driver.log` (Plan shown before Packages) |
-| INST-8 :80/:443 busy → refuse | PASS: `.../port_80_busy` | NOT RUN (`ssh dermaga-vm-init "python3 -m http.server 80 &"` then `install.sh`) |
+| INST-8 :80/:443 busy → refuse | PASS: `.../port_80_busy` | PASS: `vm-inst8-port80-busy.log` (port 80 busy refused) |
 | INST-9, SEC-22 checksum-verified binary | PASS: `TestInstallRefusesUnverifiedBinary` (mismatch, missing) | PASS: `release-rc4-assets-verify.log`, `scenario-a-driver.log` |
 | INST-10 GitHub SSH host keys pinned | removed from v1.0.0 (owner decision, DEC-23); code, fixture and tests deleted | — |
 | INST-11 user service, linger, doctor | PASS: `internal/doctor` tests, reconciler Traefik tests | PASS: `scenario-a-host-checks.log` (`Linger=yes`, `dermaga doctor`) |
@@ -560,6 +560,27 @@ names refer to the new `AGENTS.md`. No rule was dropped; where the mechanism cha
 | §10.17 per-commit `make check` in a throwaway worktree; one commit per path; fish form | `scripts/check-commits`; AGENTS "Git"; CONVENTIONS §7.1 "Tooling". Changed: plan in `tmp/evidence/M<N>/`, per-commit logs in `.check-logs/commits/` (both gitignored); only its summary lines go into EVIDENCE.md |
 | §10.18 CI checked after every owner push | AGENTS "Git" |
 | §10.19 test isolation from live service directories | CONVENTIONS §7.1 "Isolation from live services" |
+
+#### Additional VM checks: `vm-inst8-port80-busy.log`, `vm-traefik-configs.log`, `vm-reconciliation.log`
+
+```text
+driver exit=1
+INST-8 refused busy port 80 as expected
+# Exit: 0
+```
+
+```text
+Verified running Traefik digest matches pinned digest: sha256:aa942a00bce033c909bf1f7e861d93761be4b31a035f10d2410d33e38a8f41cf
+=== All Traefik Golden Configurations Verified: PASS ===
+# Exit: 0
+```
+
+```text
+5c. M3 Traefik layout verified (dermaga-managed traefik.container, bind-mounted acme.json, no traefik-acme.volume): PASS (DEC-18 traefik.container managed; DEC-20 bind-mounted /etc/traefik, no traefik-acme.volume)
+5f. Planted foreign files reported in output (and managed traefik.container not reported as foreign): PASS (All 4 planted foreign files reported; traefik.container managed)
+=== All DEP-10 Reconciliation Acceptance Cases Verified: PASS ===
+# Exit: 0
+```
 
 ### Run & view
 
@@ -1237,6 +1258,27 @@ all checks passed
 # Exit: 0
 ```
 
+#### Additional VM checks: `vm-inst8-port80-busy.log`, `vm-traefik-configs.log`, `vm-reconciliation.log`
+
+```text
+driver exit=1
+INST-8 refused busy port 80 as expected
+# Exit: 0
+```
+
+```text
+Verified running Traefik digest matches pinned digest: sha256:aa942a00bce033c909bf1f7e861d93761be4b31a035f10d2410d33e38a8f41cf
+=== All Traefik Golden Configurations Verified: PASS ===
+# Exit: 0
+```
+
+```text
+5c. M3 Traefik layout verified (dermaga-managed traefik.container, bind-mounted acme.json, no traefik-acme.volume): PASS (DEC-18 traefik.container managed; DEC-20 bind-mounted /etc/traefik, no traefik-acme.volume)
+5f. Planted foreign files reported in output (and managed traefik.container not reported as foreign): PASS (All 4 planted foreign files reported; traefik.container managed)
+=== All DEP-10 Reconciliation Acceptance Cases Verified: PASS ===
+# Exit: 0
+```
+
 ### Run & view
 
 1. On a fresh Debian 13 server (or `dermaga-vm` reverted to `fresh`), run:
@@ -1273,8 +1315,6 @@ sequenceDiagram
 
 ### Known limitations / deferred
 
-- `INST-8` (`:80/:443` busy) on VM: covered by M3a fake-host test (`port_80_busy`), not provoked on VM.
 - `SETUP-1` first-run link: arrives in M4 (installer currently prints `dermaga admin set-password` fallback).
 - ACME with Pebble: arrives in M4 (`DEC-20`).
 - LLMNR port `5355` on bare `fresh` image before `apply_firewall`: deferred (blocked by `nftables` once active).
-- `test/vm/test_reconciliation.sh` and `test/vm/test_traefik_configs.sh` with pinned socat/curl digests: deferred to M4 VM run.

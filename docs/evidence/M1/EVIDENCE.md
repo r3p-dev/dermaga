@@ -325,7 +325,7 @@ Narrow viewport:
 Checkpoint `M1-brand` updates the web panel visual identity to use the official Dermaga brand assets and derived color tokens approved by the owner (`DEC-13`), achieving full WCAG 2.1 Level AA contrast compliance (`NFR-7`).
 
 ### 6.1 Brand Logo Assets and Favicons
-- **Canonical Logo**: `ui/static/logo.svg` (copied from `dermaga-archive/ui/static/logo.svg`, 33,232 bytes SVG).
+- **Canonical Logo**: `ui/static/logo.svg` (33,232 bytes SVG, carried over from the project's earlier design assets).
 - **Favicons**: Multi-size icons generated via ImageMagick (`ui/static/favicon.png` 32x32, `ui/static/favicon-16x16.png` 16x16, and `ui/static/favicon.svg`).
 - **Discovery and Generation Logs**:
   - Logo discovery: [`docs/evidence/M1/logs/brand_logo_find.log`](logs/brand_logo_find.log)
