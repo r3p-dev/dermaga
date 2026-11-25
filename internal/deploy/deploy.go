@@ -312,6 +312,15 @@ func (e *Engine) runOne(parentCtx context.Context, depID string) {
 		commitRef = app.Branch
 	}
 
+	buildMem, _ := e.store.GetSetting(parentCtx, "build_memory_limit")
+	buildCPU, _ := e.store.GetSetting(parentCtx, "build_cpu_limit")
+	var buildTimeout time.Duration
+	if ts, err := e.store.GetSetting(parentCtx, "build_timeout_sec"); err == nil && ts != "" {
+		if secs, err := strconv.Atoi(ts); err == nil && secs > 0 {
+			buildTimeout = time.Duration(secs) * time.Second
+		}
+	}
+
 	imageRef, err := e.builder.Build(runCtx, builder.BuildRequest{
 		AppName:           app.Name,
 		RepoOwner:         app.RepoOwner,
@@ -324,6 +333,9 @@ func (e *Engine) runOne(parentCtx context.Context, depID string) {
 		InstallToken:      token,
 		BuildEnv:          buildEnv,
 		RuntimeSecrets:    runtimeSecrets,
+		Memory:            buildMem,
+		CPUs:              buildCPU,
+		Timeout:           buildTimeout,
 	})
 	if err != nil {
 		failOrCancel(err, "")

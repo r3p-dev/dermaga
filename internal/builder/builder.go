@@ -35,6 +35,9 @@ type BuildRequest struct {
 	InstallToken      string // in-memory repo-scoped token (GHA-5)
 	BuildEnv          map[string]string
 	RuntimeSecrets    []string // runtime values to also mask in build logs (SEC-9)
+	Memory            string   // optional override for DEP-7
+	CPUs              string   // optional override for DEP-7
+	Timeout           time.Duration
 }
 
 // Builder executes git mirror fetches, archive exports, and podman builds via host.Host.
@@ -92,7 +95,20 @@ func (b *Builder) Build(ctx context.Context, req BuildRequest) (string, error) {
 		b.logs.Append(req.DeploymentID, masker.MaskString(line))
 	}
 
-	buildCtx, cancel := context.WithTimeout(ctx, b.cfg.Timeout)
+	timeout := b.cfg.Timeout
+	if req.Timeout > 0 {
+		timeout = req.Timeout
+	}
+	mem := b.cfg.Memory
+	if req.Memory != "" {
+		mem = req.Memory
+	}
+	cpus := b.cfg.CPUs
+	if req.CPUs != "" {
+		cpus = req.CPUs
+	}
+
+	buildCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	if err := b.host.MkdirAll(b.cfg.MirrorsDir, 0700); err != nil {
@@ -139,8 +155,8 @@ func (b *Builder) Build(ctx context.Context, req BuildRequest) (string, error) {
 	imageRef := ImageRef(req.AppName, req.ReleaseNumber)
 	args := []string{
 		"build",
-		"--memory", b.cfg.Memory,
-		"--cpus", b.cfg.CPUs,
+		"--memory", mem,
+		"--cpus", cpus,
 		"-f", containerfileAbs,
 		"-t", imageRef,
 	}
@@ -149,7 +165,7 @@ func (b *Builder) Build(ctx context.Context, req BuildRequest) (string, error) {
 	}
 	args = append(args, contextAbs)
 
-	emit(fmt.Sprintf("==> Building image %s (memory=%s, cpus=%s)", imageRef, b.cfg.Memory, b.cfg.CPUs))
+	emit(fmt.Sprintf("==> Building image %s (memory=%s, cpus=%s)", imageRef, mem, cpus))
 
 	sm := NewStreamMasker(masker, func(chunk string) {
 		for _, line := range strings.Split(strings.TrimRight(chunk, "\n"), "\n") {
@@ -168,7 +184,7 @@ func (b *Builder) Build(ctx context.Context, req BuildRequest) (string, error) {
 			return "", context.Canceled
 		}
 		if errors.Is(buildCtx.Err(), context.DeadlineExceeded) {
-			return "", fmt.Errorf("build timed out after %s", b.cfg.Timeout)
+			return "", fmt.Errorf("build timed out after %s", timeout)
 		}
 		return "", fmt.Errorf("podman build failed: %s", masker.MaskString(err.Error()))
 	}
