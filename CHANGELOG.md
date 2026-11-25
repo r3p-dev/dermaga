@@ -6,6 +6,14 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **M6a build pipeline & first deploy backend (`WIZ-2`–`WIZ-3`, `APP-1`, `APP-5`–`APP-7`, `APP-9`, `DEP-3`, `DEP-5`–`DEP-9`, `LOG-1`–`LOG-2`, `UI-5`, `UI-6`)**:
+  - `internal/github`: branch listing (`WIZ-2`), commit resolution, and repo tree/Containerfile/Dockerfile/`EXPOSE`/`.gitmodules`/`filter=lfs` inspection (`WIZ-3`) using repo-scoped installation tokens (`GHA-5`).
+  - `internal/store`: migration `0004_m6_apps_deploy.sql` (health consecutive threshold, resource/capability limits, deployment `error_message` and `image_ref`), `FailInFlightDeployments` crash/restart recovery, `DeploymentStatusLabel` (`DEP-9`), and `0003 -> 0004` upgrade test.
+  - `internal/builder`: bare Git mirrors in `~/.cache/dermaga/mirrors` with `GIT_CONFIG_*` auth (no token in URLs, `.git/config`, or `ps`), `git archive` export, `podman build` with `--memory`/`--cpus`/timeout limits (`DEP-7`), chunk-boundary-safe `SEC-9` secret masking, and bounded `LogHub` (`DEP-8`, `LOG-2`).
+  - `internal/deploy`: single global build queue (`DEP-5` superseding queued triggers), first-deploy Quadlet + `podman-system-generator --dryrun` + netns/command/stability-window health checks (`APP-5`) + Traefik dynamic route, process-group cancel (`DEP-6`), failure/cancel cleanup leaving no unit/container/image/route (`DEP-3`), and app removal (`APP-9`).
+  - `internal/server`: REST API routes for repo inspection, DNS check, app CRUD, encrypted runtime/build-time env (`APP-1`) with audited reveal (`UI-5`, `AUD-1`), deploy/cancel, typed-confirmation delete (`UI-6`), and SSE streams for build logs (`LOG-2`) and runtime logs (`LOG-1`).
+
 ## [0.5.0] - 2026-11-25
 
 ### Added

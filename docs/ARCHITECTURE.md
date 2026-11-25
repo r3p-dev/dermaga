@@ -105,6 +105,17 @@ sockets; plaintext env files (0600); a sudo-capable `server` user.
 
 Dermaga is designed as an autonomous, single-binary server platform running entirely within the unprivileged user session of Linux user `server` on **Debian 13**. It isolates application containers, reverse proxying, and administration through strict boundary layers:
 
+-- Migration 0004_m6_apps_deploy.sql
+
+ALTER TABLE apps ADD COLUMN health_consecutive INTEGER NOT NULL DEFAULT 3;
+ALTER TABLE apps ADD COLUMN memory_limit TEXT NOT NULL DEFAULT '512m';
+ALTER TABLE apps ADD COLUMN cpu_limit TEXT NOT NULL DEFAULT '1.0';
+ALTER TABLE apps ADD COLUMN pids_limit INTEGER NOT NULL DEFAULT 128;
+ALTER TABLE apps ADD COLUMN read_only_root INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE apps ADD COLUMN add_capabilities TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE deployments ADD COLUMN error_message TEXT NOT NULL DEFAULT '';
+ALTER TABLE deployments ADD COLUMN image_ref TEXT NOT NULL DEFAULT '';
 ```mermaid
 flowchart TD
     subgraph External["External Network & Operators"]
@@ -146,6 +157,17 @@ flowchart TD
     subgraph HealthChecks["Rootless Network Namespace Isolation"]
         Probe["dermaga probe (pasta netns)"] -- "HTTP probe via Aardvark-DNS" --> AppGreen
     end
+-- Migration 0004_m6_apps_deploy.sql
+
+ALTER TABLE apps ADD COLUMN health_consecutive INTEGER NOT NULL DEFAULT 3;
+ALTER TABLE apps ADD COLUMN memory_limit TEXT NOT NULL DEFAULT '512m';
+ALTER TABLE apps ADD COLUMN cpu_limit TEXT NOT NULL DEFAULT '1.0';
+ALTER TABLE apps ADD COLUMN pids_limit INTEGER NOT NULL DEFAULT 128;
+ALTER TABLE apps ADD COLUMN read_only_root INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE apps ADD COLUMN add_capabilities TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE deployments ADD COLUMN error_message TEXT NOT NULL DEFAULT '';
+ALTER TABLE deployments ADD COLUMN image_ref TEXT NOT NULL DEFAULT '';
 ```
 
 ### Boundary & Exposure Rules
@@ -169,8 +191,10 @@ One line per directory that exists in the repository; start here, then read the 
 | `cmd/dermaga/` | CLI entry point: daemon, recovery commands, `panel`, `doctor`, helpers (`main.go`) |
 | `internal/access/` | Laptop command `LAP-1` (marked `Host dermaga` block) from the stored address, port and key fingerprint |
 | `internal/auth/` | Argon2id passwords, sessions with idle and absolute limits, login rate limiting, TOTP |
+| `internal/builder/` | Bare Git mirror caching, `git archive` export, `podman build` with limits (`DEP-7`), chunk-safe `SEC-9` masking, bounded `LogHub` (`DEP-8`, `LOG-2`) |
 | `internal/config/` | XDG paths, default port and socket paths (`paths.go`) |
 | `internal/crypto/` | AES-256-GCM at rest bound to column names, master key, HMAC verification |
+| `internal/deploy/` | Single global build queue (`DEP-5`), first-deploy orchestration (`DEP-3`, `DEP-9`), health probing (`APP-5`), cancel/failure cleanup (`DEP-6`), app removal (`APP-9`) |
 | `internal/doctor/` | Host health checks (`DOC-1`) and how to fix each failure |
 | `internal/github/` | GitHub App JWT (`crypto/rsa`), manifest flow, installations, repositories, repo-scoped tokens (`GHA-1`–`GHA-6`, `DEC-09`) |
 | `internal/host/` | The host boundary: commands with argument slices and timeouts, atomic writes; faked in tests |
@@ -249,6 +273,17 @@ Mounting note: Traefik mounts `~/.local/share/dermaga/traefik/dynamic/` as a dir
 
 The database schema uses text primary keys formatted as ULIDs (or SHA-256 hashes for session tokens, and autoincrement integers for audit logs and migrations), strict foreign key constraints, UTC ISO 8601 timestamps, and encrypted text columns for secrets.
 
+-- Migration 0004_m6_apps_deploy.sql
+
+ALTER TABLE apps ADD COLUMN health_consecutive INTEGER NOT NULL DEFAULT 3;
+ALTER TABLE apps ADD COLUMN memory_limit TEXT NOT NULL DEFAULT '512m';
+ALTER TABLE apps ADD COLUMN cpu_limit TEXT NOT NULL DEFAULT '1.0';
+ALTER TABLE apps ADD COLUMN pids_limit INTEGER NOT NULL DEFAULT 128;
+ALTER TABLE apps ADD COLUMN read_only_root INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE apps ADD COLUMN add_capabilities TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE deployments ADD COLUMN error_message TEXT NOT NULL DEFAULT '';
+ALTER TABLE deployments ADD COLUMN image_ref TEXT NOT NULL DEFAULT '';
 ```sql
 -- Migration 0001_init.sql
 
@@ -366,6 +401,29 @@ CREATE TABLE webhook_deliveries (
     status TEXT NOT NULL,                      -- accepted, ignored, duplicate, rejected
     received_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
 );
+
+-- Migration 0004_m6_apps_deploy.sql
+
+ALTER TABLE apps ADD COLUMN health_consecutive INTEGER NOT NULL DEFAULT 3;
+ALTER TABLE apps ADD COLUMN memory_limit TEXT NOT NULL DEFAULT '512m';
+ALTER TABLE apps ADD COLUMN cpu_limit TEXT NOT NULL DEFAULT '1.0';
+ALTER TABLE apps ADD COLUMN pids_limit INTEGER NOT NULL DEFAULT 128;
+ALTER TABLE apps ADD COLUMN read_only_root INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE apps ADD COLUMN add_capabilities TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE deployments ADD COLUMN error_message TEXT NOT NULL DEFAULT '';
+ALTER TABLE deployments ADD COLUMN image_ref TEXT NOT NULL DEFAULT '';
+-- Migration 0004_m6_apps_deploy.sql
+
+ALTER TABLE apps ADD COLUMN health_consecutive INTEGER NOT NULL DEFAULT 3;
+ALTER TABLE apps ADD COLUMN memory_limit TEXT NOT NULL DEFAULT '512m';
+ALTER TABLE apps ADD COLUMN cpu_limit TEXT NOT NULL DEFAULT '1.0';
+ALTER TABLE apps ADD COLUMN pids_limit INTEGER NOT NULL DEFAULT 128;
+ALTER TABLE apps ADD COLUMN read_only_root INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE apps ADD COLUMN add_capabilities TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE deployments ADD COLUMN error_message TEXT NOT NULL DEFAULT '';
+ALTER TABLE deployments ADD COLUMN image_ref TEXT NOT NULL DEFAULT '';
 ```
 
 ---
@@ -418,6 +476,17 @@ release workflow stamps the tag into `install.sh`; answers come from `/dev/tty`.
 6. Daemon identifies target application and branch; enqueues new deployment in the build queue.
 
 ### 5.4 Blue-Green Deployment Flow
+-- Migration 0004_m6_apps_deploy.sql
+
+ALTER TABLE apps ADD COLUMN health_consecutive INTEGER NOT NULL DEFAULT 3;
+ALTER TABLE apps ADD COLUMN memory_limit TEXT NOT NULL DEFAULT '512m';
+ALTER TABLE apps ADD COLUMN cpu_limit TEXT NOT NULL DEFAULT '1.0';
+ALTER TABLE apps ADD COLUMN pids_limit INTEGER NOT NULL DEFAULT 128;
+ALTER TABLE apps ADD COLUMN read_only_root INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE apps ADD COLUMN add_capabilities TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE deployments ADD COLUMN error_message TEXT NOT NULL DEFAULT '';
+ALTER TABLE deployments ADD COLUMN image_ref TEXT NOT NULL DEFAULT '';
 ```mermaid
 sequenceDiagram
     participant Q as Build Queue
@@ -441,6 +510,17 @@ sequenceDiagram
     S->>S: Wait 10s drain window
     S->>S: systemctl --user stop app-blue.service
     S-->>Q: Mark deployment active (Keep last 5 releases for instant rollback)
+-- Migration 0004_m6_apps_deploy.sql
+
+ALTER TABLE apps ADD COLUMN health_consecutive INTEGER NOT NULL DEFAULT 3;
+ALTER TABLE apps ADD COLUMN memory_limit TEXT NOT NULL DEFAULT '512m';
+ALTER TABLE apps ADD COLUMN cpu_limit TEXT NOT NULL DEFAULT '1.0';
+ALTER TABLE apps ADD COLUMN pids_limit INTEGER NOT NULL DEFAULT 128;
+ALTER TABLE apps ADD COLUMN read_only_root INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE apps ADD COLUMN add_capabilities TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE deployments ADD COLUMN error_message TEXT NOT NULL DEFAULT '';
+ALTER TABLE deployments ADD COLUMN image_ref TEXT NOT NULL DEFAULT '';
 ```
 
 1. **Build:** Daemon fetches bare mirror using repo-scoped token passed exclusively via `GIT_CONFIG_*` environment variables ([EVIDENCE.md §3](evidence/M0/EVIDENCE.md#3-authentication-rs256-jwt--git-over-https-bearer-vs-basic)). Runs `podman build` with `--memory` and `--cpus` limits. Streams build logs with SEC-9 masking.
@@ -464,6 +544,8 @@ sequenceDiagram
 All state transitions are explicit, strictly validated, and modified in exactly one place per domain.
 
 ### 6.1 Deployment Status (`DEP-9`)
+
+Internal SQLite status values (`0001_init.sql`) map to the PRD `DEP-9` UI labels via `store.DeploymentStatusLabel`: `probing` → `healthy`, `active` → `live`; `queued`, `building`, `starting`, `failed`, `cancelled` map 1:1 (`superseded`, `switching`, and `inactive` remain internal until M7).
 | State | Event / Trigger | Next State | Action / Side Effect |
 |---|---|---|---|
 | `queued` | Deployment created | `cloning` | Enqueued in single global build queue |
