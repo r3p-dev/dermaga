@@ -44,13 +44,14 @@ denied() {
 case $cmd in
   access)
     check "server logs in with the key on port $port" as_server true
+    check "panel answers on 127.0.0.1:7070 on the server" bash -c "[[ \$(ssh ${ssh_opts[*]} -i $key server@$host curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:7070/) == 200 ]]"
+    check "firewall rules open only ssh, 80, 443/tcp, 443/udp" bash -c "ssh ${ssh_opts[*]} -i $key server@$host cat /etc/nftables.conf | grep -E 'dport' | tee /dev/stderr | grep -qx '    tcp dport { $port } accept comment \"ssh\"'"
+    check "old port 22 closed" port_closed 22
+    check "panel port 7070 closed from outside (SEC-2)" port_closed 7070
+    # Denied-login checks run last because 5 failed auth attempts trigger fail2ban (HOST-4).
     check "password login not offered to server" denied server -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive
     check "root refused, even with the key" denied root -o IdentitiesOnly=yes -i "$key"
     check "provider user debian refused, even with the key" denied debian -o IdentitiesOnly=yes -i "$key"
-    check "old port 22 closed" port_closed 22
-    check "panel port 7070 closed from outside (SEC-2)" port_closed 7070
-    check "panel answers on 127.0.0.1:7070 on the server" bash -c "[[ \$(ssh ${ssh_opts[*]} -i $key server@$host curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:7070/) == 200 ]]"
-    check "firewall rules open only ssh, 80, 443/tcp, 443/udp" bash -c "ssh ${ssh_opts[*]} -i $key server@$host cat /etc/nftables.conf | grep -E 'dport' | tee /dev/stderr | grep -qx '    tcp dport { $port } accept comment \"ssh\"'"
     ;;
   state)
     # The script runs on the VM, so $u and $(…) must expand there, not here.

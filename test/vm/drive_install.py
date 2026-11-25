@@ -101,9 +101,10 @@ def main():
             note(f"the installer printed the login test: {printed}")
             if a.at_wait == "hangup":
                 time.sleep(3)
-                note("closing the installer's terminal: SIGHUP to its ssh client")
+                note("closing the installer's terminal: closing pty fd and SIGHUP to its ssh client")
                 os.kill(pid, signal.SIGHUP)
-                continue
+                os.close(fd)
+                break
             words = printed.split()  # ssh -p PORT server@ADDR; extra options go before the destination
             login = words[:1] + a.login_args.split() + [
                 "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "StrictHostKeyChecking=accept-new"] + words[1:] + ["echo new-login-ok"]
