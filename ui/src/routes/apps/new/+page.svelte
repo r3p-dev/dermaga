@@ -430,10 +430,9 @@
 								<p>
 									Add a non-root <code class="font-mono">Containerfile</code> to your repository and commit it, or specify a custom path below.
 								</p>
-								<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-									<div class="p-2.5 rounded bg-white/80 dark:bg-stone-950/80 border border-amber-200/80 dark:border-amber-900 font-mono text-[11px] overflow-x-auto">
-										<div class="font-sans font-semibold mb-1">Go (port 8080)</div>
-										<pre>FROM golang:1.27-alpine AS build
+								<div class="p-2.5 rounded bg-white/80 dark:bg-stone-950/80 border border-amber-200/80 dark:border-amber-900 font-mono text-[11px] overflow-x-auto">
+									<div class="font-sans font-semibold mb-1">Go (non-root, port 8080)</div>
+									<pre>FROM golang:1.27-alpine AS build
 WORKDIR /src
 COPY . .
 RUN go build -o /app .
@@ -443,17 +442,6 @@ USER app
 COPY --from=build /app /app
 EXPOSE 8080
 CMD ["/app"]</pre>
-									</div>
-									<div class="p-2.5 rounded bg-white/80 dark:bg-stone-950/80 border border-amber-200/80 dark:border-amber-900 font-mono text-[11px] overflow-x-auto">
-										<div class="font-sans font-semibold mb-1">Static (port 8080)</div>
-										<pre>FROM alpine:3.21
-RUN adduser -D app
-WORKDIR /srv
-COPY . .
-USER app
-EXPOSE 8080
-CMD ["httpd","-f","-p","8080"]</pre>
-									</div>
 								</div>
 							</div>
 						{/if}

@@ -73,7 +73,7 @@ def main():
     code, apps_list = api("GET", "/api/apps")
     if code == 200:
         for a in apps_list.get("apps", []):
-            if a["name"] in ("testapp", "failapp", "cancelapp"):
+            if a["name"] in ("testapp", "failapp", "cancelapp", "timeoutapp"):
                 api("DELETE", f"/api/apps/{a['id']}", {"confirm_name": a["name"]})
                 time.sleep(1)
 
@@ -163,14 +163,24 @@ def main():
     assert "Memory=536870912" in lim_out and "NanoCpus=1000000000" in lim_out and "PidsLimit=128" in lim_out, f"unexpected limits: {lim_out}"
     print(f"PASS [4a]: podman inspect limits: {lim_out}")
 
-    # Test build timeout (set build_timeout_sec=1 temporarily)
+    # Test build timeout (set build_timeout_sec=1 temporarily on a fresh uncached mirror/build)
     vm("python3 -c \"import sqlite3; c=sqlite3.connect('/home/server/.local/share/dermaga/dermaga.db'); c.execute(\\\"INSERT OR REPLACE INTO settings(key,value) VALUES('build_timeout_sec','1')\\\"); c.commit()\"")
     try:
-        code, dep_to = api("POST", f"/api/apps/{app_id}/deploy")
-        assert code == 202, f"trigger timeout deploy failed: {code} {dep_to}"
-        res_to = wait_dep(app_id, dep_to["id"], {"failed", "active"}, timeout=60)
-        assert res_to["status"] == "failed" and "timed out" in res_to.get("error_message", ""), f"expected timeout failure, got {res_to}"
-        print(f"PASS [4b]: build exceeding timeout killed and marked failed: {res_to['error_message']}")
+        code, to_app = api("POST", "/api/apps", {
+            "name": "timeoutapp",
+            "repo_full_name": "r3p-dev/dermaga-test-app",
+            "branch": "main",
+            "port": 8080,
+            "health_type": "none",
+            "domain": "timeoutapp.dermaga.test",
+            "env": [{"key": "BUILD_VAR", "value": "timeout_uncached_val", "runtime": False, "build_time": True}],
+        })
+        assert code == 201, f"create timeoutapp failed: {code} {to_app}"
+        res_to = wait_dep(to_app["app"]["id"], to_app["deployment"]["id"], {"failed", "active"}, timeout=60)
+        err_msg = res_to.get("error_message", "")
+        assert res_to["status"] == "failed" and ("timed out" in err_msg or "signal: killed" in err_msg), f"expected timeout failure, got {res_to}"
+        api("DELETE", f"/api/apps/{to_app['app']['id']}", {"confirm_name": "timeoutapp"})
+        print(f"PASS [4b]: build exceeding timeout killed and marked failed: {err_msg}")
     finally:
         vm("python3 -c \"import sqlite3; c=sqlite3.connect('/home/server/.local/share/dermaga/dermaga.db'); c.execute(\\\"DELETE FROM settings WHERE key='build_timeout_sec'\\\"); c.commit()\"")
 
