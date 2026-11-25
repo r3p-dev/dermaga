@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **Toolchain upgrade (DEC-25)**: upgraded Go to `1.27.4` (`go.mod`, CI/Release workflows), Bun to `1.4.4` (CI/Release workflows), and `prettier-plugin-svelte` to `4.2.0` (`ui/package.json`, `ui/bun.lock`).
+
 ## [0.3.0] - 2026-11-25
 
 ### Added

@@ -9,9 +9,9 @@ This document describes the environment setup for developing and testing **Derma
 Dermaga's build and development workflow requires:
 
 - **Operating System:** Linux (Debian, Fedora, Ubuntu, or Arch) with systemd and KVM/libvirt virtualization support.
-- **Go Toolchain:** Go 1.24+ (standard library first, single static binary compiled with `CGO_ENABLED=0`).
+- **Go Toolchain:** Go 1.27+ (standard library first, single static binary compiled with `CGO_ENABLED=0`; pinned in `go.mod` and CI).
 - **JavaScript Toolchain:**
-  - **Bun:** `bun` v1.4+ (used for building the SvelteKit 3 UI and producing `bun.lock`).
+  - **Bun:** `bun` v1.4.4+ (used for building the SvelteKit 3 UI and producing `bun.lock`; pinned in CI).
   - **Node.js:** Node `v22+` / `v24` (LTS) for auxiliary tools and language servers.
 - **System Utilities:** `make`, `git`, `curl`, `jq`, `libvirt-clients` (`virsh`), `virt-install`.
 - **SSH Configuration:** `~/.ssh/config` on the workstation has two entries for the test VM. The key

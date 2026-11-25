@@ -64,10 +64,9 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
   (M4, DEC-20); the upgrades of DEC-25 (`prettier-plugin-svelte` 4.x, Go 1.27, Bun 1.4.4: a separate
   change between M3 and M4); `doctor` checks for DNS, GitHub, TOTP and certificates (M4–M9); M3a code
   changes not required by a failing scenario.
-- **Handoff** (2026-11-25, M3b completed):
-  - Done: M3b scenarios a–h, `INST-8` busy-port check, `test/vm/test_traefik_configs.sh`, and `test/vm/test_reconciliation.sh` on `dermaga-vm` from `fresh` against `v0.3.0-rc.4` (all `PASS`, logs in `tmp/evidence/M3/logs/`). Fixed `effective_ssh_ports` (`sshd -T -C ...`, `v0.3.0-rc.3`) and live-state reload verification (`ss -Hltnp`, `nft list ruleset`, `v0.3.0-rc.4`), plus `drive_install.py` hangup escalation, `m3_check.sh` check ordering, `test_traefik_configs.sh` / `test_reconciliation.sh` M3 layout assertions, `test/vm/seed.sh`, and `docs/SETUP.md` §3.2/§7.
-  - Remaining: owner confirmation of M3 (`v0.3.0` tag) and final smoke against `v0.3.0`, then the DEC-25 upgrades (`prettier-plugin-svelte` 4.x, Go 1.27, Bun 1.4.4) as one separate change before starting M4.
-  - Notes: LLMNR (port 5355 on `fresh` before `apply_firewall`) deferred; nftables blocks it once active.
+- **Handoff** (2026-11-25, DEC-25 toolchain upgrade completed):
+  - Done: M3 completed and confirmed (`v0.3.0`). Completed the DEC-25 toolchain upgrade as a separate change between M3 and M4: Go `1.26.0`/`1.26.11` → `1.27.4` (`go.mod`, CI/Release workflows), Bun `1.4.2` → `1.4.4` (CI/Release workflows), and `prettier-plugin-svelte` `3.5.2` → `4.2.0` (`ui/package.json`, `ui/bun.lock`; zero Svelte file reformatting needed).
+  - Remaining: **M4 (0.4.0)** is next and **not started**. Start M4 in a new session.
 
 **Every milestone** also meets the general acceptance criteria of `AGENTS.md` "Milestone loop": tests for its
 criteria (unit, golden, fake-host, fake-GitHub, API with authentication and the PRD rule, browser tests

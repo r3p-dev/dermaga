@@ -40,7 +40,7 @@ _Filled in as dependencies are added (M1 onward)._
 | `tailwindcss` 4.3.5, `@tailwindcss/vite` 4.3.5 | UI (build) | Utility-first CSS | M1 |
 | `typescript` 6.0.3 | UI (build) | Type checking; 6.x because `@sveltejs/kit` 3.2.0 requires `^6.0.0` and `svelte-check` 4.7.8 accepts `^5 \|\| ^6` | M1 (6.0.3 since M3) |
 | `svelte-check` 4.7.8 | UI (build) | Svelte type checking | M1 |
-| `prettier` 3.10.1, `prettier-plugin-svelte` 3.5.2 | UI (build) | Code formatting | M1 |
+| `prettier` 3.10.1, `prettier-plugin-svelte` 4.2.0 | UI (build) | Code formatting | M1 (4.2.0 since DEC-25) |
 | `@playwright/test` 1.65.1 | UI (test) | Browser end-to-end tests | M1 |
 | `@axe-core/playwright` 4.14.0 | UI (test) | WCAG 2.1 AA checks on the rendered page | M1 |
 
@@ -59,14 +59,14 @@ modernc.org/sqlite | v1.62.0 | v1.62.0 | 2026-11-07T09:13:04Z
 github.com/gzuidhof/tygo | v0.2.21 | v0.2.21 | 2026-02-03T10:16:48Z
 golang.org/x/vuln | v1.9.0 | v1.9.0 | 2026-10-11T03:39:53Z
 honnef.co/go/tools | v0.8.2 | v0.8.2 | 2026-10-12T13:34:44Z
-## Go toolchain: go.mod go line and https://go.dev/dl/?mode=json (stable)
-go 1.26.0
-go1.27.4
-## Bun packages (package | package.json | bun.lock resolved | npm latest)
-prettier-plugin-svelte | ^3.3.0 | 3.5.2 | 4.1.1
-## Bun itself: CI pin and latest GitHub release
-bun-v1.4.2
+## Go toolchain: go.mod go line and https://go.dev/dl/?mode=json (stable, queried 2026-11-25, dec25-go-query.log)
+go 1.27.4
+go1.27.4.linux-amd64.tar.gz sha256=7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840
+## Bun packages (package | package.json | bun.lock resolved | npm latest, queried 2026-11-25, dec25-prettier-svelte-query.log)
+prettier-plugin-svelte | 4.2.0 | 4.2.0 | 4.2.0
+## Bun itself: CI pin and GitHub release SHASUMS256.txt (queried 2026-11-25, dec25-bun-query.log)
 bun-v1.4.4
+bun-linux-x64.zip sha256=bf8ccbfb2b0b80159e0f9a6d15c55317add8077534dbc6130a3edb52fccb395c
 ```
 
 ## 2. Approved to add
