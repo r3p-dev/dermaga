@@ -132,7 +132,7 @@ http:
     custom-metrics:
       loadBalancer:
         servers:
-          - url: "http://127.0.0.1:9090"
+          - url: \"http://127.0.0.1:9090\"
 EOF
 
     cat << 'EOF' > $QUADLET_DIR/custom-vpn.container
@@ -150,7 +150,7 @@ http:
     custom-metrics:
       loadBalancer:
         servers:
-          - url: "http://127.0.0.1:9090"
+          - url: \"http://127.0.0.1:9090\"
 EOF
 "
 
