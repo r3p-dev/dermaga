@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// App represents an application managed by dermaga (APP-1).
+// App represents an application managed by dermaga (APP-1, APP-5, APP-6, APP-7).
 type App struct {
 	ID                string  `json:"id"`
 	Name              string  `json:"name"`
@@ -24,6 +24,12 @@ type App struct {
 	HealthPath        *string `json:"health_path"`
 	HealthCmd         *string `json:"health_cmd"`
 	HealthTimeoutSec  int     `json:"health_timeout_sec"`
+	HealthConsecutive int     `json:"health_consecutive"`
+	MemoryLimit       string  `json:"memory_limit"`
+	CPULimit          string  `json:"cpu_limit"`
+	PidsLimit         int     `json:"pids_limit"`
+	ReadOnlyRoot      bool    `json:"read_only_root"`
+	AddCapabilities   string  `json:"add_capabilities"`
 	EnvEncrypted      string  `json:"env_encrypted"`
 	BuildEnvEncrypted string  `json:"build_env_encrypted"`
 	AutoDeploy        bool    `json:"auto_deploy"`
@@ -55,8 +61,22 @@ type Deployment struct {
 	CommitMessage        string  `json:"commit_message"`
 	EnvSnapshotEncrypted string  `json:"env_snapshot_encrypted"`
 	BuildLogs            string  `json:"build_logs"`
+	ErrorMessage         string  `json:"error_message"`
+	ImageRef             string  `json:"image_ref"`
 	StartedAt            string  `json:"started_at"`
 	FinishedAt           *string `json:"finished_at"`
+}
+
+// DeploymentStatusLabel maps internal deployment status values to PRD DEP-9 labels.
+func DeploymentStatusLabel(status string) string {
+	switch status {
+	case "probing":
+		return "healthy"
+	case "active":
+		return "live"
+	default:
+		return status
+	}
 }
 
 // ActiveAppRecord encapsulates an active application with its active release and domains for reconciliation (DEP-10).
@@ -86,71 +106,71 @@ func (s *Store) CreateApp(ctx context.Context, app *App) error {
 	if app.HealthTimeoutSec <= 0 {
 		app.HealthTimeoutSec = 30
 	}
+	if app.HealthConsecutive <= 0 {
+		app.HealthConsecutive = 3
+	}
+	if app.MemoryLimit == "" {
+		app.MemoryLimit = "512m"
+	}
+	if app.CPULimit == "" {
+		app.CPULimit = "1.0"
+	}
+	if app.PidsLimit <= 0 {
+		app.PidsLimit = 128
+	}
 
 	query := `
 		INSERT INTO apps (
 			id, name, repo_owner, repo_name, branch,
 			containerfile_path, build_context, command, port,
-			health_type, health_path, health_cmd, health_timeout_sec,
+			health_type, health_path, health_cmd, health_timeout_sec, health_consecutive,
+			memory_limit, cpu_limit, pids_limit, read_only_root, add_capabilities,
 			env_encrypted, build_env_encrypted, auto_deploy, active_release_id,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	autoDeployInt := 0
 	if app.AutoDeploy {
 		autoDeployInt = 1
 	}
+	readOnlyRootInt := 0
+	if app.ReadOnlyRoot {
+		readOnlyRootInt = 1
+	}
 
 	_, err := s.db.ExecContext(ctx, query,
 		app.ID, app.Name, app.RepoOwner, app.RepoName, app.Branch,
 		app.ContainerfilePath, app.BuildContext, app.Command, app.Port,
-		app.HealthType, app.HealthPath, app.HealthCmd, app.HealthTimeoutSec,
+		app.HealthType, app.HealthPath, app.HealthCmd, app.HealthTimeoutSec, app.HealthConsecutive,
+		app.MemoryLimit, app.CPULimit, app.PidsLimit, readOnlyRootInt, app.AddCapabilities,
 		app.EnvEncrypted, app.BuildEnvEncrypted, autoDeployInt, app.ActiveReleaseID,
 		app.CreatedAt, app.UpdatedAt,
 	)
 	return err
 }
 
+const appSelectCols = `
+	id, name, repo_owner, repo_name, branch,
+	containerfile_path, build_context, command, port,
+	health_type, health_path, health_cmd, health_timeout_sec, health_consecutive,
+	memory_limit, cpu_limit, pids_limit, read_only_root, add_capabilities,
+	env_encrypted, build_env_encrypted, auto_deploy, active_release_id,
+	created_at, updated_at
+`
+
 // GetApp retrieves an app by ID.
 func (s *Store) GetApp(ctx context.Context, id string) (*App, error) {
-	query := `
-		SELECT
-			id, name, repo_owner, repo_name, branch,
-			containerfile_path, build_context, command, port,
-			health_type, health_path, health_cmd, health_timeout_sec,
-			env_encrypted, build_env_encrypted, auto_deploy, active_release_id,
-			created_at, updated_at
-		FROM apps WHERE id = ?
-	`
-	return s.scanApp(s.db.QueryRowContext(ctx, query, id))
+	return s.scanApp(s.db.QueryRowContext(ctx, `SELECT `+appSelectCols+` FROM apps WHERE id = ?`, id))
 }
 
 // GetAppByName retrieves an app by name.
 func (s *Store) GetAppByName(ctx context.Context, name string) (*App, error) {
-	query := `
-		SELECT
-			id, name, repo_owner, repo_name, branch,
-			containerfile_path, build_context, command, port,
-			health_type, health_path, health_cmd, health_timeout_sec,
-			env_encrypted, build_env_encrypted, auto_deploy, active_release_id,
-			created_at, updated_at
-		FROM apps WHERE name = ?
-	`
-	return s.scanApp(s.db.QueryRowContext(ctx, query, name))
+	return s.scanApp(s.db.QueryRowContext(ctx, `SELECT `+appSelectCols+` FROM apps WHERE name = ?`, name))
 }
 
 // ListApps returns all registered applications.
 func (s *Store) ListApps(ctx context.Context) ([]App, error) {
-	query := `
-		SELECT
-			id, name, repo_owner, repo_name, branch,
-			containerfile_path, build_context, command, port,
-			health_type, health_path, health_cmd, health_timeout_sec,
-			env_encrypted, build_env_encrypted, auto_deploy, active_release_id,
-			created_at, updated_at
-		FROM apps ORDER BY name ASC
-	`
-	rows, err := s.db.QueryContext(ctx, query)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+appSelectCols+` FROM apps ORDER BY name ASC`)
 	if err != nil {
 		return nil, fmt.Errorf("querying apps: %w", err)
 	}
@@ -229,13 +249,13 @@ func (s *Store) CreateDeployment(ctx context.Context, dep *Deployment) error {
 		INSERT INTO deployments (
 			id, app_id, release_number, status, trigger,
 			commit_hash, commit_message, env_snapshot_encrypted, build_logs,
-			started_at, finished_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			error_message, image_ref, started_at, finished_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := s.db.ExecContext(ctx, query,
 		dep.ID, dep.AppID, dep.ReleaseNumber, dep.Status, dep.Trigger,
 		dep.CommitHash, dep.CommitMessage, dep.EnvSnapshotEncrypted, dep.BuildLogs,
-		dep.StartedAt, dep.FinishedAt,
+		dep.ErrorMessage, dep.ImageRef, dep.StartedAt, dep.FinishedAt,
 	)
 	return err
 }
@@ -246,7 +266,7 @@ func (s *Store) GetDeployment(ctx context.Context, id string) (*Deployment, erro
 		SELECT
 			id, app_id, release_number, status, trigger,
 			commit_hash, commit_message, env_snapshot_encrypted, build_logs,
-			started_at, finished_at
+			error_message, image_ref, started_at, finished_at
 		FROM deployments WHERE id = ?
 	`
 	var dep Deployment
@@ -254,7 +274,7 @@ func (s *Store) GetDeployment(ctx context.Context, id string) (*Deployment, erro
 	err := s.db.QueryRowContext(ctx, query, id).Scan(
 		&dep.ID, &dep.AppID, &dep.ReleaseNumber, &dep.Status, &dep.Trigger,
 		&dep.CommitHash, &dep.CommitMessage, &dep.EnvSnapshotEncrypted, &dep.BuildLogs,
-		&startedAt, &dep.FinishedAt,
+		&dep.ErrorMessage, &dep.ImageRef, &startedAt, &dep.FinishedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrNotFound
@@ -266,6 +286,154 @@ func (s *Store) GetDeployment(ctx context.Context, id string) (*Deployment, erro
 		dep.StartedAt = startedAt.String
 	}
 	return &dep, nil
+}
+
+// UpdateApp updates mutable configuration fields of an existing app (APP-1, APP-5, APP-6, APP-7).
+func (s *Store) UpdateApp(ctx context.Context, app *App) error {
+	app.UpdatedAt = time.Now().UTC().Format(time.RFC3339)
+	autoDeployInt := 0
+	if app.AutoDeploy {
+		autoDeployInt = 1
+	}
+	readOnlyRootInt := 0
+	if app.ReadOnlyRoot {
+		readOnlyRootInt = 1
+	}
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE apps SET
+			branch = ?, containerfile_path = ?, build_context = ?, command = ?, port = ?,
+			health_type = ?, health_path = ?, health_cmd = ?, health_timeout_sec = ?, health_consecutive = ?,
+			memory_limit = ?, cpu_limit = ?, pids_limit = ?, read_only_root = ?, add_capabilities = ?,
+			env_encrypted = ?, build_env_encrypted = ?, auto_deploy = ?, updated_at = ?
+		WHERE id = ?`,
+		app.Branch, app.ContainerfilePath, app.BuildContext, app.Command, app.Port,
+		app.HealthType, app.HealthPath, app.HealthCmd, app.HealthTimeoutSec, app.HealthConsecutive,
+		app.MemoryLimit, app.CPULimit, app.PidsLimit, readOnlyRootInt, app.AddCapabilities,
+		app.EnvEncrypted, app.BuildEnvEncrypted, autoDeployInt, app.UpdatedAt, app.ID,
+	)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// DeleteApp removes an app and cascades to domains and deployments (APP-9).
+func (s *Store) DeleteApp(ctx context.Context, id string) error {
+	res, err := s.db.ExecContext(ctx, `DELETE FROM apps WHERE id = ?`, id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// DomainExists checks whether a domain hostname is already assigned to any app.
+func (s *Store) DomainExists(ctx context.Context, domain string) (bool, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM domains WHERE domain = ?`, domain).Scan(&count)
+	return count > 0, err
+}
+
+// NextReleaseNumber returns the next sequential release number for an app.
+func (s *Store) NextReleaseNumber(ctx context.Context, appID string) (int, error) {
+	var maxRel sql.NullInt64
+	err := s.db.QueryRowContext(ctx, `SELECT MAX(release_number) FROM deployments WHERE app_id = ?`, appID).Scan(&maxRel)
+	if err != nil {
+		return 0, err
+	}
+	if !maxRel.Valid {
+		return 1, nil
+	}
+	return int(maxRel.Int64) + 1, nil
+}
+
+// ListDeploymentsByApp returns deployments for an app ordered newest first (DEP-9).
+func (s *Store) ListDeploymentsByApp(ctx context.Context, appID string) ([]Deployment, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT
+			id, app_id, release_number, status, trigger,
+			commit_hash, commit_message, env_snapshot_encrypted, build_logs,
+			error_message, image_ref, started_at, finished_at
+		FROM deployments WHERE app_id = ? ORDER BY release_number DESC`, appID)
+	if err != nil {
+		return nil, fmt.Errorf("querying deployments: %w", err)
+	}
+	defer rows.Close()
+
+	var deps []Deployment
+	for rows.Next() {
+		var dep Deployment
+		var startedAt sql.NullString
+		if err := rows.Scan(
+			&dep.ID, &dep.AppID, &dep.ReleaseNumber, &dep.Status, &dep.Trigger,
+			&dep.CommitHash, &dep.CommitMessage, &dep.EnvSnapshotEncrypted, &dep.BuildLogs,
+			&dep.ErrorMessage, &dep.ImageRef, &startedAt, &dep.FinishedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scanning deployment: %w", err)
+		}
+		if startedAt.Valid {
+			dep.StartedAt = startedAt.String
+		}
+		deps = append(deps, dep)
+	}
+	return deps, rows.Err()
+}
+
+// UpdateDeploymentStatus updates status, optional error message, and finished_at for a deployment.
+func (s *Store) UpdateDeploymentStatus(ctx context.Context, id, status, errorMsg string, finishedAt *string) error {
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE deployments SET status = ?, error_message = ?, finished_at = ? WHERE id = ?`,
+		status, errorMsg, finishedAt, id)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// SetDeploymentBuildLogs stores the masked build log text for a deployment (LOG-2).
+func (s *Store) SetDeploymentBuildLogs(ctx context.Context, id, buildLogs string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE deployments SET build_logs = ? WHERE id = ?`, buildLogs, id)
+	return err
+}
+
+// SetDeploymentImageRef records the built image reference for a deployment.
+func (s *Store) SetDeploymentImageRef(ctx context.Context, id, imageRef string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE deployments SET image_ref = ? WHERE id = ?`, imageRef, id)
+	return err
+}
+
+// FailInFlightDeployments marks any queued or in-progress deployments as failed after a daemon restart.
+func (s *Store) FailInFlightDeployments(ctx context.Context, reason string) (int64, error) {
+	now := time.Now().UTC().Format(time.RFC3339)
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE deployments
+		SET status = 'failed', error_message = ?, finished_at = ?
+		WHERE status IN ('queued', 'building', 'starting', 'probing', 'switching')`,
+		reason, now)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // SetActiveRelease updates the active release ID for an app.
@@ -330,12 +498,13 @@ type rowScanner interface {
 
 func (s *Store) scanApp(row rowScanner) (*App, error) {
 	var a App
-	var autoDeployInt int
+	var autoDeployInt, readOnlyRootInt int
 	var createdAt, updatedAt sql.NullString
 	err := row.Scan(
 		&a.ID, &a.Name, &a.RepoOwner, &a.RepoName, &a.Branch,
 		&a.ContainerfilePath, &a.BuildContext, &a.Command, &a.Port,
-		&a.HealthType, &a.HealthPath, &a.HealthCmd, &a.HealthTimeoutSec,
+		&a.HealthType, &a.HealthPath, &a.HealthCmd, &a.HealthTimeoutSec, &a.HealthConsecutive,
+		&a.MemoryLimit, &a.CPULimit, &a.PidsLimit, &readOnlyRootInt, &a.AddCapabilities,
 		&a.EnvEncrypted, &a.BuildEnvEncrypted, &autoDeployInt, &a.ActiveReleaseID,
 		&createdAt, &updatedAt,
 	)
@@ -346,6 +515,7 @@ func (s *Store) scanApp(row rowScanner) (*App, error) {
 		return nil, fmt.Errorf("scanning app: %w", err)
 	}
 	a.AutoDeploy = (autoDeployInt == 1)
+	a.ReadOnlyRoot = (readOnlyRootInt == 1)
 	if createdAt.Valid {
 		a.CreatedAt = createdAt.String
 	}

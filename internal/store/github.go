@@ -284,3 +284,22 @@ func (s *Store) DeleteGitHubRepositoriesByID(ctx context.Context, ids []int64) e
 	}
 	return nil
 }
+
+// GetGitHubRepositoryByFullName looks up an accessible repository by owner/name.
+func (s *Store) GetGitHubRepositoryByFullName(ctx context.Context, fullName string) (*GitHubRepository, error) {
+	var r GitHubRepository
+	var priv int
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, installation_id, full_name, owner, name, private, default_branch, html_url, updated_at
+		FROM github_repositories WHERE full_name = ?`, fullName).Scan(
+		&r.ID, &r.InstallationID, &r.FullName, &r.Owner, &r.Name, &priv, &r.DefaultBranch, &r.HTMLURL, &r.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("querying github repository %q: %w", fullName, err)
+	}
+	r.Private = (priv == 1)
+	return &r, nil
+}

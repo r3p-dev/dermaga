@@ -28,8 +28,8 @@ func TestStoreMigrations_FreshAndRerun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CurrentVersion failed: %v", err)
 	}
-	if ver != 3 {
-		t.Errorf("expected version 3, got %d", ver)
+	if ver != 4 {
+		t.Errorf("expected version 4, got %d", ver)
 	}
 
 	info, err := os.Stat(dbPath)
@@ -52,8 +52,8 @@ func TestStoreMigrations_FreshAndRerun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CurrentVersion on rerun failed: %v", err)
 	}
-	if ver2 != 3 {
-		t.Errorf("expected version 3 after rerun, got %d", ver2)
+	if ver2 != 4 {
+		t.Errorf("expected version 4 after rerun, got %d", ver2)
 	}
 }
 
@@ -89,8 +89,8 @@ func TestStoreMigration0001To0002(t *testing.T) {
 
 	ctx := context.Background()
 	ver, err := s.CurrentVersion(ctx)
-	if err != nil || ver != 3 {
-		t.Fatalf("expected upgraded version 3, got %d (err=%v)", ver, err)
+	if err != nil || ver != 4 {
+		t.Fatalf("expected upgraded version 4, got %d (err=%v)", ver, err)
 	}
 
 	sess, err := s.GetSession(ctx, "old-hash")
@@ -141,8 +141,8 @@ func TestStoreMigration0002To0003(t *testing.T) {
 
 	ctx := context.Background()
 	ver, err := s.CurrentVersion(ctx)
-	if err != nil || ver != 3 {
-		t.Fatalf("expected upgraded version 3, got %d (err=%v)", ver, err)
+	if err != nil || ver != 4 {
+		t.Fatalf("expected upgraded version 4, got %d (err=%v)", ver, err)
 	}
 	hd, err := s.GetSetting(ctx, "hook_domain")
 	if err != nil || hd != "hooks.example.com" {
@@ -405,5 +405,64 @@ func TestAuditLogs(t *testing.T) {
 	}
 	if len(appLogs) != 1 || appLogs[0].Event != "push" {
 		t.Errorf("expected 1 push app log, got %d", len(appLogs))
+	}
+}
+
+func TestStoreMigration0003To0004(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "v3.db")
+
+	rawDB, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("sql.Open failed: %v", err)
+	}
+	for _, name := range []string{"0001_init.sql", "0002_sessions_metadata.sql", "0003_github.sql"} {
+		sqlBytes, err := os.ReadFile(filepath.Join("migrations", name))
+		if err != nil {
+			t.Fatalf("reading %s: %v", name, err)
+		}
+		if _, err := rawDB.Exec(string(sqlBytes)); err != nil {
+			t.Fatalf("exec %s: %v", name, err)
+		}
+	}
+	if _, err := rawDB.Exec(`INSERT INTO schema_migrations (version) VALUES (1), (2), (3)`); err != nil {
+		t.Fatalf("insert schema_migrations: %v", err)
+	}
+	if _, err := rawDB.Exec(`INSERT INTO apps (id, name, repo_owner, repo_name, port, health_type) VALUES ('app_1', 'legacy-app', 'octo', 'legacy', 8080, 'http')`); err != nil {
+		t.Fatalf("insert v3 app: %v", err)
+	}
+	if _, err := rawDB.Exec(`INSERT INTO deployments (id, app_id, release_number, status, trigger, commit_hash, commit_message, env_snapshot_encrypted) VALUES ('dep_1', 'app_1', 1, 'building', 'manual', 'abc123', 'init', '')`); err != nil {
+		t.Fatalf("insert v3 deployment: %v", err)
+	}
+	_ = rawDB.Close()
+
+	s, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatalf("store.Open upgrade 0003->0004 failed: %v", err)
+	}
+	defer s.Close()
+
+	ctx := context.Background()
+	ver, err := s.CurrentVersion(ctx)
+	if err != nil || ver != 4 {
+		t.Fatalf("expected version 4, got %d (err=%v)", ver, err)
+	}
+	app, err := s.GetApp(ctx, "app_1")
+	if err != nil {
+		t.Fatalf("GetApp failed: %v", err)
+	}
+	if app.MemoryLimit != "512m" || app.CPULimit != "1.0" || app.PidsLimit != 128 || app.HealthConsecutive != 3 {
+		t.Fatalf("unexpected upgraded app defaults: %+v", app)
+	}
+	n, err := s.FailInFlightDeployments(ctx, "daemon restarted")
+	if err != nil || n != 1 {
+		t.Fatalf("FailInFlightDeployments: n=%d err=%v", n, err)
+	}
+	dep, err := s.GetDeployment(ctx, "dep_1")
+	if err != nil || dep.Status != "failed" || dep.ErrorMessage != "daemon restarted" || dep.FinishedAt == nil {
+		t.Fatalf("unexpected failed deployment: %+v (err=%v)", dep, err)
+	}
+	if store.DeploymentStatusLabel("probing") != "healthy" || store.DeploymentStatusLabel("active") != "live" || store.DeploymentStatusLabel("building") != "building" {
+		t.Fatalf("unexpected DeploymentStatusLabel mapping")
 	}
 }
