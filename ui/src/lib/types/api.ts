@@ -24,6 +24,7 @@ export interface Config {
   MasterKey: string /* []byte */;
   Version: string;
   Commit: string;
+  Now: any;
 }
 /**
  * Server encapsulates the HTTP and Unix socket listeners.

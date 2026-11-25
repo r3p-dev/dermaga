@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -30,6 +31,7 @@ import (
 	"dermaga/internal/reconciler"
 	"dermaga/internal/server"
 	"dermaga/internal/store"
+	"dermaga/internal/webhook"
 )
 
 // Version and Commit are set at build time via -ldflags.
@@ -133,11 +135,15 @@ func runDaemon(args []string) error {
 	defer st.Close()
 
 	// DEP-10: Self-healing startup reconciliation
+	execPath, _ := os.Executable()
 	rec := reconciler.New(host.NewRealHost(), st, reconciler.Config{
-		QuadletDir:        paths.QuadletDir,
-		TraefikDynamicDir: paths.TraefikDynamicDir,
-		UserUnitDir:       paths.UserUnitDir,
-		TraefikDir:        paths.TraefikDir,
+		QuadletDir:         paths.QuadletDir,
+		TraefikDynamicDir:  paths.TraefikDynamicDir,
+		UserUnitDir:        paths.UserUnitDir,
+		TraefikDir:         paths.TraefikDir,
+		HookRelayRootfsDir: filepath.Join(filepath.Dir(*dbPath), "hook-relay-rootfs"),
+		BinaryPath:         execPath,
+		SocketDir:          paths.SocketDir,
 	})
 	if recReport, err := rec.Reconcile(context.Background()); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: startup reconciliation encountered error: %v\n", err)
@@ -163,6 +169,12 @@ func runDaemon(args []string) error {
 	_ = st.RecordAudit(context.Background(), "daemon", "system", "daemon_start",
 		fmt.Sprintf("Daemon started (version %s, commit %s)", Version, Commit), nil, nil)
 
+	hookSrv := webhook.New(webhook.Config{
+		SocketPath: paths.HookSock,
+		Store:      st,
+		MasterKey:  masterKey,
+	})
+
 	// Signal handling for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -175,12 +187,22 @@ func runDaemon(args []string) error {
 		}
 		errChan <- srv.Start()
 	}()
+	go func() {
+		if paths.HookSock != "" {
+			fmt.Printf("Webhook socket listening on %s (0600, SEC-11)\n", paths.HookSock)
+			if err := hookSrv.Start(); err != nil && !strings.Contains(err.Error(), "Server closed") {
+				errChan <- err
+			}
+		}
+	}()
 
 	select {
 	case sig := <-sigChan:
 		fmt.Printf("\nReceived signal %v, shutting down gracefully...\n", sig)
+		_ = hookSrv.Close()
 		return srv.Close()
 	case err := <-errChan:
+		_ = hookSrv.Close()
 		if err != nil && !strings.Contains(err.Error(), "Server closed") {
 			return err
 		}
@@ -443,11 +465,15 @@ func callDaemon(sockPath string, req server.RecoveryRequest) (*server.RecoveryRe
 }
 
 // runHookRelay implements the internal hook relay proxy (ported from Spike 3.1).
+// It parses nothing and forwards raw bytes, capping inbound bytes per connection
+// at 25 MiB + 64 KiB (matching GitHub's 25 MiB payload limit plus HTTP headers).
 func runHookRelay(args []string) error {
 	fs := flag.NewFlagSet("hook-relay", flag.ExitOnError)
 	listenAddr := fs.String("listen", ":8080", "TCP address to listen on")
 	sockPath := fs.String("socket", "/run/dermaga/hooks.sock", "Unix socket destination")
 	_ = fs.Parse(args)
+
+	const maxRelayBytes = (25 << 20) + (64 << 10)
 
 	l, err := net.Listen("tcp", *listenAddr)
 	if err != nil {
@@ -473,7 +499,7 @@ func runHookRelay(args []string) error {
 
 			done := make(chan struct{}, 2)
 			go func() {
-				_, _ = io.Copy(unixConn, c)
+				_, _ = io.Copy(unixConn, io.LimitReader(c, maxRelayBytes))
 				done <- struct{}{}
 			}()
 			go func() {

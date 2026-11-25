@@ -207,3 +207,80 @@ func (s *Store) ClearGitHubData(ctx context.Context) error {
 	}
 	return nil
 }
+
+// UpsertGitHubInstallation inserts or updates a single GitHub App installation (GHA-7).
+func (s *Store) UpsertGitHubInstallation(ctx context.Context, inst GitHubInstallation) error {
+	sel := inst.RepositorySelection
+	if sel == "" {
+		sel = "selected"
+	}
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO github_installations (id, account_login, account_type, repository_selection, suspended_at, html_url, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+		 ON CONFLICT(id) DO UPDATE SET
+		   account_login = excluded.account_login,
+		   account_type = excluded.account_type,
+		   repository_selection = excluded.repository_selection,
+		   suspended_at = excluded.suspended_at,
+		   html_url = excluded.html_url,
+		   updated_at = excluded.updated_at`,
+		inst.ID, inst.AccountLogin, inst.AccountType, sel, inst.SuspendedAt, inst.HTMLURL,
+	)
+	return err
+}
+
+// DeleteGitHubInstallation removes an installation and its cascaded repositories (GHA-7).
+func (s *Store) DeleteGitHubInstallation(ctx context.Context, installationID int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM github_installations WHERE id = ?`, installationID)
+	return err
+}
+
+// SetGitHubInstallationSuspended updates suspended_at for an installation (GHA-7).
+func (s *Store) SetGitHubInstallationSuspended(ctx context.Context, installationID int64, suspendedAt *string) error {
+	_, err := s.db.ExecContext(ctx,
+		`UPDATE github_installations SET suspended_at = ?, updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?`,
+		suspendedAt, installationID,
+	)
+	return err
+}
+
+// AddGitHubRepositories inserts or updates repositories for an installation (GHA-7).
+func (s *Store) AddGitHubRepositories(ctx context.Context, repos []GitHubRepository) error {
+	for _, repo := range repos {
+		priv := 0
+		if repo.Private {
+			priv = 1
+		}
+		branch := repo.DefaultBranch
+		if branch == "" {
+			branch = "main"
+		}
+		if _, err := s.db.ExecContext(ctx,
+			`INSERT INTO github_repositories (id, installation_id, full_name, owner, name, private, default_branch, html_url, updated_at)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+			 ON CONFLICT(id) DO UPDATE SET
+			   installation_id = excluded.installation_id,
+			   full_name = excluded.full_name,
+			   owner = excluded.owner,
+			   name = excluded.name,
+			   private = excluded.private,
+			   default_branch = excluded.default_branch,
+			   html_url = excluded.html_url,
+			   updated_at = excluded.updated_at`,
+			repo.ID, repo.InstallationID, repo.FullName, repo.Owner, repo.Name, priv, branch, repo.HTMLURL,
+		); err != nil {
+			return fmt.Errorf("upserting github repository %s: %w", repo.FullName, err)
+		}
+	}
+	return nil
+}
+
+// DeleteGitHubRepositoriesByID removes repositories by their GitHub IDs (GHA-7).
+func (s *Store) DeleteGitHubRepositoriesByID(ctx context.Context, ids []int64) error {
+	for _, id := range ids {
+		if _, err := s.db.ExecContext(ctx, `DELETE FROM github_repositories WHERE id = ?`, id); err != nil {
+			return fmt.Errorf("deleting github repository %d: %w", id, err)
+		}
+	}
+	return nil
+}
