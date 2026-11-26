@@ -22,6 +22,8 @@ Commit under review: `3b88d01` (`v0.6.0-rc.3`) + final M6b UI/VM script updates.
 | VM (`v0.6.0-rc.3`): wizard Go example `Containerfile` built on real Podman (non-root `uid=1000`, `200 go-ok` on port `8080`) | PASS | `tmp/evidence/M6/logs/vm-m6b-wizard-examples.log` | `go_uid=1000 go_resp=go-ok`, `PASS: wizard Go example Containerfile built, ran non-root (uid=1000), and answered on 8080` |
 | VM (`v0.6.0-rc.3`): secret greps (journal, DB, runtime logs) & `secret_reveal` audit | PASS | `tmp/evidence/M6/logs/vm-m6b-greps.log` | `journal_secret_hits=0 db_secret_hits=0`, `Revealed runtime variable VM_RT_SECRET for app vmwizard` |
 | VM (`v0.6.0-rc.3`): `m3_check.sh control` then `m3_check.sh access` LAST | PASS | `tmp/evidence/M6/logs/vm-m6b-m3-control.log`, `tmp/evidence/M6/logs/vm-m6b-m3-access.log` | `all checks passed` |
+| Release `v0.6.0` tag (`e4434b5`), workflow, `checksums.txt`, tamper negative control & `install.sh` diff vs `rc.3` | PASS | `tmp/evidence/M6/logs/release-v060-verify.log` | `dermaga-linux-amd64: OK`, tamper `FAILED`, `install.sh` diff only `DERMAGA_VERSION` |
+| VM (`v0.6.0` smoke from `fresh`): install, setup, login, browser wizard (`vmwizard`), Pebble TLS, remove with 0 leftovers, `m3_check.sh access` LAST | PASS | `tmp/evidence/M6/logs/vm-v060-smoke-wizard.log`, `tmp/evidence/M6/logs/vm-v060-smoke-clean.log`, `tmp/evidence/M6/logs/vm-v060-smoke-access.log` | `PASS [browser 1]`–`[browser 8]`, `leftovers: ps=0 img=0 unit=0 tr=0 env=0 mir=0`, `all checks passed` |
 
 ### `tmp/evidence/M6/logs/make-check-m6a.log`
 
