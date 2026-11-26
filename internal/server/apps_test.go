@@ -62,7 +62,10 @@ func setupAppsTestServer(t *testing.T) (*Server, *store.Store, *host.FakeHost, s
 		MasterKey:         masterKey,
 		StabilityWindow:   5 * time.Millisecond,
 		ProbeInterval:     5 * time.Millisecond,
+		DrainGrace:        5 * time.Millisecond,
+		VerifyRoute:       func(context.Context, string, string, string) (bool, error) { return true, nil },
 	})
+	fh.Files["/proc/meminfo"] = []byte("MemTotal: 4000000 kB\nMemAvailable: 2097152 kB\n")
 
 	srv, err := NewServer(Config{
 		Store:     s,

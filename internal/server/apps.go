@@ -361,10 +361,7 @@ func (s *Server) handleGetApp(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	deps, _ := s.cfg.Store.ListDeploymentsByApp(r.Context(), app.ID)
-	depInfos := make([]DeploymentInfo, 0, len(deps))
-	for _, d := range deps {
-		depInfos = append(depInfos, toDeploymentInfo(d, true))
-	}
+	depInfos := deploymentInfos(deps, app.ActiveReleaseID)
 
 	runtimeEnv, _ := deploy.OpenEnvMap(s.cfg.MasterKey, "env_encrypted", app.EnvEncrypted)
 	buildEnv, _ := deploy.OpenEnvMap(s.cfg.MasterKey, "build_env_encrypted", app.BuildEnvEncrypted)
@@ -616,9 +613,25 @@ func (s *Server) handleTriggerDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Redeploy (DEP-*): latest commit of the branch, or a chosen commit from the dialog.
+	var req struct {
+		Commit string `json:"commit"`
+	}
+	if r.ContentLength != 0 {
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid request body")
+			return
+		}
+	}
 	commitSHA := ""
 	commitMsg := "Manual deploy"
-	if appIDNum, pemBytes, credErr := s.loadGitHubCredentials(r.Context()); credErr == nil {
+	if req.Commit != "" {
+		sha, msg, ok := s.resolveCommit(w, r, app, req.Commit)
+		if !ok {
+			return
+		}
+		commitSHA, commitMsg = sha, msg
+	} else if appIDNum, pemBytes, credErr := s.loadGitHubCredentials(r.Context()); credErr == nil {
 		fullName := app.RepoOwner + "/" + app.RepoName
 		if repoRec, rErr := s.cfg.Store.GetGitHubRepositoryByFullName(r.Context(), fullName); rErr == nil {
 			if ci, cErr := s.githubClient().GetCommit(r.Context(), appIDNum, pemBytes, repoRec.InstallationID, app.RepoOwner, app.RepoName, app.Branch); cErr == nil {
@@ -647,10 +660,11 @@ func (s *Server) handleListAppDeployments(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusInternalServerError, "failed to list deployments")
 		return
 	}
-	out := make([]DeploymentInfo, 0, len(deps))
-	for _, d := range deps {
-		out = append(out, toDeploymentInfo(d, true))
+	var activeID *string
+	if app, err := s.cfg.Store.GetApp(r.Context(), r.PathValue("id")); err == nil {
+		activeID = app.ActiveReleaseID
 	}
+	out := deploymentInfos(deps, activeID)
 	writeJSON(w, http.StatusOK, map[string]any{"deployments": out})
 }
 
@@ -928,6 +942,24 @@ func mergeEnvMetadata(runtimeEnv, buildEnv map[string]string) []EnvVarMetadata {
 	return out
 }
 
+// deploymentInfos maps an app's deployments (newest first) and marks the rollback targets:
+// the last 5 releases that were live, other than the live one, with image and env kept (DEP-4).
+func deploymentInfos(deps []store.Deployment, activeID *string) []DeploymentInfo {
+	eligible := map[string]bool{}
+	if activeID != nil {
+		for _, d := range deploy.RetainedSet(deps, *activeID) {
+			eligible[d.ID] = d.ID != *activeID && d.EnvVersionID != nil && d.ImageRef != ""
+		}
+	}
+	out := make([]DeploymentInfo, 0, len(deps))
+	for _, d := range deps {
+		info := toDeploymentInfo(d, true)
+		info.RollbackEligible = eligible[d.ID]
+		out = append(out, info)
+	}
+	return out
+}
+
 func toDeploymentInfo(d store.Deployment, includeLogs bool) DeploymentInfo {
 	info := DeploymentInfo{
 		ID:            d.ID,
@@ -950,7 +982,7 @@ func toDeploymentInfo(d store.Deployment, includeLogs bool) DeploymentInfo {
 
 func isTerminalDeployment(status string) bool {
 	switch status {
-	case "active", "inactive", "failed", "cancelled", "superseded":
+	case "active", "inactive", "rolled_back", "failed", "cancelled", "superseded":
 		return true
 	default:
 		return false

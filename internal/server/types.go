@@ -386,6 +386,8 @@ type DeploymentInfo struct {
 	ErrorMessage  string  `json:"error_message,omitempty"`
 	StartedAt     string  `json:"started_at"`
 	FinishedAt    *string `json:"finished_at,omitempty"`
+	// RollbackEligible: one of the last 5 releases that were live, with its image and env kept (DEP-4).
+	RollbackEligible bool `json:"rollback_eligible"`
 }
 
 // AppSummary is returned by GET /api/apps.

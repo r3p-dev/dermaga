@@ -5,6 +5,36 @@
 
 
 //////////
+// source: rollback.go
+
+/**
+ * EnvChange names one runtime variable that differs between the current settings and a release.
+ * Values are never sent (DEP-4: names only).
+ */
+export interface EnvChange {
+  name: string;
+  change: string; // "added" (only in the current settings), "removed" (only in the release), "changed"
+}
+/**
+ * MemoryCheckResponse says whether a release with MemoryLimit fits next to everything running
+ * (owner decision: refuse when MemAvailable < the release's memory limit).
+ */
+export interface MemoryCheckResponse {
+  available_bytes: number /* int64 */;
+  needed_bytes: number /* int64 */;
+  ok: boolean;
+  memory_limit: string;
+}
+/**
+ * RollbackPreview is what the rollback dialog shows before the operator confirms (DEP-4).
+ */
+export interface RollbackPreview {
+  deployment: DeploymentInfo;
+  env_changes: EnvChange[];
+  memory: MemoryCheckResponse;
+}
+
+//////////
 // source: server.go
 /*
 Package server implements the loopback HTTP server and Unix domain socket server
@@ -470,6 +500,10 @@ export interface DeploymentInfo {
   error_message?: string;
   started_at: string;
   finished_at?: string;
+  /**
+   * RollbackEligible: one of the last 5 releases that were live, with its image and env kept (DEP-4).
+   */
+  rollback_eligible: boolean;
 }
 /**
  * AppSummary is returned by GET /api/apps.
