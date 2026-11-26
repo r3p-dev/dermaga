@@ -22,7 +22,7 @@ backups come in v1.1.
 | M4  | 0.4.0   | First-run setup and panel access                  | completed         | M4a yes: confirmed by owner, 2026-11-25 (v0.4.0-rc.1); M4b yes: confirmed by owner, 2026-11-25 (owner tags v0.4.0-rc.2 [superseded], v0.4.0-rc.3, v0.4.0) | 20      |
 | M5  | 0.5.0   | Connect GitHub                                    | completed         | M5a yes: confirmed by owner, 2026-11-25; M5b yes: confirmed by owner, 2026-11-25 (v0.5.0-rc.1, v0.5.0)                                                                       | 28      |
 | M6  | 0.6.0   | First deploy: wizard, build, env, logs            | completed         | yes: confirmed by owner, 2026-11-26 (v0.6.0-rc.1–v0.6.0-rc.3, v0.6.0)                                                                                                          | 36      |
-| M7  | 0.7.0   | Zero downtime: push-to-deploy, redeploy, rollback | not started       | –                                                                                                                                                                               | 32      |
+| M7  | 0.7.0   | Zero downtime: push-to-deploy, redeploy, rollback | in progress       | –                                                                                                                                                                               | 32      |
 | M8  | 0.8.0   | Domains, HTTPS, headers, middleware               | not started       | –                                                                                                                                                                               | 28      |
 | M9  | 0.9.0   | Server care: app status, disk, dashboard, doctor  | not started       | –                                                                                                                                                                               | 24      |
 | M10 | 0.10.0  | Updating dermaga, migration guide                 | not started       | –                                                                                                                                                                               | 24      |
@@ -46,12 +46,25 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
 
 ## Active milestone
 
-**M7** (0.7.0): Zero downtime: push-to-deploy, redeploy, rollback (`not started`).
+**M7** (0.7.0): Zero downtime: push-to-deploy, redeploy, rollback (`in progress`).
 
 - **Requirement IDs:** DEP-1, DEP-2, DEP-4, DEP-10, APP-8, REL-6.
-- **Handoff** (2026-11-26, M6 complete, `0.6.0`):
-  - Done: M6a (`internal/github` `WIZ-2`/`WIZ-3` inspection, `0004_m6_apps_deploy.sql`, `internal/builder` mirrors/limits/`LineAccumulator` + chunk-safe `SEC-9` masking, `internal/deploy` single queue + first-deploy + cancel/fail cleanup + `APP-9`, `internal/server` M6a REST API & SSE `LOG-1`/`LOG-2`) and M6b (Dashboard `AppsList`, 4-step New App Wizard, 6 active App tabs, Playwright + axe E2E, `setup_pebble.sh`, `seed.sh`, `v0.6.0-rc.3` VM journey from `fresh` with Pebble TLS and 0 residue).
-  - Remaining: **M7 (0.7.0): Zero downtime: push-to-deploy, redeploy, rollback** (`not started`). Start M7 in a new session after `v0.6.0` is tagged.
+- **Handoff** (2026-11-26, Step 0 `v0.6.2` built, waiting for the owner's tag):
+  - Done: M6 (`v0.6.0`, confirmed); `v0.6.1` UI redesign; Step 0 for `v0.6.2` (full-width content, server
+    overview with API values only, no requirement codes in visible text, footer removed, narrow header fix,
+    axe waits for CSS transitions; Playwright 9/9 at 1280/1920/375, light and dark;
+    `docs/evidence/M7/EVIDENCE.md` § Step 0).
+  - Remaining: owner tags `v0.6.2`; then release + checksum check, VM install from `fresh`, UI smoke test via
+    the tunnel, `m3_check.sh access` last (ControlMaster unban, new `ssh dermaga` ≥ 30 s later). Then M7a.
+  - Owner decisions (2026-11-26): the M7a/M7b split below; refuse a deploy when `MemAvailable` < the
+    candidate's memory limit (shown in the deploy dialog when checkable up front); refuse rollback while
+    the same app is building ("Cancel the running build first"); labels `inactive` → "Previous release",
+    `rolled_back` → "Rolled back", `switching` → "Switching traffic"; rollback uses the release-time env
+    through immutable encrypted env versions; the owner does every push to `r3p-dev/dermaga-test-app`
+    (fish commands given when needed); all M7 tests use `dermaga-test-app`, never `portfolio`; watch paths
+    are one `path.Match` glob per line, a trailing `/` means the whole folder, validated server-side;
+    requirement codes stay in CLI output and raw HTTP error bodies, and are mapped to plain wording if the
+    panel ever shows one; ASCII mockups before the Deployments tab and rollback dialog are built.
 
 **Every milestone** also meets the general acceptance criteria of `AGENTS.md` "Milestone loop": tests for its
 criteria (unit, golden, fake-host, fake-GitHub, API with authentication and the PRD rule, browser tests
@@ -230,10 +243,25 @@ Acceptance criteria:
 
 - DEP-1, DEP-2, DEP-4, DEP-10, APP-8, REL-6.
 - `git push` to the test repo → live; push to another branch ignored; watch paths respected.
-- `oha -w` at 50 req/s against portfolio during (a) a successful redeploy and (b) a deploy whose health
-  check fails: **0 non-2xx, 0 connection errors**, raw output.
+- `oha -w` at 50 req/s against `r3p-dev/dermaga-test-app` (owner decision: never `portfolio`, which has
+  production CD) during (a) a successful redeploy and (b) a deploy whose health check fails: **0 non-2xx,
+  0 connection errors**, raw output.
 - Rollback < 10 s with zero downtime; daemon killed mid-switch → one live release and no verify router
   after restart; the state machine covered with a fake host.
+
+Checkpoints (owner-approved 2026-11-26), each reaching the panel:
+
+- **M7a (~18 h, `v0.7.0-rc.1`)**: blue-green redeploy and rollback end to end (`DEP-1`, `DEP-2`, `DEP-4`,
+  `DEP-9`, `DEP-10`): verify-router switch proof, drain and stop, failure at every step keeps the old
+  release, restart recovery, memory pre-check, image retention (live + 5), immutable encrypted env versions
+  (migration `0005` with a `0004` upgrade test), Deployments tab with Redeploy and Rollback; VM: `oha` during
+  redeploy, failing health, rollback, daemon killed mid-switch.
+- **M7b (~14 h, `v0.7.0-rc.2`)**: push-to-deploy (`APP-8`, `DEP-5`, `UI-7`, `REL-6`): branch and watch-path
+  filters, dedupe by delivery and commit, auto-deploy toggle, live deployment status; VM: real pushes via
+  smee/gosmee with `oha`, 0 leftovers after removal.
+
+**Step 0 before M7 (`v0.6.2`)**: full-width content, a server overview with API values only, no requirement
+codes in visible text, no tagline footer.
 
 ## M8 (0.8.0): Domains, HTTPS, headers, middleware
 
@@ -257,6 +285,9 @@ Acceptance criteria:
   disk filled above 95 % on the VM refuses new builds while apps keep serving.
 - Each `doctor` failure shown when provoked; daemon idle RSS < 30 MB and Traefik + daemon < 100 MB
   after a fresh restart; everything back after a reboot.
+
+Note (owner, 2026-11-26): M9 also adds a **System** page (app version, CPU, RAM, disk). The v0.6.2 Dashboard
+shows only the values the API already returns; detailed host metrics belong on that page.
 
 ## M10 (0.10.0): Updating dermaga, migration guide
 
