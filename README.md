@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="ui/static/logo.svg" alt="dermaga" width="64" height="64">
+</p>
+
 # dermaga
 
 Turn a fresh Debian 13 VPS into a hardened, rootless Podman host and deploy web applications from GitHub through a private web panel.

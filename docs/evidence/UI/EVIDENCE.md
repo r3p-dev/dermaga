@@ -41,7 +41,8 @@ Raw screenshots are stored in gitignored `tmp/evidence/UI/before/` (baseline) an
 | New App Wizard (Step 4) | 1280 | light | `tmp/evidence/UI/before/m6b-wizard-step4-live-light-desktop.png` | `tmp/evidence/UI/screenshots/m6b-wizard-step4-live-light-desktop.png` | Breadcrumb header, 4-step stepper, semantic `StatusBadge` (`live`), dark terminal log block |
 | Settings (Access) | 1280 | light | `tmp/evidence/UI/before/m4b-settings-access-light-desktop.png` | `tmp/evidence/UI/screenshots/m4b-settings-access-light-desktop.png` | Vertical `SubNav` sidebar (`Access`, `Security`, `Hook Domain`, `GitHub`) alongside Laptop & Mobile Access and Active Sessions cards |
 | Settings (GitHub) | 1280 | light | `tmp/evidence/UI/before/m5a-github-connected-light-desktop.png` | `tmp/evidence/UI/screenshots/m5a-github-connected-light-desktop.png` | Vertical `SubNav` with connected GitHub App card, Installations, Accessible Repositories, and isolated Disconnect card |
-| Audit Log | 1280 | light | `tmp/evidence/UI/before/audit-desktop-light.png` | `tmp/evidence/UI/screenshots/audit-desktop-light.png` | `PageHeader` with inline Origin/App/Time filters above table; stacked cards on `< md` (`m4b-audit-logs-narrow-dark.png`) |
+| Audit Log / Activity | 1280 | light | `tmp/evidence/UI/before/audit-desktop-light.png` | `tmp/evidence/UI/screenshots/activity-desktop-light.png` | Renamed to Activity (`/activity`, `/audit-logs` redirects); `PageHeader` with inline Origin/App/Time filters above table; stacked cards on `< md` |
+| Apps | 1280 | light | — | `tmp/evidence/UI/screenshots/apps-desktop-light.png` | Dedicated `/apps` route with `AppsList` and `New app` CTA; sidebar `Apps` active on `/apps`, `/apps/new`, `/apps/[id]` |
 
 ## Code Tour
 
