@@ -1,84 +1,110 @@
 # dermaga
 
-**dermaga** (Indonesian for "pier") turns a fresh Debian 13 VPS into a hardened, zero-downtime host and lets you deploy web applications from GitHub through a private web panel without memorizing commands or editing configuration files.
+Turn a fresh Debian 13 VPS into a hardened, rootless Podman host and deploy web applications from GitHub through a private web panel.
 
-## 1. Before You Start (`INST-1`)
+> **Status:** Pre-1.0 (`v0.6.0`), under active development. See [docs/PLAN.md](docs/PLAN.md) for milestone progress and scope.
 
-You need:
+## What is dermaga?
 
-- A new VPS with **Debian 13** (x86_64 or ARM, 2 GB RAM minimum).
-- A domain where you can add DNS records.
-- **Your laptop's SSH key, added when you create the VPS.** Most providers ask for it on the create
-  page. That is how the installer knows it is you.
+**dermaga** (Indonesian for "pier") is a single-binary, self-hosted deployment platform for a single Debian 13 server. It replaces manual server setup, reverse-proxy configuration, and ad-hoc deploy scripts with:
 
-A VPS created with only a root password is fine too: the installer asks for your key.
+- **Rootless Podman + Quadlet** managed under a dedicated unprivileged `server` user (`systemd --user`)
+- **Traefik v3** reverse proxy with socket-activated `:80`/`:443` and automatic Let's Encrypt HTTPS
+- **Private web panel** bound strictly to `127.0.0.1:7070`, accessed over an SSH tunnel (`ssh dermaga`)
+- **GitHub App integration** with encrypted credentials, per-fetch installation tokens, and a dedicated webhook relay
 
-### No SSH key yet?
+## Features
 
-The key has two files on your laptop: a private one that **never leaves the laptop** (keep a backup
-of it, like a password) and a public one (`.pub`) that you give to servers.
+### Available today (`v0.6.0`)
+- **Hardened Debian 13 installer** (`install.sh`): configures `nftables`, `sshd` (with anti-lockout verification), `fail2ban`, `sysctl`, `zram`, unattended upgrades, rootless Podman, and `dermaga.service`.
+- **First-run setup & auth**: single-use setup token, Argon2id admin password, optional TOTP 2FA, active session management, and immutable audit log.
+- **GitHub App connection**: guided manifest flow from the panel, repository sync, and HMAC-SHA256 verified webhook intake (`/hooks/github-app` via `hook-relay`).
+- **Guided New App Wizard**: repository/branch inspection (`Containerfile`/`Dockerfile`, `EXPOSE`), build-time and runtime environment variables (AES-256-GCM at rest, masked by default with audited reveal), resource limits, health checks, and live SSE build/runtime logs.
 
-**Linux and macOS** (Terminal):
+### Roadmap (not yet implemented)
+- **M7 (`0.7.0`)**: Zero-downtime blue-green redeploys, push-to-deploy on webhook, instant rollback.
+- **M8 (`0.8.0`)**: Custom domains, per-app HTTPS status, security headers, and middleware controls.
+- **M9 (`0.9.0`)**: App runtime status, disk usage and image cleanup, expanded `doctor` checks.
+- **M10 (`0.10.0`)**: In-panel self-updates and VPS migration guide.
+- **M11 (`1.0.0`)**: Full security self-review, threat model, and operational documentation.
 
-1. Check whether you have one: `cat ~/.ssh/id_ed25519.pub`
-2. If that says "No such file", create one: `ssh-keygen -t ed25519` and press Enter at each question.
-3. Show it: `cat ~/.ssh/id_ed25519.pub`. Copy the whole line (it starts with `ssh-ed25519`) and paste
-   it into your provider's SSH key field.
+See [docs/PLAN.md](docs/PLAN.md) for acceptance criteria.
 
-**Windows 10 and newer** (PowerShell or Windows Terminal):
+## Requirements
 
-1. Check: `Get-Content $env:USERPROFILE\.ssh\id_ed25519.pub`
-2. If it is missing: `ssh-keygen -t ed25519`, Enter at each question.
-3. Show it again with the command from step 1, and paste the line at your provider.
+- **Server**: Fresh **Debian 13** (Trixie) VPS (`x86_64` or `arm64`), minimum 2 GB RAM.
+- **Domain**: A domain where you can add DNS `A`/`AAAA` records (a dedicated subdomain is used for GitHub webhooks).
+- **SSH key**: An SSH public key on your laptop (added when creating the VPS, or pasted during install).
 
-## 2. Install
+## Install
 
-Log in to the server the way your provider says (for example `ssh debian@<server-ip>` or
-`ssh root@<server-ip>`), then run the command from the release you want to install:
+Log in to your fresh Debian 13 server and run the installer for the release tag you want (for example `v0.6.0`):
 
 ```bash
-curl -fsSL https://github.com/r3p-dev/dermaga/releases/download/<tag>/install.sh | sudo bash
+curl -fsSL https://github.com/r3p-dev/dermaga/releases/download/v0.6.0/install.sh | sudo bash
 ```
 
-It asks only what has no safe default (your key, the SSH port, the public IP when it cannot see
-it), shows a plan, hardens the server and installs everything. Before it closes the old way in, it
-asks you to log in from a **new** terminal on the new port, and waits until that works.
-
-At the end it prints **one command to paste on your laptop**. From then on:
+To inspect `install.sh` before running it:
 
 ```bash
-ssh dermaga
+curl -fsSLO https://github.com/r3p-dev/dermaga/releases/download/v0.6.0/install.sh
+less install.sh
+sudo bash install.sh
 ```
 
-opens a shell on the server and the panel at **http://localhost:7070**. The panel listens on the
-server's `127.0.0.1:7070` only and is never reachable from the internet (`SEC-2`).
+The installer verifies the `dermaga` binary SHA-256 against `checksums.txt` from the same release before installing it, confirms your new SSH login in a second terminal before closing the old port, and prints a single command to configure `ssh dermaga` on your laptop.
 
-## 3. Server Commands (`SRV-1`)
+## First-Run Setup
 
-Besides the initial installer, the owner only ever needs three commands on the server:
+1. On your laptop, run the `ssh dermaga` command printed by the installer (it forwards `localhost:7070` to the server's `127.0.0.1:7070`).
+2. Open the setup URL printed by the installer (`http://localhost:7070/setup?token=...`).
+3. Create your admin password, optionally enroll TOTP 2FA, and set your reserved webhook domain.
+4. Go to **Settings → GitHub** to create and install your GitHub App, then click **New app** on the Dashboard.
 
-- `dermaga panel`: Prints the laptop command again.
-- `dermaga admin set-password`: Interactively resets or sets the panel administrator password.
-- `dermaga admin totp disable`: Emergency recovery command to disable TOTP two-factor authentication.
+### Server Commands
 
-There is no other user-facing CLI. All normal administration happens in the web panel (`UI-1`).
+All normal administration happens in the web panel. Three recovery/helper commands exist on the server:
+- `dermaga panel` — prints the laptop SSH config command (and setup link if uninitialized)
+- `dermaga admin set-password` — resets the admin password
+- `dermaga admin totp disable` — emergency TOTP recovery
 
-## 4. Development
+## Screenshots
 
-### Prerequisites
-- Go 1.24+
-- Bun 1.4+
-- Node.js 22+
+| Dashboard (Desktop, Light) | App Environment (Desktop, Light) |
+| --- | --- |
+| ![Dashboard desktop light](docs/screenshots/dashboard-desktop-light.png) | ![App Environment desktop light](docs/screenshots/app-env-desktop-light.png) |
 
-### Building and Testing
+| Dashboard (Narrow, Dark) |
+| --- |
+| ![Dashboard narrow dark](docs/screenshots/dashboard-narrow-dark.png) |
+
+## Security Model
+
+- **Zero root at runtime**: everything runs under the unprivileged `server` user.
+- **No public panel**: the panel binds only to `127.0.0.1:7070` with `Host`/`Origin` DNS-rebinding protection and `HttpOnly; SameSite=Strict` sessions.
+- **No container socket access**: neither Traefik nor app containers have access to `podman.sock`.
+- **Encrypted secrets**: GitHub App keys, webhook secrets, and environment variables are encrypted at rest with AES-256-GCM; webhook signatures (`X-Hub-Signature-256`) are verified in constant time before JSON parsing.
+
+## Documentation
+
+- [Architecture](docs/ARCHITECTURE.md)
+- [Development & Milestone Plan](docs/PLAN.md)
+- [Development Setup & Test VM](docs/SETUP.md)
+- [Code Conventions](docs/CONVENTIONS.md)
+- [Dependencies](docs/DEPENDENCIES.md)
+
+## Contributing & Development
+
+Prerequisites: Go 1.27+, Bun 1.4+ (see [docs/DEPENDENCIES.md](docs/DEPENDENCIES.md) for pinned versions).
+
 ```bash
-# Check formatting, linting, tests, and vulnerabilities:
+# Run formatting, linting, unit/API/browser tests, and vulnerability checks:
 make check
 
-# Build static binary:
+# Build the static binary with embedded UI:
 make build
 ```
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
