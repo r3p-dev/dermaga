@@ -103,6 +103,29 @@ test.describe('v0.6.2 layout (UI-2, UI-8)', () => {
 			}
 		}
 
+		// A long dev version (git describe of an untagged, dirty build) stays on one line, full value in title.
+		const longVersion = 'v0.6.2-14-g3e4d902-dirty'
+		await page.route('**/api/server/status', async (route) => {
+			const res = await route.fetch()
+			await route.fulfill({
+				response: res,
+				json: { ...(await res.json()), version: longVersion }
+			})
+		})
+		await page.setViewportSize({ width: 1280, height: 900 })
+		await page.goto('/')
+		const versionEl = page
+			.getByRole('region', { name: 'Server overview' })
+			.locator(`[title="${longVersion}"]`)
+		await expect(versionEl).toHaveText(longVersion)
+		const oneLine = await versionEl.evaluate(
+			(el) =>
+				el.getBoundingClientRect().height <=
+				parseFloat(getComputedStyle(el).lineHeight) + 1
+		)
+		expect(oneLine, 'long version on one line at 1280').toBe(true)
+		await page.unroute('**/api/server/status')
+
 		// Every other page reachable without an app: no codes, AA in both themes.
 		const pages = [
 			'/apps',

@@ -202,11 +202,14 @@
 							Version
 						</span>
 						<div class="mt-1 flex items-baseline justify-between gap-2">
-							<span class="font-mono text-base font-bold">
+							<span
+								class="min-w-0 truncate font-mono text-base font-bold"
+								title={status.version}
+							>
 								{status.version}
 							</span>
 							<span
-								class="truncate font-mono text-xs text-stone-600 dark:text-stone-400"
+								class="shrink-0 font-mono text-xs text-stone-600 dark:text-stone-400"
 							>
 								{status.commit}
 							</span>
