@@ -61,7 +61,7 @@ forbidden=$("$self" --forbidden "${files[@]}" || true)
 
 evidence=$(for file in "${files[@]}"; do
   [[ $file == docs/evidence/* && -e $file ]] || continue
-  [[ $file =~ ^docs/evidence/(README\.md|TEMPLATE\.md|M[0-9]+/EVIDENCE\.md)$ ]] || echo "  $file"
+  [[ $file =~ ^docs/evidence/(README\.md|TEMPLATE\.md|(M[0-9]+|UI)/EVIDENCE\.md)$ ]] || echo "  $file"
 done)
 [[ -z $evidence ]] || fail "docs/evidence/ may hold only README.md, TEMPLATE.md and M<N>/EVIDENCE.md (raw artifacts go to tmp/evidence/):"$'\n'"$evidence"
 
