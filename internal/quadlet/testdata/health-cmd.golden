@@ -6,6 +6,7 @@ Description=dermaga app backend-api release 5
 ContainerName=app-backend-api-r5
 Image=localhost/backend-api:r5
 Network=web
+RunInit=true
 PidsLimit=128
 NoNewPrivileges=true
 DropCapability=ALL

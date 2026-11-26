@@ -6,6 +6,7 @@ Description=dermaga app shop release 2
 ContainerName=app-shop-r2
 Image=ghcr.io/org/shop:sha256-abcdef
 Network=web
+RunInit=true
 PodmanArgs=--memory=1g --cpus=2.0
 PidsLimit=256
 NoNewPrivileges=true

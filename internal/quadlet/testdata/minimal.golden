@@ -6,6 +6,7 @@ Description=dermaga app demo release 1
 ContainerName=app-demo-r1
 Image=localhost/app-demo:r1
 Network=web
+RunInit=true
 PidsLimit=128
 NoNewPrivileges=true
 DropCapability=ALL

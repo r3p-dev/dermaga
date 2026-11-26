@@ -6,6 +6,7 @@ Description=dermaga app backend release 4
 ContainerName=app-backend-r4
 Image=localhost/backend:r4
 Network=web
+RunInit=true
 PidsLimit=128
 NoNewPrivileges=true
 DropCapability=ALL

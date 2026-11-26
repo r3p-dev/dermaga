@@ -6,6 +6,7 @@ Description=dermaga app api-server release 1
 ContainerName=app-api-server-r1
 Image=docker.io/library/api:v1
 Network=web
+RunInit=true
 PidsLimit=128
 NoNewPrivileges=true
 StopTimeout=10

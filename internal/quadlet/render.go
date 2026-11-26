@@ -60,6 +60,9 @@ func RenderContainer(spec ContainerSpec) ([]byte, error) {
 	contSec.add("ContainerName", name.AppContainerName(spec.AppName, spec.ReleaseNumber))
 	contSec.add("Image", spec.Image)
 	contSec.add("Network", netName)
+	// A tiny init (catatonit) is PID 1, so apps that never handle SIGTERM still stop at once
+	// after the drain instead of waiting for SIGKILL (owner decision, DEC-34).
+	contSec.add("RunInit", "true")
 
 	var podmanArgs []string
 	if spec.Limits.Memory != "" {

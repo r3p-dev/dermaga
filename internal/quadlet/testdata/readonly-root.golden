@@ -6,6 +6,7 @@ Description=dermaga app worker release 3
 ContainerName=app-worker-r3
 Image=localhost/worker:r3
 Network=web
+RunInit=true
 PidsLimit=128
 NoNewPrivileges=true
 DropCapability=ALL
