@@ -74,6 +74,16 @@ Two baseline snapshots exist in libvirt for `dermaga-vm`:
   ```
   Note that a live eject (`--live`) is ephemeral and is undone when reverting to an older snapshot.
 
+### 2.4 Running `m3_check.sh access` Without Locking Out Your Workstation
+
+`test/vm/m3_check.sh access` intentionally runs denied SSH login attempts (`server` with password auth disabled, `root`, and `debian`) to prove `sshd` rejects them. Those failed attempts trigger `fail2ban` (`sshd` jail) on `dermaga-vm` a few seconds later.
+
+To prevent banning your workstation IP:
+1. `m3_check.sh access` opens an SSH `ControlMaster` connection (`ControlPersist=120`) before the denied-login checks and records your workstation IP (`SSH_CLIENT`).
+2. After the denied-login checks, it polls `fail2ban-client status sshd` until the ban settles, logs the status as proof that `fail2ban` works, and runs `fail2ban-client unban <workstation_ip>` over the existing `ControlMaster` socket.
+3. Pass `DERMAGA_SUDO_PASS_FILE=<path-to-sudo-password-file>` when `server` uses a sudo password (as set by `drive_install.py`).
+4. After `m3_check.sh access` finishes, wait at least 30 s from the last denied attempt and verify a fresh `ssh dermaga` connection.
+
 ---
 
 ## 3. Safe Reboot Procedure (ACPI Poweroff vs Guest Reboot)

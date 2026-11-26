@@ -48,10 +48,62 @@ case $cmd in
     check "firewall rules open only ssh, 80, 443/tcp, 443/udp" bash -c "ssh ${ssh_opts[*]} -i $key server@$host cat /etc/nftables.conf | grep -E 'dport' | tee /dev/stderr | grep -qx '    tcp dport { $port } accept comment \"ssh\"'"
     check "old port 22 closed" port_closed 22
     check "panel port 7070 closed from outside (SEC-2)" port_closed 7070
-    # Denied-login checks run last because 5 failed auth attempts trigger fail2ban (HOST-4).
+    # Open an SSH ControlMaster before denied-login checks so we can unban our workstation IP
+    # afterward and prove fail2ban recorded the ban (HOST-4).
+    ctrl_sock=$(mktemp -u "${TMPDIR:-/tmp}/dermaga-m3-ctrl-XXXXXX")
+    cleanup_ctrl() {
+      ssh -S "$ctrl_sock" -O exit "server@$host" 2>/dev/null || true
+      rm -f "$ctrl_sock"
+    }
+    trap cleanup_ctrl EXIT
+
+    if ssh "${ssh_opts[@]}" -M -S "$ctrl_sock" -o ControlPersist=120 -fN -i "$key" "server@$host"; then
+      workstation_ip=$(ssh -S "$ctrl_sock" "server@$host" 'printf "%s" "${SSH_CLIENT%% *}"' 2>/dev/null || true)
+    else
+      workstation_ip=""
+    fi
+
+    # Denied-login checks run last because failed auth attempts trigger fail2ban (HOST-4).
     check "password login not offered to server" denied server -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive
     check "root refused, even with the key" denied root -o IdentitiesOnly=yes -i "$key"
     check "provider user debian refused, even with the key" denied debian -o IdentitiesOnly=yes -i "$key"
+
+    if [[ -S $ctrl_sock && -n ${workstation_ip:-} ]]; then
+      echo "INFO  waiting for fail2ban to settle for $workstation_ip..."
+      run_f2b() {
+        local subcmd=$1
+        if [[ -n ${DERMAGA_SUDO_PASS_FILE:-} && -f ${DERMAGA_SUDO_PASS_FILE} ]]; then
+          printf '%s\n' "$(cat "$DERMAGA_SUDO_PASS_FILE")" | ssh -o ConnectTimeout=5 -S "$ctrl_sock" "server@$host" "sudo -S -p '' fail2ban-client $subcmd" 2>/dev/null
+        else
+          ssh -o ConnectTimeout=5 -S "$ctrl_sock" "server@$host" "sudo -n fail2ban-client $subcmd" 2>/dev/null
+        fi
+      }
+      prev_status=""
+      f2b_status=""
+      for _ in $(seq 1 10); do
+        sleep 2
+        cur_status=$(run_f2b "status sshd" || true)
+        if [[ -n $cur_status && $cur_status == "$prev_status" && $cur_status == *"$workstation_ip"* ]]; then
+          f2b_status=$cur_status
+          break
+        fi
+        prev_status=$cur_status
+        f2b_status=$cur_status
+      done
+      if [[ -n $f2b_status ]]; then
+        echo "INFO  fail2ban status sshd (before unban):"
+        printf '%s\n' "$f2b_status" | sed 's/^/      /'
+        if run_f2b "unban $workstation_ip" >/dev/null; then
+          echo "PASS  fail2ban unbanned $workstation_ip"
+        else
+          echo "WARN  could not unban $workstation_ip via sudo fail2ban-client"
+        fi
+      else
+        echo "WARN  could not query fail2ban-client status sshd (set DERMAGA_SUDO_PASS_FILE if sudo requires a password)"
+      fi
+      cleanup_ctrl
+      trap - EXIT
+    fi
     ;;
   state)
     # The script runs on the VM, so $u and $(…) must expand there, not here.
