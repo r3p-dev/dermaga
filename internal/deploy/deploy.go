@@ -4,9 +4,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -20,7 +20,6 @@ import (
 	"dermaga/internal/name"
 	"dermaga/internal/quadlet"
 	"dermaga/internal/store"
-	"dermaga/internal/traefik"
 )
 
 // Config configures paths and runtime dependencies for the deployment Engine.
@@ -34,6 +33,11 @@ type Config struct {
 	MasterKey         []byte
 	StabilityWindow   time.Duration // default 5s when health_type == "none"
 	ProbeInterval     time.Duration // default 1s
+	MeminfoPath       string        // default /proc/meminfo (memory check)
+	DrainGrace        time.Duration // default 10s: old release keeps finishing requests (DEP-1)
+	SwitchTimeout     time.Duration // default 30s per Traefik verification step
+	// VerifyRoute asks Traefik for host+path with the verify token (default VerifyThroughTraefik).
+	VerifyRoute func(ctx context.Context, host, path, token string) (bool, error)
 }
 
 // Engine manages the single global build queue and deployment lifecycle (DEP-5–DEP-9).
@@ -51,6 +55,8 @@ type Engine struct {
 	activeAppID string
 	activeStop  context.CancelFunc
 	cancelled   map[string]bool
+	appLocks    map[string]chan struct{} // one release per app starts or switches at a time
+	baseCtx     context.Context          // daemon lifetime, for rollbacks that outlive the request
 	wake        chan struct{}
 	stopCh      chan struct{}
 }
@@ -63,6 +69,18 @@ func NewEngine(s *store.Store, h host.Host, gh *github.Client, b *builder.Builde
 	if cfg.ProbeInterval <= 0 {
 		cfg.ProbeInterval = 1 * time.Second
 	}
+	if cfg.MeminfoPath == "" {
+		cfg.MeminfoPath = "/proc/meminfo"
+	}
+	if cfg.DrainGrace <= 0 {
+		cfg.DrainGrace = 10 * time.Second
+	}
+	if cfg.SwitchTimeout <= 0 {
+		cfg.SwitchTimeout = 30 * time.Second
+	}
+	if cfg.VerifyRoute == nil {
+		cfg.VerifyRoute = VerifyThroughTraefik
+	}
 	return &Engine{
 		store:     s,
 		host:      h,
@@ -71,6 +89,8 @@ func NewEngine(s *store.Store, h host.Host, gh *github.Client, b *builder.Builde
 		cfg:       cfg,
 		pending:   make(map[string]string),
 		cancelled: make(map[string]bool),
+		appLocks:  make(map[string]chan struct{}),
+		baseCtx:   context.Background(),
 		wake:      make(chan struct{}, 1),
 		stopCh:    make(chan struct{}),
 	}
@@ -84,6 +104,11 @@ func (e *Engine) Logs() *builder.LogHub {
 // Start recovers any in-flight deployments interrupted by a previous daemon crash/restart
 // and launches the single-concurrency build worker.
 func (e *Engine) Start(ctx context.Context) error {
+	e.baseCtx = ctx
+	if err := e.convertLegacySnapshots(ctx); err != nil {
+		// Serving must not depend on it: those releases just cannot be rolled back to.
+		fmt.Fprintf(os.Stderr, "Warning: converting pre-0005 release snapshots: %v\n", err)
+	}
 	if _, err := e.store.FailInFlightDeployments(ctx, "daemon restarted mid-deployment"); err != nil {
 		return fmt.Errorf("failing interrupted deployments: %w", err)
 	}
@@ -103,42 +128,21 @@ func (e *Engine) Enqueue(ctx context.Context, appID, trigger, commitHash, commit
 		return nil, fmt.Errorf("computing release number: %w", err)
 	}
 
-	runtimeEnv, err := OpenEnvMap(e.cfg.MasterKey, "env_encrypted", app.EnvEncrypted)
-	if err != nil {
-		return nil, err
-	}
-	snapshot := struct {
-		Env              map[string]string `json:"env"`
-		Port             int               `json:"port"`
-		HealthType       string            `json:"health_type"`
-		HealthPath       *string           `json:"health_path"`
-		HealthCmd        *string           `json:"health_cmd"`
-		HealthTimeoutSec int               `json:"health_timeout_sec"`
-		Command          *string           `json:"command"`
-	}{
-		Env:              runtimeEnv,
-		Port:             app.Port,
-		HealthType:       app.HealthType,
-		HealthPath:       app.HealthPath,
-		HealthCmd:        app.HealthCmd,
-		HealthTimeoutSec: app.HealthTimeoutSec,
-		Command:          app.Command,
-	}
-	snapSealed, err := sealJSON(e.cfg.MasterKey, "env_snapshot_encrypted", snapshot)
-	if err != nil {
-		return nil, err
+	if app.EnvVersionID == nil {
+		return nil, errors.New("the app has no stored environment version")
 	}
 
 	depID := "dep_" + randomHex(12)
 	dep := &store.Deployment{
-		ID:                   depID,
-		AppID:                appID,
-		ReleaseNumber:        relNum,
-		Status:               "queued",
-		Trigger:              trigger,
-		CommitHash:           commitHash,
-		CommitMessage:        commitMsg,
-		EnvSnapshotEncrypted: snapSealed,
+		ID:            depID,
+		AppID:         appID,
+		ReleaseNumber: relNum,
+		Status:        "queued",
+		Trigger:       trigger,
+		CommitHash:    commitHash,
+		CommitMessage: commitMsg,
+		EnvVersionID:  app.EnvVersionID,
+		RuntimeConfig: RuntimeConfigOf(app).json(),
 	}
 	if err := e.store.CreateDeployment(ctx, dep); err != nil {
 		return nil, fmt.Errorf("creating deployment: %w", err)
@@ -263,46 +267,40 @@ func (e *Engine) runOne(parentCtx context.Context, depID string) {
 		e.mu.Unlock()
 		return c || errors.Is(runCtx.Err(), context.Canceled)
 	}
-
-	failOrCancel := func(err error, imageRef string) {
+	logf := func(line string) { e.builder.Logs().Append(depID, line) }
+	fail := func(err error, imageRef string) {
 		if imageRef == "" {
 			imageRef = builder.ImageRef(app.Name, dep.ReleaseNumber)
 		}
-		e.cleanupCandidate(app, dep.ReleaseNumber, imageRef)
-		if app.ActiveReleaseID == nil {
-			_ = e.host.Remove(filepath.Join(e.cfg.TraefikDynamicDir, name.AppDynamicFilename(app.Name)))
-		}
-		now := nowUTC()
-		status := "failed"
-		msg := err.Error()
-		if isCancelled() {
-			status = "cancelled"
-			msg = "cancelled by operator"
-			e.builder.Logs().Append(depID, "==> Deployment cancelled; candidate resources cleaned up")
-		} else {
-			e.builder.Logs().Append(depID, "==> Deployment failed: "+msg)
-		}
-		_ = e.store.SetDeploymentBuildLogs(parentCtx, depID, e.builder.Logs().Snapshot(depID))
-		_ = e.store.UpdateDeploymentStatus(parentCtx, depID, status, msg, &now)
-		e.builder.Logs().Finish(depID)
+		e.failRelease(parentCtx, app, dep, err, imageRef, isCancelled())
 	}
 
 	// 1. Building
 	_ = e.store.UpdateDeploymentStatus(parentCtx, depID, "building", "", nil)
+	rc, err := ReleaseRuntimeConfig(app, dep)
+	if err != nil {
+		fail(err, "")
+		return
+	}
+	// Refuse early instead of after a 20-minute build; checked again right before the start.
+	if err := e.requireMemory(rc.MemoryLimit); err != nil {
+		fail(err, "")
+		return
+	}
 	token, err := e.mintRepoToken(runCtx, app)
 	if err != nil {
-		failOrCancel(err, "")
+		fail(err, "")
 		return
 	}
 
 	buildEnv, err := OpenEnvMap(e.cfg.MasterKey, "build_env_encrypted", app.BuildEnvEncrypted)
 	if err != nil {
-		failOrCancel(err, "")
+		fail(err, "")
 		return
 	}
-	runtimeEnv, err := OpenEnvMap(e.cfg.MasterKey, "env_encrypted", app.EnvEncrypted)
+	runtimeEnv, err := e.releaseEnv(parentCtx, dep)
 	if err != nil {
-		failOrCancel(err, "")
+		fail(err, "")
 		return
 	}
 	runtimeSecrets := make([]string, 0, len(runtimeEnv))
@@ -318,7 +316,7 @@ func (e *Engine) runOne(parentCtx context.Context, depID string) {
 	buildMem, _ := e.store.GetSetting(parentCtx, "build_memory_limit")
 	if buildMem != "" {
 		if err := builder.ValidateMemoryLimit(buildMem); err != nil {
-			failOrCancel(err, "")
+			fail(err, "")
 			return
 		}
 	}
@@ -327,7 +325,7 @@ func (e *Engine) runOne(parentCtx context.Context, depID string) {
 	if ts, err := e.store.GetSetting(parentCtx, "build_timeout_sec"); err == nil && ts != "" {
 		parsed, err := builder.ValidateTimeoutSec(ts)
 		if err != nil {
-			failOrCancel(err, "")
+			fail(err, "")
 			return
 		}
 		buildTimeout = parsed
@@ -350,159 +348,230 @@ func (e *Engine) runOne(parentCtx context.Context, depID string) {
 		Timeout:           buildTimeout,
 	})
 	if err != nil {
-		failOrCancel(err, "")
+		fail(err, "")
 		return
 	}
 	_ = e.store.SetDeploymentImageRef(parentCtx, depID, imageRef)
 
-	// 2. Starting
-	_ = e.store.UpdateDeploymentStatus(parentCtx, depID, "starting", "", nil)
-	e.builder.Logs().Append(depID, fmt.Sprintf("==> Starting release r%d", dep.ReleaseNumber))
-
-	envFilePath := ""
-	if len(runtimeEnv) > 0 {
-		envData, err := FormatEnvFile(runtimeEnv)
-		if err != nil {
-			failOrCancel(err, imageRef)
-			return
-		}
-		envFilePath = filepath.Join(e.cfg.EnvDir, fmt.Sprintf("%s-r%d.env", app.Name, dep.ReleaseNumber))
-		if err := e.host.WriteFileAtomic(envFilePath, envData, 0600); err != nil {
-			failOrCancel(fmt.Errorf("writing env file: %w", err), imageRef)
-			return
-		}
+	// 2.–4. Start next to the live release, health check, switch (one release per app at a time).
+	lock := e.appLock(app.ID)
+	select {
+	case lock <- struct{}{}:
+	case <-runCtx.Done():
+		fail(runCtx.Err(), imageRef)
+		return
 	}
-
-	var addCaps []string
-	for _, c := range strings.Split(app.AddCapabilities, ",") {
-		c = strings.TrimSpace(c)
-		if c != "" {
-			addCaps = append(addCaps, c)
-		}
-	}
-	var healthPath, healthCmd string
-	if app.HealthPath != nil {
-		healthPath = *app.HealthPath
-	}
-	if app.HealthCmd != nil {
-		healthCmd = *app.HealthCmd
-	}
-
-	spec := quadlet.ContainerSpec{
-		AppName:       app.Name,
-		ReleaseNumber: dep.ReleaseNumber,
-		Image:         imageRef,
-		Network:       name.BridgeNetworkName(),
-		Port:          app.Port,
-		Limits: quadlet.Limits{
-			Memory:    app.MemoryLimit,
-			CPUs:      app.CPULimit,
-			PidsLimit: app.PidsLimit,
-		},
-		Health: quadlet.HealthSpec{
-			Type:          app.HealthType,
-			Path:          healthPath,
-			Cmd:           healthCmd,
-			TimeoutSec:    app.HealthTimeoutSec,
-			NotifyHealthy: app.HealthType == "cmd",
-		},
-		ReadOnlyRoot:     app.ReadOnlyRoot,
-		DropCapabilities: true,
-		AddCapabilities:  addCaps,
-		EnvFile:          envFilePath,
-	}
-
-	unitBytes, err := quadlet.RenderContainer(spec)
+	err = e.startAndSwitch(runCtx, app, dep, imageRef, rc, runtimeEnv, "inactive", logf)
+	<-lock
 	if err != nil {
-		failOrCancel(fmt.Errorf("rendering quadlet unit: %w", err), imageRef)
+		fail(err, imageRef)
 		return
 	}
+	e.finishLive(parentCtx, depID)
+}
 
+// startAndSwitch starts a release next to the live one, waits until it is healthy and switches
+// the route to it with proof through Traefik, then drains and stops the old release (DEP-1). Any
+// error before the switch completes leaves the live release serving (DEP-2). The caller holds the
+// app's lock. oldStatus is what the replaced release becomes ("inactive" or "rolled_back").
+func (e *Engine) startAndSwitch(ctx context.Context, app *store.App, dep *store.Deployment, imageRef string, rc RuntimeConfig, env map[string]string, oldStatus string, logf func(string)) error {
+	if err := e.requireMemory(rc.MemoryLimit); err != nil {
+		return err
+	}
+	_ = e.store.UpdateDeploymentStatus(ctx, dep.ID, "starting", "", nil)
+	logf(fmt.Sprintf("==> Starting release r%d", dep.ReleaseNumber))
+
+	envFile := ""
+	if len(env) > 0 {
+		envData, err := FormatEnvFile(env)
+		if err != nil {
+			return err
+		}
+		envFile = EnvFilePath(e.cfg.EnvDir, app.Name, dep.ReleaseNumber)
+		if err := e.host.WriteFileAtomic(envFile, envData, 0600); err != nil {
+			return fmt.Errorf("writing env file: %w", err)
+		}
+	}
+
+	unitBytes, err := quadlet.RenderContainer(ContainerSpecFor(app.Name, dep.ReleaseNumber, imageRef, rc, envFile))
+	if err != nil {
+		return fmt.Errorf("rendering quadlet unit: %w", err)
+	}
 	unitName := name.AppQuadletFilename(app.Name, dep.ReleaseNumber)
-	dryDir := filepath.Join(e.cfg.BuildsDir, ".dryrun-"+depID)
+	dryDir := filepath.Join(e.cfg.BuildsDir, ".dryrun-"+dep.ID)
 	defer func() { _ = e.host.RemoveAll(dryDir) }()
-	if _, err := quadlet.NewDryRunValidator(e.host, "").ValidateUnit(runCtx, unitName, unitBytes, dryDir); err != nil {
-		failOrCancel(fmt.Errorf("quadlet dry-run failed: %w", err), imageRef)
-		return
+	if _, err := quadlet.NewDryRunValidator(e.host, "").ValidateUnit(ctx, unitName, unitBytes, dryDir); err != nil {
+		return fmt.Errorf("quadlet dry-run failed: %w", err)
 	}
-
-	unitPath := filepath.Join(e.cfg.QuadletDir, unitName)
-	if err := e.host.WriteFileAtomic(unitPath, unitBytes, 0644); err != nil {
-		failOrCancel(fmt.Errorf("writing quadlet unit: %w", err), imageRef)
-		return
+	if err := e.host.WriteFileAtomic(filepath.Join(e.cfg.QuadletDir, unitName), unitBytes, 0644); err != nil {
+		return fmt.Errorf("writing quadlet unit: %w", err)
 	}
-	if _, err := e.host.RunCommand(runCtx, "systemctl", "--user", "daemon-reload"); err != nil {
-		failOrCancel(fmt.Errorf("systemd daemon-reload: %w", err), imageRef)
-		return
+	if _, err := e.host.RunCommand(ctx, "systemctl", "--user", "daemon-reload"); err != nil {
+		return fmt.Errorf("systemd daemon-reload: %w", err)
 	}
 	serviceName := name.AppServiceName(app.Name, dep.ReleaseNumber)
-	if _, err := e.host.RunCommand(runCtx, "systemctl", "--user", "start", serviceName); err != nil {
-		failOrCancel(fmt.Errorf("starting container service: %w", err), imageRef)
-		return
+	if _, err := e.host.RunCommand(ctx, "systemctl", "--user", "start", serviceName); err != nil {
+		return fmt.Errorf("starting container service: %w", err)
 	}
 
-	// 3. Probing (healthy)
-	_ = e.store.UpdateDeploymentStatus(parentCtx, depID, "probing", "", nil)
-	if err := e.waitHealthy(runCtx, app, dep.ReleaseNumber, serviceName); err != nil {
-		failOrCancel(err, imageRef)
-		return
+	_ = e.store.UpdateDeploymentStatus(ctx, dep.ID, "probing", "", nil)
+	if err := e.waitHealthy(ctx, app.Name, rc, dep.ReleaseNumber, serviceName); err != nil {
+		return err
 	}
 
-	// 4. Route & Active (live)
-	domains, err := e.store.ListDomainsByApp(parentCtx, app.ID)
+	fresh, err := e.store.GetApp(ctx, app.ID)
 	if err != nil {
-		failOrCancel(fmt.Errorf("loading domains: %w", err), imageRef)
-		return
+		return err
 	}
-	domainSpecs := make([]traefik.DomainSpec, 0, len(domains))
-	for _, d := range domains {
-		var redir, pfx string
-		if d.RedirectTo != nil {
-			redir = *d.RedirectTo
+	if fresh.ActiveReleaseID == nil { // first deploy: nothing to switch from (DEP-3)
+		if _, _, err := e.writeRoute(ctx, fresh, dep.ReleaseNumber, rc.Port, nil); err != nil {
+			return err
 		}
-		if d.PathPrefix != nil {
-			pfx = *d.PathPrefix
-		}
-		domainSpecs = append(domainSpecs, traefik.DomainSpec{
-			Domain:      d.Domain,
-			IsPrimary:   d.IsPrimary,
-			RedirectTo:  redir,
-			PathPrefix:  pfx,
-			StripPrefix: d.StripPrefix,
-		})
+		return e.store.FinishSwitch(ctx, app.ID, dep.ID, "", "")
 	}
-	traefikBytes, err := traefik.RenderApp(traefik.AppSpec{
-		AppName:       app.Name,
-		ReleaseNumber: dep.ReleaseNumber,
-		Port:          app.Port,
-		Domains:       domainSpecs,
-	})
+	live, err := e.store.GetDeployment(ctx, *fresh.ActiveReleaseID)
 	if err != nil {
-		failOrCancel(fmt.Errorf("rendering traefik route: %w", err), imageRef)
-		return
+		return fmt.Errorf("loading the live release: %w", err)
 	}
-	traefikPath := filepath.Join(e.cfg.TraefikDynamicDir, name.AppDynamicFilename(app.Name))
-	if err := e.host.WriteFileAtomic(traefikPath, traefikBytes, 0600); err != nil {
-		failOrCancel(fmt.Errorf("writing traefik route: %w", err), imageRef)
-		return
+	liveRC, err := ReleaseRuntimeConfig(fresh, live)
+	if err != nil {
+		return err
 	}
 
-	now := nowUTC()
-	_ = e.store.SetActiveRelease(parentCtx, app.ID, depID)
-	_ = e.store.UpdateDeploymentStatus(parentCtx, depID, "active", "", &now)
+	// From here on a cancel or a closed request must not cut the switch halfway.
+	sctx := context.WithoutCancel(ctx)
+	_ = e.store.UpdateDeploymentStatus(sctx, dep.ID, "switching", "", nil)
+	if err := e.switchTraffic(sctx, fresh, live.ReleaseNumber, liveRC.Port, dep.ReleaseNumber, rc.Port, logf); err != nil {
+		return err
+	}
+	if err := e.store.FinishSwitch(sctx, app.ID, dep.ID, live.ID, oldStatus); err != nil {
+		return err
+	}
+	logf(fmt.Sprintf("==> Draining r%d for %s before stopping it", live.ReleaseNumber, e.cfg.DrainGrace))
+	time.Sleep(e.cfg.DrainGrace)
+	e.stopRelease(sctx, app.Name, live.ReleaseNumber)
+	e.applyRetention(sctx, fresh, dep.ID)
+	return nil
+}
+
+func (e *Engine) finishLive(ctx context.Context, depID string) {
 	e.builder.Logs().Append(depID, "==> Deployment is live")
-	_ = e.store.SetDeploymentBuildLogs(parentCtx, depID, e.builder.Logs().Snapshot(depID))
+	_ = e.store.SetDeploymentBuildLogs(ctx, depID, e.builder.Logs().Snapshot(depID))
 	e.builder.Logs().Finish(depID)
 }
 
-func (e *Engine) waitHealthy(ctx context.Context, app *store.App, relNum int, serviceName string) error {
-	timeout := time.Duration(app.HealthTimeoutSec) * time.Second
+// failRelease removes a candidate that never went live and records why (DEP-2, DEP-3, DEP-6).
+// imageRef "" keeps the image (a rollback reuses an image that stays retained).
+func (e *Engine) failRelease(ctx context.Context, app *store.App, dep *store.Deployment, err error, imageRef string, cancelled bool) {
+	e.cleanupCandidate(app, dep.ReleaseNumber, imageRef)
+	if fresh, gErr := e.store.GetApp(ctx, app.ID); gErr == nil && fresh.ActiveReleaseID == nil {
+		_ = e.host.Remove(filepath.Join(e.cfg.TraefikDynamicDir, name.AppDynamicFilename(app.Name)))
+	}
+	now := nowUTC()
+	status, msg := "failed", err.Error()
+	if cancelled {
+		status, msg = "cancelled", "cancelled by operator"
+		e.builder.Logs().Append(dep.ID, "==> Deployment cancelled; candidate resources cleaned up")
+	} else {
+		e.builder.Logs().Append(dep.ID, "==> Deployment failed: "+msg)
+	}
+	_ = e.store.SetDeploymentBuildLogs(ctx, dep.ID, e.builder.Logs().Snapshot(dep.ID))
+	_ = e.store.UpdateDeploymentStatus(ctx, dep.ID, status, msg, &now)
+	e.builder.Logs().Finish(dep.ID)
+}
+
+// Rollback starts the retained release targetID again from its image and environment version,
+// next to the live release, and switches to it (DEP-4). No rebuild; refused while the app builds.
+func (e *Engine) Rollback(ctx context.Context, appID, targetID string) (*store.Deployment, error) {
+	e.mu.Lock()
+	_, queued := e.pending[appID]
+	building := e.activeAppID == appID
+	e.mu.Unlock()
+	if queued || building {
+		return nil, ErrBuildRunning
+	}
+	app, err := e.store.GetApp(ctx, appID)
+	if err != nil {
+		return nil, err
+	}
+	if app.ActiveReleaseID == nil {
+		return nil, errors.New("this app has no live release to roll back from")
+	}
+	deps, err := e.store.ListDeploymentsByApp(ctx, appID)
+	if err != nil {
+		return nil, err
+	}
+	var target *store.Deployment
+	for _, d := range RetainedSet(deps, *app.ActiveReleaseID) {
+		if d.ID == targetID && d.ID != *app.ActiveReleaseID {
+			target = &d
+		}
+	}
+	if target == nil {
+		return nil, fmt.Errorf("only the last %d releases that were live can be rolled back to", RetainedReleases)
+	}
+	if target.EnvVersionID == nil || target.ImageRef == "" {
+		return nil, fmt.Errorf("r%d has no stored environment or image to roll back to", target.ReleaseNumber)
+	}
+	rc, err := ReleaseRuntimeConfig(app, target)
+	if err != nil {
+		return nil, err
+	}
+
+	lock := e.appLock(appID)
+	select {
+	case lock <- struct{}{}:
+	default:
+		return nil, ErrSwitchRunning
+	}
+	relNum, err := e.store.NextReleaseNumber(ctx, appID)
+	if err != nil {
+		<-lock
+		return nil, err
+	}
+	dep := &store.Deployment{
+		ID:                 "dep_" + randomHex(12),
+		AppID:              appID,
+		ReleaseNumber:      relNum,
+		Status:             "starting",
+		Trigger:            "rollback",
+		CommitHash:         target.CommitHash,
+		CommitMessage:      target.CommitMessage,
+		EnvVersionID:       target.EnvVersionID,
+		RuntimeConfig:      rc.json(),
+		SourceDeploymentID: &target.ID,
+		ImageRef:           target.ImageRef,
+	}
+	if err := e.store.CreateDeployment(ctx, dep); err != nil {
+		<-lock
+		return nil, fmt.Errorf("creating deployment: %w", err)
+	}
+	go func() {
+		defer func() { <-lock }()
+		bctx := e.baseCtx
+		logf := func(line string) { e.builder.Logs().Append(dep.ID, line) }
+		logf(fmt.Sprintf("==> Rolling back to r%d: image %s, its environment and settings (no rebuild)", target.ReleaseNumber, target.ImageRef))
+		env, err := e.releaseEnv(bctx, dep)
+		if err == nil {
+			err = e.startAndSwitch(bctx, app, dep, dep.ImageRef, rc, env, "rolled_back", logf)
+		}
+		if err != nil {
+			e.failRelease(bctx, app, dep, err, "", false)
+			return
+		}
+		e.finishLive(bctx, dep.ID)
+	}()
+	return dep, nil
+}
+
+func (e *Engine) waitHealthy(ctx context.Context, appName string, rc RuntimeConfig, relNum int, serviceName string) error {
+	timeout := time.Duration(rc.HealthTimeoutSec) * time.Second
 	if timeout <= 0 {
 		timeout = 30 * time.Second
 	}
 	deadline := time.Now().Add(timeout)
 
-	switch app.HealthType {
+	switch rc.HealthType {
 	case "none":
 		if _, err := e.host.RunCommand(ctx, "systemctl", "--user", "is-active", serviceName); err != nil {
 			return fmt.Errorf("container failed to stay running: %w", err)
@@ -534,14 +603,14 @@ func (e *Engine) waitHealthy(ctx context.Context, app *store.App, relNum int, se
 
 	default: // "http"
 		healthPath := "/"
-		if app.HealthPath != nil && *app.HealthPath != "" {
-			healthPath = *app.HealthPath
+		if rc.HealthPath != nil && *rc.HealthPath != "" {
+			healthPath = *rc.HealthPath
 		}
 		if !strings.HasPrefix(healthPath, "/") {
 			healthPath = "/" + healthPath
 		}
-		probeURL := fmt.Sprintf("http://%s:%d%s", name.AppContainerName(app.Name, relNum), app.Port, healthPath)
-		needed := app.HealthConsecutive
+		probeURL := fmt.Sprintf("http://%s:%d%s", name.AppContainerName(appName, relNum), rc.Port, healthPath)
+		needed := rc.HealthConsecutive
 		if needed <= 0 {
 			needed = 3
 		}
@@ -576,7 +645,7 @@ func (e *Engine) cleanupCandidate(app *store.App, relNum int, imageRef string) {
 	_, _ = e.host.RunCommand(ctx, "systemctl", "--user", "stop", serviceName)
 	_ = e.host.Remove(filepath.Join(e.cfg.QuadletDir, name.AppQuadletFilename(app.Name, relNum)))
 	_, _ = e.host.RunCommand(ctx, "systemctl", "--user", "daemon-reload")
-	_ = e.host.Remove(filepath.Join(e.cfg.EnvDir, fmt.Sprintf("%s-r%d.env", app.Name, relNum)))
+	_ = e.host.Remove(EnvFilePath(e.cfg.EnvDir, app.Name, relNum))
 	if imageRef != "" {
 		_, _ = e.host.RunCommand(ctx, "podman", "rmi", "-f", imageRef)
 	}
@@ -648,14 +717,6 @@ func (e *Engine) RemoveApp(ctx context.Context, appID string) error {
 	_ = e.host.RemoveAll(filepath.Join(e.cfg.MirrorsDir, app.Name+".git"))
 
 	return e.store.DeleteApp(ctx, appID)
-}
-
-func sealJSON(key []byte, col string, v any) (string, error) {
-	raw, err := json.Marshal(v)
-	if err != nil {
-		return "", err
-	}
-	return crypto.Encrypt(key, col, raw)
 }
 
 func nowUTC() string {

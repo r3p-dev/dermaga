@@ -64,6 +64,9 @@ func setupTestEngine(t *testing.T) (*store.Store, *host.FakeHost, *Engine, []byt
 		BuildsDir:  filepath.Join(tmp, "builds"),
 	}, nil)
 
+	// 4 GiB available unless a test overrides it.
+	fh.Files["/proc/meminfo"] = []byte("MemTotal:        8000000 kB\nMemAvailable:    4194304 kB\n")
+	traefikDir := filepath.Join(tmp, "traefik")
 	eng := NewEngine(s, fh, ghClient, b, Config{
 		QuadletDir:        filepath.Join(tmp, "quadlet"),
 		TraefikDynamicDir: filepath.Join(tmp, "traefik"),
@@ -74,6 +77,18 @@ func setupTestEngine(t *testing.T) (*store.Store, *host.FakeHost, *Engine, []byt
 		MasterKey:         masterKey,
 		StabilityWindow:   10 * time.Millisecond,
 		ProbeInterval:     5 * time.Millisecond,
+		DrainGrace:        10 * time.Millisecond,
+		SwitchTimeout:     200 * time.Millisecond,
+		// Fake Traefik: the token comes back once the route file on disk contains it.
+		VerifyRoute: func(_ context.Context, _, _, token string) (bool, error) {
+			entries, _ := fh.ReadDir(traefikDir)
+			for _, en := range entries {
+				if data, err := fh.ReadFile(filepath.Join(traefikDir, en.Name())); err == nil && strings.Contains(string(data), token) {
+					return true, nil
+				}
+			}
+			return false, nil
+		},
 	})
 	return s, fh, eng, masterKey
 }
