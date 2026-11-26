@@ -12,7 +12,9 @@
 	let isDark = $state(false);
 
 	let pathname = $derived(page.url.pathname);
-	let isDashboardActive = $derived(pathname === '/' || pathname.startsWith('/apps'));
+	let isDashboardActive = $derived(pathname === '/');
+	let isAppsActive = $derived(pathname === '/apps' || pathname.startsWith('/apps/'));
+	let isActivityActive = $derived(pathname === '/activity' || pathname === '/audit-logs');
 
 	async function refreshSession() {
 		try {
@@ -73,11 +75,11 @@
 
 {#snippet themeIcon()}
 	{#if isDark}
-		<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+		<svg class="size-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
 		</svg>
 	{:else}
-		<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+		<svg class="size-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 			<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
 		</svg>
 	{/if}
@@ -92,7 +94,7 @@
 		>
 			<div class="px-4 h-16 flex items-center border-b border-stone-200 dark:border-stone-800">
 				<a href="/" class="flex items-center gap-2.5 font-semibold text-lg tracking-tight hover:opacity-80 transition focus:outline-none focus:ring-2 focus:ring-brand-ring rounded-md">
-					<img src="/logo.svg" alt="dermaga" class="w-7 h-7 object-contain" />
+					<img src="/logo.svg" alt="dermaga" class="size-7 object-contain" />
 					<span>dermaga</span>
 				</a>
 			</div>
@@ -104,21 +106,32 @@
 						? 'bg-brand-badge-bg text-brand-badge-text border border-brand-badge-border'
 						: 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 border border-transparent'}"
 				>
-					<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+					<svg class="size-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
 					</svg>
 					<span>Dashboard</span>
 				</a>
 				<a
-					href="/audit-logs"
-					class="flex items-center gap-2.5 px-3 py-2 rounded-lg transition focus:outline-none focus:ring-2 focus:ring-brand-ring {pathname === '/audit-logs'
+					href="/apps"
+					class="flex items-center gap-2.5 px-3 py-2 rounded-lg transition focus:outline-none focus:ring-2 focus:ring-brand-ring {isAppsActive
 						? 'bg-brand-badge-bg text-brand-badge-text border border-brand-badge-border'
 						: 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 border border-transparent'}"
 				>
-					<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+					<svg class="size-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+					</svg>
+					<span>Apps</span>
+				</a>
+				<a
+					href="/activity"
+					class="flex items-center gap-2.5 px-3 py-2 rounded-lg transition focus:outline-none focus:ring-2 focus:ring-brand-ring {isActivityActive
+						? 'bg-brand-badge-bg text-brand-badge-text border border-brand-badge-border'
+						: 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 border border-transparent'}"
+				>
+					<svg class="size-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
 					</svg>
-					<span>Audit Log</span>
+					<span>Activity</span>
 				</a>
 				<a
 					href="/settings"
@@ -126,7 +139,7 @@
 						? 'bg-brand-badge-bg text-brand-badge-text border border-brand-badge-border'
 						: 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 border border-transparent'}"
 				>
-					<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+					<svg class="size-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
 					</svg>
@@ -150,7 +163,7 @@
 					onclick={handleLogout}
 					class="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition focus:outline-none focus:ring-2 focus:ring-brand-ring"
 				>
-					<svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+					<svg class="size-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
 						<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
 					</svg>
 					<span>Log out</span>
@@ -162,7 +175,7 @@
 		<header class="md:hidden border-b border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 sticky top-0 z-40">
 			<div class="px-4 h-12 flex items-center justify-between">
 				<a href="/" class="flex items-center gap-2 font-semibold text-base tracking-tight">
-					<img src="/logo.svg" alt="dermaga" class="w-6 h-6 object-contain" />
+					<img src="/logo.svg" alt="dermaga" class="size-6 object-contain" />
 					<span>dermaga</span>
 				</a>
 			</div>
@@ -177,12 +190,20 @@
 						Dashboard
 					</a>
 					<a
-						href="/audit-logs"
-						class="px-2.5 py-1.5 rounded-md transition focus:outline-none focus:ring-2 focus:ring-brand-ring {pathname === '/audit-logs'
+						href="/apps"
+						class="px-2.5 py-1.5 rounded-md transition focus:outline-none focus:ring-2 focus:ring-brand-ring {isAppsActive
 							? 'bg-brand-badge-bg text-brand-badge-text border border-brand-badge-border'
 							: 'text-stone-600 dark:text-stone-400'}"
 					>
-						Audit Log
+						Apps
+					</a>
+					<a
+						href="/activity"
+						class="px-2.5 py-1.5 rounded-md transition focus:outline-none focus:ring-2 focus:ring-brand-ring {isActivityActive
+							? 'bg-brand-badge-bg text-brand-badge-text border border-brand-badge-border'
+							: 'text-stone-600 dark:text-stone-400'}"
+					>
+						Activity
 					</a>
 					<a
 						href="/settings"
@@ -217,7 +238,7 @@
 		<header class="border-b border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 sticky top-0 z-40">
 			<div class="max-w-5xl mx-auto px-4 md:px-6 h-14 flex items-center justify-between">
 				<a href="/" class="flex items-center gap-2.5 font-semibold text-lg tracking-tight hover:opacity-80 transition">
-					<img src="/logo.svg" alt="dermaga" class="w-7 h-7 object-contain" />
+					<img src="/logo.svg" alt="dermaga" class="size-7 object-contain" />
 					<span>dermaga</span>
 				</a>
 				<button
