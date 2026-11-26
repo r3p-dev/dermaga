@@ -22,6 +22,7 @@
         "rule": "Host(`webapp.example.com`) \u0026\u0026 Header(`X-Dermaga-Verify`, `test-switch-verify-token-999`)",
         "service": "app-web-app-candidate",
         "middlewares": [
+          "app-web-app-verify-ack",
           "app-web-app-headers"
         ],
         "tls": {
@@ -62,6 +63,13 @@
             "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
             "Server": "",
             "X-Powered-By": ""
+          }
+        }
+      },
+      "app-web-app-verify-ack": {
+        "headers": {
+          "customResponseHeaders": {
+            "X-Dermaga-Verify": "test-switch-verify-token-999"
           }
         }
       }

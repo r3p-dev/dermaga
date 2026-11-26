@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"dermaga/internal/name"
@@ -423,11 +424,17 @@ func RenderApp(spec AppSpec) ([]byte, error) {
 			verifyRule = fmt.Sprintf("Host(`%s`) && PathPrefix(`%s`) && Header(`%s`, `%s`)", primaryDomain, pathPrefix, VerifyHeader, spec.Switch.VerifyToken)
 		}
 
+		// The token comes back as a response header only through this router, so seeing it proves
+		// Traefik loaded this exact file version (DEC-33). First in the chain: added even on 401/403.
+		ackMiddlewareName := appIdentifier + "-verify-ack"
+		middlewares[ackMiddlewareName] = Middleware{Headers: &Headers{
+			CustomResponseHeaders: map[string]string{VerifyHeader: spec.Switch.VerifyToken},
+		}}
 		routers[verifyRouterName] = Router{
 			EntryPoints: []string{"websecure"},
 			Rule:        verifyRule,
 			Service:     candidateServiceName,
-			Middlewares: appMiddlewareChain,
+			Middlewares: append([]string{ackMiddlewareName}, appMiddlewareChain...),
 			TLS:         &RouterTLS{CertResolver: CertResolverName},
 			Priority:    10000,
 		}
@@ -532,4 +539,29 @@ func AppConfigFileName(appName string) string {
 // GlobalConfigFileName returns the filename for global dynamic configuration.
 func GlobalConfigFileName() string {
 	return "00-global.yml"
+}
+
+// LiveRelease reads which release an app's route file sends traffic to (the main service), and
+// whether a verify router is still present. Recovery after a crash mid-switch uses it (DEP-10).
+func LiveRelease(data []byte, appName string) (release int, hasVerify bool, ok bool) {
+	var doc Dynamic
+	if err := json.Unmarshal(StripHeaderComment(data), &doc); err != nil || doc.HTTP == nil {
+		return 0, false, false
+	}
+	svc, found := doc.HTTP.Services["app-"+appName]
+	if !found || len(svc.LoadBalancer.Servers) != 1 {
+		return 0, false, false
+	}
+	prefix := "http://" + name.AppPrefix + appName + "-r" // name.AppContainerName without the number
+	rest, cut := strings.CutPrefix(svc.LoadBalancer.Servers[0].URL, prefix)
+	if !cut {
+		return 0, false, false
+	}
+	num, _, _ := strings.Cut(rest, ":")
+	n, err := strconv.Atoi(num)
+	if err != nil || n <= 0 {
+		return 0, false, false
+	}
+	_, hasVerify = doc.HTTP.Routers["app-"+appName+"-verify"]
+	return n, hasVerify, true
 }

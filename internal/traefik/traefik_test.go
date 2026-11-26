@@ -199,3 +199,30 @@ func compareGolden(t *testing.T, dir, name string, got []byte) {
 		t.Errorf("mismatch in golden test %s:\n--- Got:\n%s\n--- Want:\n%s", name, string(got), string(want))
 	}
 }
+
+// TestLiveRelease_DEP10 reads the live release and a leftover verify router back from a route file.
+func TestLiveRelease_DEP10(t *testing.T) {
+	spec := AppSpec{AppName: "shop", ReleaseNumber: 12, Port: 8080, Domains: []DomainSpec{{Domain: "shop.example.com", IsPrimary: true}}}
+	plain, err := RenderApp(spec)
+	if err != nil {
+		t.Fatalf("RenderApp: %v", err)
+	}
+	if rel, verify, ok := LiveRelease(plain, "shop"); !ok || rel != 12 || verify {
+		t.Fatalf("plain route: rel=%d verify=%v ok=%v", rel, verify, ok)
+	}
+	spec.Switch = &SwitchSpec{CandidateReleaseNumber: 13, CandidatePort: 8080, VerifyToken: "tok-abc-123"}
+	switching, err := RenderApp(spec)
+	if err != nil {
+		t.Fatalf("RenderApp switch: %v", err)
+	}
+	if rel, verify, ok := LiveRelease(switching, "shop"); !ok || rel != 12 || !verify {
+		t.Fatalf("switch route: rel=%d verify=%v ok=%v", rel, verify, ok)
+	}
+	// Negative controls: another app's name, and content that is not a route file.
+	if _, _, ok := LiveRelease(plain, "shopx"); ok {
+		t.Fatalf("a different app name must not parse")
+	}
+	if _, _, ok := LiveRelease([]byte("# managed by dermaga; app=shop\nnot json"), "shop"); ok {
+		t.Fatalf("garbage must not parse")
+	}
+}
