@@ -16,7 +16,7 @@ M7a and M7b follow in later sections.
 | No requirement codes in visible text (rendered pages, both themes) | PASS | `tmp/evidence/M7/logs/v062-test-browser.log` | `layout.test.ts` checks `body.innerText` on 7 pages; its negative control asserts the matcher finds `NFR-2` in "Footprint (NFR-2)" |
 | No requirement codes in visible strings (static, `ui/src`) | PASS | `tmp/evidence/M7/logs/v062-no-codes.log` | see below |
 | Negative control for the static check | PASS | `tmp/evidence/M7/logs/v062-no-codes-negative.log` | see below |
-| Release, checksums, VM install from `fresh`, UI smoke test via the tunnel, `m3_check.sh access` | NOT RUN | — | runs after the owner tags `v0.6.2` |
+| Release, checksums, VM install from `fresh`, UI smoke test via the tunnel, `m3_check.sh access` | PASS | see § After the tag | `v0.6.2` = `3e4d902` |
 | "System" page (version, CPU, RAM, disk) | decision recorded | — | note in `docs/PLAN.md` M9 (not built) |
 | Suggested commits each pass `make check` alone | PASS | `tmp/evidence/M7/logs/v062-check-commits.log` | see below |
 
@@ -69,6 +69,63 @@ FOUND:
 ```
 
 The negative fixture also held `// comment DEP-1 ok`, which the check correctly ignored (comments may keep codes).
+
+### After the tag (`v0.6.2` = `3e4d902`, binary from the published release)
+
+| Check | Status | Log file |
+| --- | --- | --- |
+| Tag, `main` and `HEAD` all at `3e4d902`; CI and Release workflows `success` | PASS | (`git rev-parse`, `gh run list`) |
+| Release assets match `checksums.txt`; the binary reports `v0.6.2 (commit 3e4d902)` | PASS | `tmp/evidence/M7/logs/v062-release-checksums.log` |
+| Negative control: one appended byte makes `sha256sum -c` fail | PASS | `tmp/evidence/M7/logs/v062-release-checksums-negative.log` |
+| Revert to `fresh` (announced), `on_reboot=restart` live after a cold start | PASS | `tmp/evidence/M7/logs/v062-vm-revert.log`, `v062-vm-coldstart.log` |
+| Published installer from `fresh` (`drive_install.py`), exit 0 | PASS | `tmp/evidence/M7/logs/v062-vm-install.log` |
+| UI smoke via the SSH tunnel (`test/vm/smoke_ui.mjs`): setup, 6 width × theme combinations, values = API, no codes | PASS | `tmp/evidence/M7/logs/v062-vm-smoke-ui.log` |
+| `m3_check.sh access` (first attempt, ControlMaster unban) | FAIL | `tmp/evidence/M7/logs/v062-vm-m3-access.log` (overwritten by the rerun; the failure is described below) |
+| `m3_check.sh access` (VM-side unban, after a workstation reboot and `virsh start`) | PASS | `tmp/evidence/M7/logs/v062-vm-m3-access.log` |
+| New `ssh dermaga` with the owner's config 71 s after the last denied attempt | PASS | `tmp/evidence/M7/logs/v062-vm-ssh-dermaga.log` |
+
+```text
+PASS  password login not offered to server
+PASS  root refused, even with the key
+PASS  provider user debian refused, even with the key
+INFO  last denied attempt: 2026-11-26T19:00:28+07:00
+PASS  a new login works again after the VM-side unban (2026-11-26T19:01:28+07:00)
+      2026-11-26 12:00:28,654 fail2ban.actions        [658]: NOTICE  [sshd] Ban <ip>
+      2026-11-26 12:01:28,679 fail2ban.actions        [658]: NOTICE  [sshd] Unban <ip>
+PASS  fail2ban banned the workstation during the denied logins (bans 1 -> 2)
+all checks passed
+```
+
+```text
+last denied: 2026-11-26T19:00:28+07:00  now: 2026-11-26T19:01:39+07:00  gap: 71 s
+connected as server on dermaga-vm
+dermaga version v0.6.2 (commit 3e4d902)
+```
+
+**First `m3_check.sh access` run failed.** The unban over the open ControlMaster hung: fail2ban's
+`nftables-multiport` ban rejects every packet to port 4222 from the banned IP, including on established
+connections, so the unban request never reached the VM (`ssh dermaga-vm` → "Connection refused" for the
+1 h ban). The ControlMaster unban (commit `d08b137`) had never run against a VM before: both M6 access logs
+predate it. Owner decision: the script now schedules the unban on the VM (`systemd-run --on-active=60s`
+and `120s`, as root through the sudo password file) before the denied logins.
+
+| Screenshot | Page | Width | Theme | Shows |
+| --- | --- | --- | --- | --- |
+| `tmp/evidence/M7/screenshots/vm-v062-dashboard-1920-light.png` | Dashboard (VM) | 1920 | light | Full width; Status Running, Memory 85.5 MB amber (right after an Argon2id login), Apps 0, Version `v0.6.2` / `3e4d902` |
+| `tmp/evidence/M7/screenshots/vm-v062-dashboard-375-dark.png` | Dashboard (VM) | 375 | dark | Theme toggle and Log out in the top row, cards stacked, `v0.6.2` |
+
+### Open items checked before M7a
+
+| Item | Status | Log file | Result |
+| --- | --- | --- | --- |
+| Test app can serve 50 req/s and has a failable `/health` | FAIL (current repo) | — | Its `nc -l` loop serves one connection at a time and has no `/health`; it cannot prove zero downtime |
+| Replacement Containerfile (busybox `httpd`, Alpine 3.24 by digest, `/health`, `/version`) | PASS (local podman) | `tmp/evidence/M7/logs/testapp-local-final.log` | 501 × 200 at 50 req/s, `/health` 200, `podman stop` 0.09 s |
+| Same file without the `/health` line (the "broken health" commit) | PASS (local podman) | `tmp/evidence/M7/logs/testapp-local-broken.log` | `/` 200, `/health` 404 |
+| `httpd` as PID 1 ignores SIGTERM | decision recorded | `tmp/evidence/M7/logs/testapp-local-stop.log` | Stop took 10.10 s (SIGKILL); the test app traps TERM, and dermaga will run apps with `RunInit=true` (owner decision) |
+| `oha --cacert --connect-to` (Pebble-style private CA, name pinned to an IP) | PASS (local) | `tmp/evidence/M7/logs/oha-cacert-local.log` | `[200] 151 responses`; negative control without `--cacert`: `UnknownIssuer`, 0 % success |
+| gosmee target in SETUP §4.2 | decision recorded | — | The old target (`localhost:7070`) never served `/hooks/github-app`; corrected, and the exact invocation is verified in M7b |
+| Version card: a long dev version stays on one line, full value in `title` (owner request after `v0.6.2`) | PASS | `tmp/evidence/M7/logs/m7a-pre-test-browser.log` | `layout.test.ts` stubs `/api/server/status` with `v0.6.2-14-g3e4d902-dirty` at 1280: 9/9 pass; negative control (without `truncate`) fails with `long version on one line at 1280` |
+| `oha` 1.17.0 and `gosmee` 0.32.1 pinned | PASS | `tmp/evidence/M7/logs/tools-query.log`, `tools-download.log` | `sha256sum -c` OK for both |
 
 ### Screens
 

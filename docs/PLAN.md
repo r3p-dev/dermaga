@@ -49,13 +49,21 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
 **M7** (0.7.0): Zero downtime: push-to-deploy, redeploy, rollback (`in progress`).
 
 - **Requirement IDs:** DEP-1, DEP-2, DEP-4, DEP-10, APP-8, REL-6.
-- **Handoff** (2026-11-26, Step 0 `v0.6.2` built, waiting for the owner's tag):
-  - Done: M6 (`v0.6.0`, confirmed); `v0.6.1` UI redesign; Step 0 for `v0.6.2` (full-width content, server
-    overview with API values only, no requirement codes in visible text, footer removed, narrow header fix,
-    axe waits for CSS transitions; Playwright 9/9 at 1280/1920/375, light and dark;
-    `docs/evidence/M7/EVIDENCE.md` § Step 0).
-  - Remaining: owner tags `v0.6.2`; then release + checksum check, VM install from `fresh`, UI smoke test via
-    the tunnel, `m3_check.sh access` last (ControlMaster unban, new `ssh dermaga` ≥ 30 s later). Then M7a.
+- **Handoff** (2026-11-26, `v0.6.2` tagged and verified; M7a not started):
+  - Done: M6 (`v0.6.0`, confirmed); `v0.6.1` UI redesign; `v0.6.2` (tag = `3e4d902`, CI and release
+    green, checksums verified with a negative control, installed on `dermaga-vm` from `fresh`, UI smoke via
+    the tunnel `test/vm/smoke_ui.mjs`); Version card truncates long dev versions (full value in `title`);
+    `oha` 1.17.0 and `gosmee` 0.32.1 pinned (`docs/DEPENDENCIES.md` §5), `oha --cacert --connect-to`
+    verified locally; SETUP §4.2 corrected; test-app replacement Containerfile verified locally.
+  - Found: `m3_check.sh access` could not unban (the nftables ban also cuts the open ControlMaster);
+    rewritten to schedule the unban on the VM (owner choice). The test app's `nc` loop cannot serve
+    concurrent requests and has no failable `/health`: the owner pushes the replacement before the M7 VM run.
+  - Also done: `m3_check.sh access` with the VM-side unban PASS, new `ssh dermaga` 71 s later PASS.
+  - Remaining: owner pushes the test-app replacement (`tmp/evidence/M7/testapp/Containerfile`); then M7a
+    backend (migration `0005`, blue-green switch, rollback, recovery, `RunInit=true`) and the chosen panel.
+  - Owner choices (2026-11-26, later): Deployments tab = rows layout (mockup A); rollback dialog = compact
+    (mockup A, no typed confirmation); apps run with Quadlet `RunInit=true` (verified by dry-run on Debian 13
+    before use); `m3_check.sh` unbans via VM-side `systemd-run` timers and proves the ban from fail2ban's log.
   - Owner decisions (2026-11-26): the M7a/M7b split below; refuse a deploy when `MemAvailable` < the
     candidate's memory limit (shown in the deploy dialog when checkable up front); refuse rollback while
     the same app is building ("Cancel the running build first"); labels `inactive` → "Previous release",

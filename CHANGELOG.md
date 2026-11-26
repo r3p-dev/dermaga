@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- The Dashboard's Version card truncates long development versions on one line; the full value is in the tooltip.
+- `test/vm/m3_check.sh access` schedules the fail2ban unban on the VM before the denied logins (`systemd-run` timers at +60 s and +120 s), waits for a new login, and proves the ban from `/var/log/fail2ban.log`. The earlier ControlMaster unban could not work: the nftables ban also rejects packets on the already-open connection.
+
+### Added
+- `test/vm/smoke_ui.mjs`: UI smoke test of a freshly installed VM through an SSH tunnel (first-run setup, Dashboard at 1280/1920/375 in both themes, values compared with the API, no requirement codes).
+- `oha` 1.17.0 and `gosmee` 0.32.1 pinned with checksums for the M7 VM journey (`docs/DEPENDENCIES.md`).
+
+### Fixed
+- `docs/SETUP.md` §4.2 pointed gosmee at the panel, which never serves `/hooks/github-app`; §7 explains why `on_reboot=restart` needs a cold start after reverting a running snapshot.
+
 ## [0.6.2] - 2026-11-26
 
 ### Changed
