@@ -73,6 +73,7 @@ case $cmd in
         as_server "sudo -n $1"
       fi
     }
+    # shellcheck disable=SC2016 # expanded on the VM, not locally
     workstation_ip=$(as_server 'printf "%s" "${SSH_CLIENT%% *}"')
     [[ $workstation_ip =~ ^[0-9a-fA-F.:]+$ ]] || { echo "FAIL  could not read the workstation IP"; exit 1; }
     bans_before=$(sudo_server "grep -c '\] Ban $workstation_ip\$' /var/log/fail2ban.log" || true)
