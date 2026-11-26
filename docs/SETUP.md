@@ -126,12 +126,20 @@ Dermaga connects to GitHub exclusively via a GitHub App created through the **Gi
 
 ### 4.2 Webhook Forwarding Behind NAT (`gosmee`)
 For local development or testing behind NAT where GitHub cannot deliver webhooks directly to the VM:
-1. Create a channel on [smee.io](https://smee.io) (e.g. `https://smee.io/dermaga-test-channel`).
-2. Run `gosmee` on the development workstation to forward deliveries to the panel:
-   ```bash
-   gosmee client https://smee.io/dermaga-test-channel http://localhost:7070/hooks/github-app
-   ```
-3. **Security Warning:** Smee channels are public and unauthenticated. **Never** point production webhooks or sensitive repositories at a public smee channel. Use smee strictly with throwaway test repositories.
+1. The owner creates a channel on [smee.io](https://smee.io) and hands its URL over in the
+   environment variable `DERMAGA_SMEE_URL` or the gitignored file `tmp/smee-url`. The URL is never
+   printed in logs, evidence or commits.
+2. `gosmee` v0.32.1 (pinned in `docs/DEPENDENCIES.md` §5) runs on the workstation from
+   `tmp/tools/bin/gosmee`.
+3. Deliveries must go the public way: Traefik on the VM's 443, the hook-domain router, `hook-relay`,
+   then `hooks.sock`. The panel on `localhost:7070` does **not** serve `/hooks/github-app`; the
+   command that used to stand here (`gosmee client … http://localhost:7070/hooks/github-app`) could
+   never deliver. The hook domain does not resolve on the workstation and the certificate comes
+   from Pebble, so the forwarder must pin the name to the VM's IP and trust the Pebble root, as
+   `curl --resolve <hook-domain>:443:192.168.122.217 --cacert <pebble root>` does. The exact
+   `gosmee` invocation is verified end to end in M7b and recorded here then; until then, use
+   signed replays (`tmp/evidence/M5`, `verify_m6a_vm.py`).
+4. **Security Warning:** Smee channels are public and unauthenticated. **Never** point production webhooks or sensitive repositories at a public smee channel. Use smee strictly with throwaway test repositories.
 
 ---
 
@@ -271,6 +279,11 @@ From M3 on, the VM is set up by the installer itself, from the `fresh` snapshot.
    virt-xml --connect qemu:///system dermaga-vm --edit --events on_reboot=restart
    virsh --connect qemu:///system start dermaga-vm
    ```
+   The snapshots were taken while running, so the revert restores a **running** domain whose live
+   definition still has `on_reboot=destroy`; `virt-xml` changes only the persistent one
+   (`virsh dumpxml --inactive`). A cold start applies it: `virsh shutdown dermaga-vm`, wait for
+   `shut off`, `virsh start dermaga-vm`, then `virsh dumpxml dermaga-vm | grep on_reboot` shows
+   `restart`. (Found 2026-11-26, `tmp/evidence/M7/logs/v062-vm-revert.log`.)
 2. A release with `install.sh`, both binaries and `checksums.txt` must exist: the owner pushes a tag
    (`v0.3.0-rc.2` for M3b; `v0.3.0-rc` has no release) and `.github/workflows/release.yml`
    publishes it. CI runs the same `make release` on every push, so the tag only re-runs known steps.
