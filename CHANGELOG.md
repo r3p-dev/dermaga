@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-11-26
+
+### Changed
+- **Full-width panel**: the main content area no longer has a maximum width; it fills the space next to the sidebar with `px-4 md:px-6 lg:px-8` padding, and the app grid gains columns on wide screens (`xl:grid-cols-3 2xl:grid-cols-4`). Login, setup, the GitHub callbacks, the new-app wizard and single forms keep a readable width.
+- **Server overview** replaces the Dashboard's "Host Health" strip, showing only values the API returns: status with uptime and "Database: healthy" (schema version in a tooltip), dermaga's own memory (amber above the 30 MB idle budget), the number of apps, and the version. The earlier strip labelled the Go runtime's `Sys`/`Alloc` figures in a way that could be read as host memory; host CPU, RAM and disk move to the M9 System page.
+- **No requirement codes in visible panel text** ("Footprint (NFR-2)", "Target < 30 MB", "(AUD-1, AUD-2)", "(APP-5)"–"(APP-9)", "(SRV-1)"); codes stay in comments, CLI output and raw HTTP error bodies.
+- The tagline footer is removed; the version stays in the sidebar.
+- **Narrow header**: the theme toggle and `Log out` move to the top row so the page links fit at 375 px without clipping.
+
+### Fixed
+- Playwright axe checks wait for running CSS transitions before measuring contrast (`ui/e2e/helpers.ts`), which removes intermittent mid-transition contrast failures after a theme toggle.
+
 ## [0.6.1] - 2026-11-26
 
 ### Changed
