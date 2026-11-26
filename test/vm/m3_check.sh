@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # M3 checks run from the laptop against dermaga-vm after the installer, as an outsider would see
-# the server. No sudo: every fact comes from SSH logins, port probes and files user server can read.
+# the server. Facts come from SSH logins, port probes and files user server can read; `access` also
+# uses sudo on the VM (DERMAGA_SUDO_PASS_FILE) to schedule the fail2ban unban and read fail2ban's log.
 #
 #   test/vm/m3_check.sh access  HOST PORT KEY   LOCK-4, HOST-2, HOST-3, SEC-2 from outside
 #   test/vm/m3_check.sh state   HOST PORT KEY   fingerprint of managed files and service PIDs (no-op check)
@@ -60,61 +61,45 @@ case $cmd in
     check "firewall rules open only ssh, 80, 443/tcp, 443/udp" bash -c "ssh ${ssh_opts[*]} -i $key server@$host cat /etc/nftables.conf | grep -E 'dport' | tee /dev/stderr | grep -qx '    tcp dport { $port } accept comment \"ssh\"'"
     check "old port 22 closed" port_closed 22
     check "panel port 7070 closed from outside (SEC-2)" port_closed 7070
-    # Open an SSH ControlMaster before denied-login checks so we can unban our workstation IP
-    # afterward and prove fail2ban recorded the ban (HOST-4).
-    ctrl_sock=$(mktemp -u "${TMPDIR:-/tmp}/dermaga-m3-ctrl-XXXXXX")
-    cleanup_ctrl() {
-      ssh -S "$ctrl_sock" -O exit "server@$host" 2>/dev/null || true
-      rm -f "$ctrl_sock"
+    # The denied logins below get this workstation banned by fail2ban (HOST-4). The ban rejects every
+    # packet to the SSH port, including on connections that are already open, so the unban must
+    # run on the VM itself: two root timers are scheduled first (60 s and 120 s; unbanning an IP
+    # that isn't banned is harmless). Afterwards a NEW login proves the unban, and fail2ban's log
+    # proves the ban happened. sudo uses DERMAGA_SUDO_PASS_FILE when server has a sudo password.
+    sudo_server() {
+      if [[ -n ${DERMAGA_SUDO_PASS_FILE:-} && -f ${DERMAGA_SUDO_PASS_FILE} ]]; then
+        as_server "sudo -S -p '' $1" <"$DERMAGA_SUDO_PASS_FILE"
+      else
+        as_server "sudo -n $1"
+      fi
     }
-    trap cleanup_ctrl EXIT
-
-    if ssh "${ssh_opts[@]}" -M -S "$ctrl_sock" -o ControlPersist=120 -fN -i "$key" "server@$host"; then
-      workstation_ip=$(ssh -S "$ctrl_sock" "server@$host" 'printf "%s" "${SSH_CLIENT%% *}"' 2>/dev/null || true)
-    else
-      workstation_ip=""
-    fi
+    workstation_ip=$(as_server 'printf "%s" "${SSH_CLIENT%% *}"')
+    [[ $workstation_ip =~ ^[0-9a-fA-F.:]+$ ]] || { echo "FAIL  could not read the workstation IP"; exit 1; }
+    bans_before=$(sudo_server "grep -c '\] Ban $workstation_ip\$' /var/log/fail2ban.log" || true)
+    for delay in 60 120; do
+      sudo_server "systemd-run --quiet --collect --on-active=${delay}s /usr/bin/fail2ban-client unban $workstation_ip" ||
+        { echo "FAIL  could not schedule the unban timer on the VM"; exit 1; }
+    done
+    echo "INFO  unban timers scheduled on the VM at +60 s and +120 s"
 
     # Denied-login checks run last because failed auth attempts trigger fail2ban (HOST-4).
     check "password login not offered to server" denied server -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive
     check "root refused, even with the key" denied root -o IdentitiesOnly=yes -i "$key"
     check "provider user debian refused, even with the key" denied debian -o IdentitiesOnly=yes -i "$key"
+    echo "INFO  last denied attempt: $(date -Is)"
 
-    if [[ -S $ctrl_sock && -n ${workstation_ip:-} ]]; then
-      echo "INFO  waiting for fail2ban to settle for $workstation_ip..."
-      run_f2b() {
-        local subcmd=$1
-        if [[ -n ${DERMAGA_SUDO_PASS_FILE:-} && -f ${DERMAGA_SUDO_PASS_FILE} ]]; then
-          printf '%s\n' "$(cat "$DERMAGA_SUDO_PASS_FILE")" | ssh -o ConnectTimeout=5 -S "$ctrl_sock" "server@$host" "sudo -S -p '' fail2ban-client $subcmd" 2>/dev/null
-        else
-          ssh -o ConnectTimeout=5 -S "$ctrl_sock" "server@$host" "sudo -n fail2ban-client $subcmd" 2>/dev/null
-        fi
-      }
-      prev_status=""
-      f2b_status=""
-      for _ in $(seq 1 10); do
-        sleep 2
-        cur_status=$(run_f2b "status sshd" || true)
-        if [[ -n $cur_status && $cur_status == "$prev_status" && $cur_status == *"$workstation_ip"* ]]; then
-          f2b_status=$cur_status
-          break
-        fi
-        prev_status=$cur_status
-        f2b_status=$cur_status
-      done
-      if [[ -n $f2b_status ]]; then
-        echo "INFO  fail2ban status sshd (before unban):"
-        printf '%s\n' "$f2b_status" | sed 's/^/      /'
-        if run_f2b "unban $workstation_ip" >/dev/null; then
-          echo "PASS  fail2ban unbanned $workstation_ip"
-        else
-          echo "WARN  could not unban $workstation_ip via sudo fail2ban-client"
-        fi
-      else
-        echo "WARN  could not query fail2ban-client status sshd (set DERMAGA_SUDO_PASS_FILE if sudo requires a password)"
-      fi
-      cleanup_ctrl
-      trap - EXIT
+    back=""
+    for _ in $(seq 1 30); do
+      sleep 5
+      if as_server true 2>/dev/null; then back=$(date -Is); break; fi
+    done
+    check "a new login works again after the VM-side unban ($back)" test -n "$back"
+    if [[ -n $back ]]; then
+      bans_after=$(sudo_server "grep -c '\] Ban $workstation_ip\$' /var/log/fail2ban.log" || true)
+      echo "INFO  fail2ban log, last Ban/Unban lines for the workstation:"
+      { sudo_server "grep -E '\] (Ban|Unban) $workstation_ip\$' /var/log/fail2ban.log | tail -n 4" || true; } | sed 's/^/      /'
+      check "fail2ban banned the workstation during the denied logins (bans ${bans_before:-0} -> ${bans_after:-0})" \
+        test "${bans_after:-0}" -gt "${bans_before:-0}"
     fi
     ;;
   state)
