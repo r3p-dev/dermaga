@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getSession, getAuditLogs } from '#lib/api.js';
+	import PageHeader from '#lib/components/PageHeader.svelte';
 	import type { AuditLogEntry, SessionInfo } from '#lib/types/api.js';
 	import { onMount } from 'svelte';
 
@@ -112,57 +113,57 @@
 </svelte:head>
 
 <div class="space-y-6">
-	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone-200 dark:border-stone-800">
-		<div>
-			<h1 class="text-2xl font-bold tracking-tight">Audit Log</h1>
-			<p class="text-xs text-stone-500 dark:text-stone-400 mt-1">Immutable record of mutating actions and security events (AUD-1, AUD-2)</p>
-		</div>
+	<PageHeader
+		title="Audit Log"
+		subtitle="Immutable record of mutating actions and security events (AUD-1, AUD-2)"
+	>
+		{#snippet actions()}
+			<div class="flex flex-wrap items-center gap-2.5">
+				<div class="flex items-center gap-1.5">
+					<label for="origin-filter" class="text-xs font-medium text-stone-600 dark:text-stone-400">Origin:</label>
+					<select
+						id="origin-filter"
+						value={selectedOrigin}
+						onchange={handleOriginChange}
+						class="text-xs py-1.5 px-2.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-brand-ring"
+					>
+						<option value="">All Origins</option>
+						<option value="panel">panel</option>
+						<option value="webhook">webhook</option>
+						<option value="server_command">server_command</option>
+						<option value="daemon">daemon</option>
+					</select>
+				</div>
 
-		<div class="flex flex-wrap items-center gap-3">
-			<div class="flex items-center gap-2">
-				<label for="origin-filter" class="text-xs font-medium text-stone-600 dark:text-stone-400">Origin:</label>
-				<select
-					id="origin-filter"
-					value={selectedOrigin}
-					onchange={handleOriginChange}
-					class="text-xs py-1.5 px-2.5 rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-1 focus:ring-brand-ring"
-				>
-					<option value="">All Origins</option>
-					<option value="panel">panel</option>
-					<option value="webhook">webhook</option>
-					<option value="server_command">server_command</option>
-					<option value="daemon">daemon</option>
-				</select>
-			</div>
+				<div class="flex items-center gap-1.5">
+					<label for="app-filter" class="text-xs font-medium text-stone-600 dark:text-stone-400">App:</label>
+					<input
+						id="app-filter"
+						type="text"
+						placeholder="Filter by app..."
+						value={selectedApp}
+						oninput={handleAppInput}
+						class="text-xs py-1.5 px-2.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-brand-ring w-32"
+					/>
+				</div>
 
-			<div class="flex items-center gap-2">
-				<label for="app-filter" class="text-xs font-medium text-stone-600 dark:text-stone-400">App:</label>
-				<input
-					id="app-filter"
-					type="text"
-					placeholder="Filter by app..."
-					value={selectedApp}
-					oninput={handleAppInput}
-					class="text-xs py-1.5 px-2.5 rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-1 focus:ring-brand-ring w-32"
-				/>
+				<div class="flex items-center gap-1.5">
+					<label for="time-filter" class="text-xs font-medium text-stone-600 dark:text-stone-400">Time:</label>
+					<select
+						id="time-filter"
+						value={selectedTime}
+						onchange={handleTimeChange}
+						class="text-xs py-1.5 px-2.5 rounded-lg border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-2 focus:ring-brand-ring"
+					>
+						<option value="">All Time</option>
+						<option value="1h">Last hour</option>
+						<option value="24h">Last 24 hours</option>
+						<option value="7d">Last 7 days</option>
+					</select>
+				</div>
 			</div>
-
-			<div class="flex items-center gap-2">
-				<label for="time-filter" class="text-xs font-medium text-stone-600 dark:text-stone-400">Time:</label>
-				<select
-					id="time-filter"
-					value={selectedTime}
-					onchange={handleTimeChange}
-					class="text-xs py-1.5 px-2.5 rounded-md border border-stone-300 dark:border-stone-700 bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 focus:outline-none focus:ring-1 focus:ring-brand-ring"
-				>
-					<option value="">All Time</option>
-					<option value="1h">Last hour</option>
-					<option value="24h">Last 24 hours</option>
-					<option value="7d">Last 7 days</option>
-				</select>
-			</div>
-		</div>
-	</div>
+		{/snippet}
+	</PageHeader>
 
 	{#if error}
 		<div role="alert" class="p-4 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm">

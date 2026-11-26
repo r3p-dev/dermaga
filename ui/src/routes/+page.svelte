@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { getSession, getServerStatus, listApps } from '#lib/api.js';
 	import AppsList from '#lib/components/AppsList.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import StatusBadge from '#lib/components/StatusBadge.svelte';
 	import type { AppSummary, ServerStatus, SessionInfo } from '#lib/types/api.js';
 	import { onMount } from 'svelte';
 
@@ -66,74 +68,78 @@
 </svelte:head>
 
 <div class="space-y-6">
-	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone-200 dark:border-stone-800">
-		<div>
-			<h1 class="text-2xl font-bold tracking-tight">Server Overview</h1>
-			<p class="text-xs text-stone-500 dark:text-stone-400 mt-1">Host health, daemon status, and system metrics</p>
-		</div>
-
-		{#if status}
-			<div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 w-fit">
-				<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-				Daemon Active ({status.version})
-			</div>
-		{/if}
-	</div>
+	<PageHeader title="Server Overview" subtitle="Applications, host health, and daemon metrics">
+		{#snippet actions()}
+			{#if status}
+				<StatusBadge label="Daemon Active ({status.version})" pulse={true} />
+			{/if}
+		{/snippet}
+	</PageHeader>
 
 	{#if error}
-		<div role="alert" class="p-4 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm">
+		<div role="alert" class="p-4 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-sm">
 			{error}
 		</div>
 	{:else if loading}
-		<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-			{#each [1, 2, 3, 4] as _}
-				<div class="h-28 rounded-xl bg-stone-100 dark:bg-stone-800/50 animate-pulse"></div>
-			{/each}
-		</div>
-	{:else if status}
-		<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-			<!-- Daemon Health -->
-			<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-5 shadow-sm">
-				<span class="text-xs font-medium text-stone-500 dark:text-stone-400 block mb-1">Daemon Status</span>
-				<div class="flex items-baseline gap-2">
-					<span class="text-xl font-bold text-emerald-700 dark:text-emerald-400">Running</span>
-				</div>
-				<span class="text-xs text-stone-500 dark:text-stone-400 mt-2 block">Uptime: {formatUptime(status.uptime_sec)}</span>
+		<div class="space-y-4">
+			<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+				{#each [1, 2] as _}
+					<div class="h-32 rounded-xl bg-stone-100 dark:bg-stone-800/50 animate-pulse"></div>
+				{/each}
 			</div>
-
-			<!-- Memory Footprint -->
-			<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-5 shadow-sm">
-				<span class="text-xs font-medium text-stone-500 dark:text-stone-400 block mb-1">Daemon Footprint (NFR-2)</span>
-				<div class="flex items-baseline gap-2">
-					<span class="text-xl font-bold">{formatBytes(status.daemon_rss)}</span>
-					<span class="text-xs text-stone-500 dark:text-stone-400">RSS</span>
-				</div>
-				<span class="text-xs text-stone-500 dark:text-stone-400 mt-2 block">Target &lt; 30 MB idle</span>
-			</div>
-
-			<!-- Database & State -->
-			<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-5 shadow-sm">
-				<span class="text-xs font-medium text-stone-500 dark:text-stone-400 block mb-1">SQLite Database</span>
-				<div class="flex items-baseline gap-2">
-					<span class="text-xl font-bold text-brand-text">Schema v{status.schema_version}</span>
-				</div>
-				<span class="text-xs {status.database_ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'} mt-2 block">
-					{status.database_ok ? 'Database Healthy' : 'Database Error'}
-				</span>
-			</div>
-
-			<!-- Build Info -->
-			<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-5 shadow-sm">
-				<span class="text-xs font-medium text-stone-500 dark:text-stone-400 block mb-1">Binary Version</span>
-				<div class="flex items-baseline gap-2">
-					<span class="text-xl font-bold font-mono">{status.version}</span>
-				</div>
-				<span class="text-xs text-stone-500 dark:text-stone-400 mt-2 block truncate">Commit: {status.commit}</span>
+			<div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+				{#each [1, 2, 3, 4] as _}
+					<div class="h-20 rounded-xl bg-stone-100 dark:bg-stone-800/50 animate-pulse"></div>
+				{/each}
 			</div>
 		</div>
-	{/if}
+	{:else}
+		{#if session?.authenticated}
+			<AppsList {apps} loading={appsLoading} error={appsError} />
+		{/if}
 
-	{#if !error && session?.authenticated}
-		<AppsList {apps} loading={appsLoading} error={appsError} />
+		{#if status}
+			<!-- Compact 4-stat host health strip -->
+			<section aria-label="Host metrics" class="space-y-2.5 pt-2">
+				<h2 class="text-xs font-semibold uppercase tracking-wider text-stone-600 dark:text-stone-400">
+					Host Health
+				</h2>
+				<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+					<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-4 shadow-sm">
+						<span class="text-xs font-medium text-stone-600 dark:text-stone-400 block">Daemon</span>
+						<div class="mt-1 flex items-baseline justify-between gap-2">
+							<span class="text-base font-bold text-emerald-700 dark:text-emerald-400">Running</span>
+							<span class="text-xs font-mono tabular-nums text-stone-600 dark:text-stone-400">{formatUptime(status.uptime_sec)}</span>
+						</div>
+					</div>
+
+					<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-4 shadow-sm">
+						<span class="text-xs font-medium text-stone-600 dark:text-stone-400 block">Footprint (NFR-2)</span>
+						<div class="mt-1 flex items-baseline justify-between gap-2">
+							<span class="text-base font-bold tabular-nums">{formatBytes(status.daemon_rss)}</span>
+							<span class="text-xs text-stone-600 dark:text-stone-400">Target &lt; 30 MB</span>
+						</div>
+					</div>
+
+					<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-4 shadow-sm">
+						<span class="text-xs font-medium text-stone-600 dark:text-stone-400 block">SQLite</span>
+						<div class="mt-1 flex items-baseline justify-between gap-2">
+							<span class="text-base font-bold text-brand-text tabular-nums">v{status.schema_version}</span>
+							<span class="text-xs {status.database_ok ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'}">
+								{status.database_ok ? 'Healthy' : 'Error'}
+							</span>
+						</div>
+					</div>
+
+					<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-4 shadow-sm">
+						<span class="text-xs font-medium text-stone-600 dark:text-stone-400 block">Binary</span>
+						<div class="mt-1 flex items-baseline justify-between gap-2">
+							<span class="text-base font-bold font-mono">{status.version}</span>
+							<span class="text-xs font-mono text-stone-600 dark:text-stone-400 truncate">{status.commit}</span>
+						</div>
+					</div>
+				</div>
+			</section>
+		{/if}
 	{/if}
 </div>
