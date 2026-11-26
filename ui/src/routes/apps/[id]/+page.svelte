@@ -490,7 +490,7 @@
 						{runtimeErr}
 					</div>
 				{/if}
-				<pre class="p-4 rounded-lg bg-stone-950 text-stone-100 font-mono text-xs overflow-x-auto max-h-[28rem] whitespace-pre-wrap">{runtimeLogText || 'Waiting for runtime logs...'}</pre>
+				<pre class="p-4 rounded-lg bg-stone-950 text-stone-100 font-mono text-xs overflow-x-auto max-h-112 whitespace-pre-wrap">{runtimeLogText || 'Waiting for runtime logs...'}</pre>
 			</div>
 		{:else if activeTab === 'environment'}
 			<div class="rounded-xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-5 space-y-4">

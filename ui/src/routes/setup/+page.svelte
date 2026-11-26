@@ -210,7 +210,7 @@
 <div class="max-w-lg mx-auto mt-6 md:mt-12">
 	<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-6 md:p-8 shadow-sm">
 		<div class="mb-6 text-center">
-			<img src="/logo.svg" alt="dermaga logo" class="w-11 h-11 mx-auto mb-3 object-contain" />
+			<img src="/logo.svg" alt="dermaga logo" class="size-11 mx-auto mb-3 object-contain" />
 			<h1 class="text-xl font-semibold tracking-tight">First-Run Setup</h1>
 			<p class="text-xs text-stone-600 dark:text-stone-400 mt-1">Secure your server before accessing the panel</p>
 		</div>

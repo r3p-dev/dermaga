@@ -41,6 +41,7 @@ lint: ui
 	go vet ./...
 	go tool staticcheck ./...
 	cd ui && bun run check
+	cd ui && bun run lint:tailwind
 	cd ui && bun run format:check
 
 # 6. Vulnerability scanning

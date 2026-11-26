@@ -11,7 +11,8 @@
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+    "lint:tailwind": "bun ./scripts/check-tailwind.js",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "audit:check": "bun ./scripts/audit-check.js"

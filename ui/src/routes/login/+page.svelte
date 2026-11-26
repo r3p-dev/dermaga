@@ -58,7 +58,7 @@
 <div class="max-w-md mx-auto mt-12 md:mt-20">
 	<div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-6 md:p-8 shadow-sm">
 		<div class="mb-6 text-center">
-			<img src="/logo.svg" alt="dermaga logo" class="w-12 h-12 mx-auto mb-3 object-contain" />
+			<img src="/logo.svg" alt="dermaga logo" class="size-12 mx-auto mb-3 object-contain" />
 			<h1 class="text-xl font-semibold tracking-tight">Admin Login</h1>
 			<p class="text-xs text-stone-500 dark:text-stone-400 mt-1">Enter your password to unlock the dermaga panel</p>
 		</div>
@@ -107,10 +107,10 @@
 			<button
 				type="submit"
 				disabled={loading || !password || (totpRequired && totpCode.trim().length !== 6)}
-				class="w-full py-2 px-4 rounded-md bg-brand-primary hover:bg-brand-hover active:bg-brand-active disabled:opacity-50 text-brand-btn-text font-medium text-sm transition shadow-sm flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-brand-ring focus:ring-offset-2 dark:focus:ring-offset-stone-900"
+				class="w-full py-2 px-4 rounded-md bg-brand-primary hover:bg-brand-hover active:bg-brand-active disabled:opacity-50 text-brand-btn-text font-medium text-sm transition-colors shadow-sm flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-brand-ring focus:ring-offset-2 dark:focus:ring-offset-stone-900"
 			>
 				{#if loading}
-					<span class="inline-block w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+					<span class="inline-block size-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
 					Verifying...
 				{:else}
 					Sign In
