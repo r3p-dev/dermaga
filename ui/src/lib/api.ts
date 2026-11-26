@@ -38,7 +38,9 @@ import type {
 	EnvRevealResponse,
 	EnvVarMetadata,
 	DeleteAppRequest,
-	DeploymentInfo
+	DeploymentInfo,
+	MemoryCheckResponse,
+	RollbackPreview
 } from './types/api.js'
 
 export async function verifySetupToken(
@@ -467,16 +469,76 @@ export async function revealAppEnv(
 	return data
 }
 
-export async function triggerDeploy(id: string): Promise<DeploymentInfo> {
+// Redeploy the branch's latest commit, or a chosen commit (7–40 hex characters).
+export async function redeploy(
+	id: string,
+	commit?: string
+): Promise<{
+	ok: boolean
+	data?: DeploymentInfo
+	error?: string
+	fields?: Record<string, string>
+}> {
 	const res = await fetch(`/api/apps/${encodeURIComponent(id)}/deploy`, {
 		method: 'POST',
-		headers: { 'Content-Type': 'application/json' }
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(commit ? { commit } : {})
 	})
 	const data = await res.json().catch(() => ({}))
 	if (!res.ok) {
-		throw new Error(data.error || `Failed to trigger deploy: ${res.statusText}`)
+		return {
+			ok: false,
+			error: data.error || `Failed to start the deploy: ${res.statusText}`,
+			fields: data.fields || {}
+		}
+	}
+	return { ok: true, data }
+}
+
+export async function getMemoryCheck(id: string): Promise<MemoryCheckResponse> {
+	const res = await fetch(`/api/apps/${encodeURIComponent(id)}/memory-check`)
+	const data = await res.json().catch(() => ({}))
+	if (!res.ok) {
+		throw new Error(
+			data.error || `Failed to check free memory: ${res.statusText}`
+		)
 	}
 	return data
+}
+
+export async function getRollbackPreview(
+	id: string,
+	deploymentId: string
+): Promise<RollbackPreview> {
+	const res = await fetch(
+		`/api/apps/${encodeURIComponent(id)}/rollback-preview?deployment_id=${encodeURIComponent(deploymentId)}`
+	)
+	const data = await res.json().catch(() => ({}))
+	if (!res.ok) {
+		throw new Error(
+			data.error || `Failed to load the release: ${res.statusText}`
+		)
+	}
+	return data
+}
+
+export async function rollback(
+	id: string,
+	deploymentId: string
+): Promise<{ ok: boolean; data?: DeploymentInfo; error?: string }> {
+	const res = await fetch(`/api/apps/${encodeURIComponent(id)}/rollback`, {
+		method: 'POST',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify({ deployment_id: deploymentId })
+	})
+	const data = await res.json().catch(() => ({}))
+	if (!res.ok) {
+		return {
+			ok: false,
+			error: data.error || `Failed to start the rollback: ${res.statusText}`
+		}
+	}
+	return { ok: true, data }
 }
 
 export async function cancelDeployment(depId: string): Promise<void> {

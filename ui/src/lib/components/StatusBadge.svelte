@@ -33,6 +33,8 @@
 				}
 			case 'cancelled':
 			case 'inactive':
+			case 'Previous release':
+			case 'Rolled back':
 			case 'replaced by a newer deploy':
 				return {
 					badge:

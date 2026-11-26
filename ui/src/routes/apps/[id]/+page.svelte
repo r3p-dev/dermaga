@@ -8,12 +8,13 @@
 		revealAppEnv,
 		streamBuildLogs,
 		streamRuntimeLogs,
-		triggerDeploy,
 		updateAppEnv,
 		updateAppSettings
 	} from '#lib/api.js'
 	import EnvEditor from '#lib/components/EnvEditor.svelte'
 	import PageHeader from '#lib/components/PageHeader.svelte'
+	import RedeployDialog from '#lib/components/RedeployDialog.svelte'
+	import RollbackDialog from '#lib/components/RollbackDialog.svelte'
 	import StatusBadge from '#lib/components/StatusBadge.svelte'
 	import SubNav, { type SubNavItem } from '#lib/components/SubNav.svelte'
 	import type {
@@ -21,6 +22,7 @@
 		DeploymentInfo,
 		EnvVarInput
 	} from '#lib/types/api.js'
+	import { timeAgo } from '#lib/time.js'
 	import { onDestroy, onMount } from 'svelte'
 
 	type TabId =
@@ -45,7 +47,9 @@
 	let selectedDep = $state<DeploymentInfo | null>(null)
 	let liveBuildLogs = $state('')
 	let stopBuildStream: (() => void) | null = null
-	let deploying = $state(false)
+	let redeployOpen = $state(false)
+	let redeployMode = $state<'latest' | 'commit'>('latest')
+	let rollbackTarget = $state<DeploymentInfo | null>(null)
 
 	// Runtime logs
 	let runtimeLines = $state(200)
@@ -152,11 +156,13 @@
 		liveBuildLogs = dep.build_logs || ''
 		stopBuildStream?.()
 		const terminal = [
-			'live',
+			'active',
+			'inactive',
+			'rolled_back',
 			'failed',
 			'cancelled',
-			'replaced by a newer deploy'
-		].includes(dep.status_label)
+			'superseded'
+		].includes(dep.status)
 		if (!terminal) {
 			liveBuildLogs = ''
 			stopBuildStream = streamBuildLogs(dep.id, {
@@ -175,22 +181,19 @@
 		}
 	}
 
-	async function handleTriggerDeploy() {
-		if (!app) return
-		deploying = true
+	function openRedeploy(mode: 'latest' | 'commit') {
 		actionErr = null
 		actionMsg = null
-		try {
-			const dep = await triggerDeploy(app.id)
-			envChangedNotice = false
-			await loadApp()
-			activeTab = 'deployments'
-			openBuildLog(dep)
-		} catch (err) {
-			actionErr = err instanceof Error ? err.message : 'Failed to start deploy'
-		} finally {
-			deploying = false
-		}
+		redeployMode = mode
+		redeployOpen = true
+	}
+
+	// A deploy or rollback started from a dialog: show its log and live status (UI-7).
+	async function onReleaseStarted(dep: DeploymentInfo) {
+		envChangedNotice = false
+		await loadApp()
+		activeTab = 'deployments'
+		openBuildLog(dep)
 	}
 
 	async function handleCancelDep(depId: string) {
@@ -364,11 +367,10 @@
 				{/if}
 				<button
 					type="button"
-					onclick={handleTriggerDeploy}
-					disabled={deploying}
+					onclick={() => openRedeploy('latest')}
 					class="w-fit rounded-lg bg-brand-primary px-4 py-2 text-xs font-medium text-brand-btn-text shadow-sm transition hover:bg-brand-hover focus:ring-2 focus:ring-brand-ring focus:outline-none disabled:opacity-50"
 				>
-					{deploying ? 'Queueing...' : 'Deploy'}
+					Deploy
 				</button>
 			{/snippet}
 		</PageHeader>
@@ -459,6 +461,44 @@
 					</div>
 				{:else if activeTab === 'deployments'}
 					<div class="space-y-4">
+						<div class="flex items-center justify-between gap-3">
+							<h2 class="text-sm font-semibold">Deployments</h2>
+							<details class="relative">
+								<summary
+									class="cursor-pointer list-none rounded-lg bg-brand-primary px-3.5 py-1.5 text-xs font-medium text-brand-btn-text shadow-sm transition hover:bg-brand-hover focus:ring-2 focus:ring-brand-ring focus:outline-none"
+								>
+									Redeploy <span aria-hidden="true">▾</span>
+								</summary>
+								<div
+									class="absolute right-0 z-10 mt-1 w-56 rounded-lg border border-stone-200 bg-white p-1 text-xs shadow-lg dark:border-stone-700 dark:bg-stone-900"
+								>
+									<button
+										type="button"
+										onclick={(e) => {
+											e.currentTarget
+												.closest('details')
+												?.removeAttribute('open')
+											openRedeploy('latest')
+										}}
+										class="block w-full rounded-md px-3 py-2 text-left hover:bg-stone-100 focus:bg-stone-100 focus:outline-none dark:hover:bg-stone-800 dark:focus:bg-stone-800"
+									>
+										Latest commit on <span class="font-mono">{app.branch}</span>
+									</button>
+									<button
+										type="button"
+										onclick={(e) => {
+											e.currentTarget
+												.closest('details')
+												?.removeAttribute('open')
+											openRedeploy('commit')
+										}}
+										class="block w-full rounded-md px-3 py-2 text-left hover:bg-stone-100 focus:bg-stone-100 focus:outline-none dark:hover:bg-stone-800 dark:focus:bg-stone-800"
+									>
+										A specific commit...
+									</button>
+								</div>
+							</details>
+						</div>
 						{#if app.deployments.length === 0}
 							<p class="text-xs text-stone-600 dark:text-stone-400">
 								No deployments recorded yet.
@@ -481,6 +521,9 @@
 												<span class="text-stone-500 dark:text-stone-400">
 													{formatDuration(dep.started_at, dep.finished_at)}
 												</span>
+												<span class="text-stone-500 dark:text-stone-400">
+													{timeAgo(dep.started_at)}
+												</span>
 											</div>
 											<p
 												class="truncate font-mono text-stone-600 dark:text-stone-400"
@@ -502,6 +545,15 @@
 													class="rounded-md border border-red-300 px-3 py-1.5 text-red-700 transition hover:bg-red-50 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950/40"
 												>
 													Cancel
+												</button>
+											{/if}
+											{#if dep.rollback_eligible}
+												<button
+													type="button"
+													onclick={() => (rollbackTarget = dep)}
+													class="rounded-md border border-stone-300 px-3 py-1.5 transition hover:bg-stone-100 dark:border-stone-700 dark:hover:bg-stone-800"
+												>
+													Roll back
 												</button>
 											{/if}
 											<button
@@ -620,7 +672,7 @@
 								</span>
 								<button
 									type="button"
-									onclick={handleTriggerDeploy}
+									onclick={() => openRedeploy('latest')}
 									class="rounded bg-brand-primary px-3 py-1 font-medium text-brand-btn-text hover:bg-brand-hover"
 								>
 									Redeploy now
@@ -935,5 +987,20 @@
 				{/if}
 			</div>
 		</div>
+
+		<RedeployDialog
+			appId={app.id}
+			appName={app.name}
+			branch={app.branch}
+			bind:open={redeployOpen}
+			bind:mode={redeployMode}
+			onstarted={onReleaseStarted}
+		/>
+		<RollbackDialog
+			appId={app.id}
+			appName={app.name}
+			bind:target={rollbackTarget}
+			onstarted={onReleaseStarted}
+		/>
 	{/if}
 </div>
