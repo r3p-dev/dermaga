@@ -93,12 +93,12 @@ release: build-all
 	@if [ -n "$(RELEASE_TAG)" ] && [ "$(RELEASE_TAG)" != "$(VERSION)" ]; then echo "tag $(RELEASE_TAG) but the build version is $(VERSION)"; exit 1; fi
 	rm -rf dist
 	mkdir dist
-	cp bin/dermaga-linux-amd64 bin/dermaga-linux-arm64 dist/
+	cp bin/dermaga-linux-amd64 bin/dermaga-linux-arm64 LICENSE dist/
 	test "$$(grep -c '__DERMAGA_VERSION__' install/install.sh)" = 1
 	sed 's/__DERMAGA_VERSION__/$(VERSION)/' install/install.sh > dist/install.sh
 	grep -qx 'readonly DERMAGA_VERSION="$(VERSION)"' dist/install.sh
 	dist/dermaga-linux-amd64 version | grep -qxF "dermaga version $(VERSION) (commit $(COMMIT))"
-	cd dist && sha256sum dermaga-linux-amd64 dermaga-linux-arm64 install.sh > checksums.txt
+	cd dist && sha256sum dermaga-linux-amd64 dermaga-linux-arm64 install.sh LICENSE > checksums.txt
 	cat dist/checksums.txt
 
 clean:

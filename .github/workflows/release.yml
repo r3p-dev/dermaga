@@ -83,4 +83,4 @@ jobs:
           set -eu
           prerelease=""
           case "$TAG" in *-*) prerelease="--prerelease" ;; esac
-          gh release create "$TAG" dist/dermaga-linux-amd64 dist/dermaga-linux-arm64 dist/install.sh dist/checksums.txt --verify-tag --title "$TAG" --notes "See CHANGELOG.md. Install: curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/$TAG/install.sh | sudo bash" $prerelease
+          gh release create "$TAG" dist/dermaga-linux-amd64 dist/dermaga-linux-arm64 dist/install.sh dist/LICENSE dist/checksums.txt --verify-tag --title "$TAG" --notes "See CHANGELOG.md. Install: curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/$TAG/install.sh | sudo bash" $prerelease
