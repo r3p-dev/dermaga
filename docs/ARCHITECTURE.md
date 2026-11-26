@@ -172,13 +172,13 @@ One line per directory that exists in the repository; start here, then read the 
 | `internal/builder/` | Bare Git mirror caching, `git archive` export, `podman build` with limits (`DEP-7`), chunk-safe `SEC-9` masking, bounded `LogHub` (`DEP-8`, `LOG-2`) |
 | `internal/config/` | XDG paths, default port and socket paths (`paths.go`) |
 | `internal/crypto/` | AES-256-GCM at rest bound to column names, master key, HMAC verification |
-| `internal/deploy/` | Single global build queue (`DEP-5`), first-deploy orchestration (`DEP-3`, `DEP-9`), health probing (`APP-5`), cancel/failure cleanup (`DEP-6`), app removal (`APP-9`) |
+| `internal/deploy/` | Single global build queue (`DEP-5`), releases started next to the live one with a verified Traefik switch, drain and retention (`DEP-1`, `DEP-2`, `DEP-4`), rollback, memory check, health probing (`APP-5`), cancel/failure cleanup (`DEP-6`), app removal (`APP-9`) |
 | `internal/doctor/` | Host health checks (`DOC-1`) and how to fix each failure |
 | `internal/github/` | GitHub App JWT (`crypto/rsa`), manifest flow, installations, repositories, repo-scoped tokens (`GHA-1`–`GHA-6`, `DEC-09`) |
 | `internal/host/` | The host boundary: commands with argument slices and timeouts, atomic writes; faked in tests |
 | `internal/name/` | Project name and every derived prefix (`dg-`, `app-`) |
 | `internal/quadlet/` | Quadlet unit generator (apps, Traefik), golden files in `testdata/` |
-| `internal/reconciler/` | Startup reconciliation (`DEP-10`), Traefik and `hook-relay` install/start |
+| `internal/reconciler/` | Startup reconciliation (`DEP-10`) including recovery of an interrupted switch, Traefik and `hook-relay` install/start |
 | `internal/server/` | Loopback HTTP server, Unix socket server, embedded UI (`dist/` is built by `make ui`) |
 | `internal/store/` | SQLite persistence and migrations |
 | `internal/traefik/` | Traefik static and dynamic file generator, pinned image (`types.go`) |
@@ -380,6 +380,25 @@ ALTER TABLE apps ADD COLUMN add_capabilities TEXT NOT NULL DEFAULT '';
 
 ALTER TABLE deployments ADD COLUMN error_message TEXT NOT NULL DEFAULT '';
 ALTER TABLE deployments ADD COLUMN image_ref TEXT NOT NULL DEFAULT '';
+
+-- Migration 0005_m7_releases.sql (DEP-4, DEC-32; full text in internal/store/migrations/)
+
+CREATE TABLE env_versions (
+    id TEXT PRIMARY KEY,                       -- "env_<hex>"
+    app_id TEXT NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+    version INTEGER NOT NULL,                  -- 1, 2, 3 ... per app; rows are never updated
+    env_encrypted TEXT NOT NULL,               -- AES-256-GCM, same column binding as apps.env_encrypted
+    created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+    UNIQUE(app_id, version)
+);
+-- each existing app's env_encrypted becomes its version 1
+ALTER TABLE apps ADD COLUMN env_version_id TEXT REFERENCES env_versions(id); -- current version
+ALTER TABLE apps ADD COLUMN watch_paths TEXT NOT NULL DEFAULT '';             -- APP-8 (M7b)
+-- deployments rebuilt (SQLite cannot alter a CHECK): status gains 'rolled_back', plus
+--   env_version_id TEXT REFERENCES env_versions(id) ON DELETE SET NULL,
+--   runtime_config TEXT NOT NULL DEFAULT '',   -- JSON without secrets: port, health, command, limits
+--   source_deployment_id TEXT,                 -- the release a rollback restores
+--   env_snapshot_encrypted keeps pre-0005 data until the daemon converts it to an env version
 ```
 
 ---
@@ -431,46 +450,44 @@ release workflow stamps the tag into `install.sh`; answers come from `/dev/tty`.
    - On mismatch: logs delivery ID, event, and "signature mismatch" only; terminates request (never logs expected signature or payload to prevent oracle attacks, verified in [EVIDENCE.md §5.4](evidence/M0/EVIDENCE.md#54-negative-hmac-replay-check--oracle-prevention-rule)).
 6. Daemon identifies target application and branch; enqueues new deployment in the build queue.
 
-### 5.4 Blue-Green Deployment Flow
+### 5.4 Blue-Green Deployment Flow (`DEP-1`, `DEP-2`)
 
 ```mermaid
 sequenceDiagram
-    participant Q as Build Queue
-    participant G as Git Mirror
-    participant B as Podman Build
-    participant S as Systemd / Quadlet
-    participant P as Rootless Probe
-    participant T as Traefik Dynamic File
+    participant E as deploy.Engine
+    participant H as Host (systemd, Podman)
+    participant F as Route file app-<name>.yml
+    participant T as Traefik (127.0.0.1:443)
 
-    Q->>G: Fetch repo with repo-scoped token (GIT_CONFIG_*)
-    G->>B: Export git archive to ephemeral build context
-    B->>B: Execute podman build (--build-arg, SEC-9 masking)
-    B->>S: Write Quadlet unit (~/.config/containers/systemd/app-green.container)
-    S->>S: Validate via podman-system-generator --dryrun
-    S->>S: systemctl --user start app-green.service (Wait for Notify=healthy)
-    S->>P: Run dermaga probe inside pasta netns via Aardvark-DNS
-    P-->>S: Health probe 200 OK
-    S->>T: Write token router on internal entrypoint (verify router)
-    T-->>S: Switch verification successful
-    S->>T: Atomically replace router config (Traffic switched to Green)
-    S->>S: Wait 10s drain window
-    S->>S: systemctl --user stop app-blue.service
-    S-->>Q: Mark deployment active (Keep last 5 releases for instant rollback)
+    E->>E: memory check: MemAvailable ≥ the release's memory limit (DEC-35)
+    E->>H: build image (queue, DEP-5) — rollback skips this, reusing the release's image
+    E->>H: write env file (0600) + Quadlet unit r(N+1) (RunInit, DEC-34), dry-run, start
+    E->>H: health check until healthy (APP-5); live release r(N) keeps serving
+    E->>F: main → r(N), verify router (token A) → r(N+1)
+    E->>T: GET host with X-Dermaga-Verify: A, until A comes back
+    E->>F: main → r(N+1), verify router (token B) → r(N+1)  (one file)
+    E->>T: GET with B until B comes back ⇒ main router moved too
+    E->>F: main → r(N+1) only
+    E->>E: FinishSwitch: r(N+1) live, r(N) previous / rolled back
+    E->>H: wait 10 s (drain), stop r(N), remove its unit and env file
+    E->>H: retention: remove images outside live + last 5 (DEP-4)
 ```
 
-1. **Build:** Daemon fetches bare mirror using repo-scoped token passed exclusively via `GIT_CONFIG_*` environment variables ([EVIDENCE.md §3](evidence/M0/EVIDENCE.md#3-authentication-rs256-jwt--git-over-https-bearer-vs-basic)). Runs `podman build` with `--memory` and `--cpus` limits. Streams build logs with SEC-9 masking.
-2. **Generate:** Daemon writes Quadlet `.container` file for new release (e.g. `green`) with `[Quadlet] DefaultDependencies=false` ([EVIDENCE.md §8](evidence/M0/EVIDENCE.md#8-spike-35-quadlet-notifyhealthy-limits-dry-run-defaultdependencies-restart-backoff)) and `Notify=healthy`.
-3. **Verify Generation:** Runs Quadlet dry-run validator (`podman-system-generator --dryrun`).
-4. **Start & Health Check:** Starts container; waits for systemd healthy state; executes internal HTTP probe from rootless netns ([EVIDENCE.md §5](evidence/M0/EVIDENCE.md#5-spike-32-http-probe-in-rootless-netns-via-aardvark-dns)).
-5. **Route Switch:** Writes dynamic Traefik file pointing router to new container. Verifies router with token check. Swaps traffic seamlessly with zero downtime (`REL-11`, [EVIDENCE.md §6](evidence/M0/EVIDENCE.md#6-spike-33-traefik-file-provider-atomic-rename-error-handling-and-verify-router)).
-6. **Drain & Cleanup:** Waits 10 seconds for in-flight requests to complete; stops previous container. Preserves image and runtime snapshot for rollback.
+1. **Memory check** (owner decision, DEC-35): before the build and again before the start, `MemAvailable` from `/proc/meminfo` must be at least the release's memory limit; otherwise the deploy fails with both numbers and the live release keeps serving. `GET /api/apps/{id}/memory-check` lets the deploy dialog show this up front.
+2. **Build** (`DEP-5`, `DEP-7`, `DEP-8`, `SEC-9`): unchanged from M6.
+3. **Start** next to the live release: names, units, containers and env files carry the release number (`app-<name>-r<N>`), and nothing publishes a host port, so two releases never collide. Units run with `RunInit=true` (DEC-34).
+4. **Health** (`APP-5`): as in M6, from the release's own runtime config.
+5. **Switch with proof** (DEC-33): three atomic writes of the route file; after each of the first two the engine asks Traefik for the primary domain (+ path prefix) with a fresh random token in `X-Dermaga-Verify`. Only the verify router answers with that token as a response header (its first middleware), so seeing token A proves Traefik loaded the candidate service and reaches it (not 502/503/504); seeing token B proves the file that also moved the main router is loaded (Traefik loads a file as a whole). The third write drops the verify router. Each step has a 30 s timeout. Any failure before the third write puts the live-only route back and removes the candidate (`DEP-2`). From the switch on, cancellation no longer applies: a switch completes or is undone, never cut halfway.
+6. **Drain** (`DEP-1`): 10 s, then the old release is stopped; its unit and env file are removed, its image stays for rollback. Requests longer than 10 s on the old release are cut (PRD grace).
+7. **Retention** (`DEP-4`): the live release and the newest 5 earlier live releases keep their images; other images are removed unless a retained release shares them (a rollback reuses its source's image). Env versions nobody retained or in flight points at are deleted.
 
-### 5.5 Rollback Flow
-1. Operator selects a past release from the Deployments tab.
-2. Dermaga loads the release's encrypted runtime configuration snapshot (environment variables, port, health check).
-3. Daemon generates Traefik dynamic router pointing to the target release container.
-4. Traefik dynamic configuration is updated atomically.
-5. Traffic routes to the rolled-back container immediately with zero rebuild.
+### 5.5 Rollback Flow (`DEP-4`)
+1. The Deployments tab offers **Roll back** on releases with `rollback_eligible` (retained set, image and env version present). `GET /api/apps/{id}/rollback-preview` returns the release, the env variable **names** that differ from the current settings (`added`/`removed`/`changed`, values never sent) and the memory check.
+2. `POST /api/apps/{id}/rollback` is refused with 409 "Cancel the running build first" while the app has a queued or running build (owner decision), and while another release of the app is starting or switching.
+3. A new deployment row (`trigger=rollback`, `source_deployment_id`, the target's image, env version and runtime config) goes through steps 3–7 of §5.4 without a build. The replaced release becomes `rolled_back`. The panel's current environment and settings are not changed; domains, headers and middleware stay app-level (current).
+
+### 5.6 Restart Recovery (`DEP-10`)
+The startup reconciler runs before the deploy engine. Its first step, `recoverSwitches`, treats the route file as the truth because it is what Traefik serves: if it sends traffic to a release the DB has in `switching`, the switch had reached the main router and the DB adopts that release (the old one becomes previous, or rolled back for a rollback); if it sends traffic elsewhere, the DB's live release wins and the route is rewritten; a leftover verify router is removed by rewriting the file in place (never deleting it, so Traefik always has a route). The existing steps then stop and remove every unit that is not live and start the live one; units are re-rendered with the same `deploy.ContainerSpecFor` the engine uses. The engine's `Start` then marks remaining in-flight deployments failed and converts pre-0005 release snapshots into env versions.
 
 ---
 
@@ -480,7 +497,7 @@ All state transitions are explicit, strictly validated, and modified in exactly 
 
 ### 6.1 Deployment Status (`DEP-9`)
 
-Internal SQLite status values (`0001_init.sql`) map to the PRD `DEP-9` UI labels via `store.DeploymentStatusLabel`: `probing` → `healthy`, `active` → `live`, `superseded` → `replaced by a newer deploy`; `queued`, `building`, `starting`, `failed`, `cancelled` map 1:1. `switching` and `inactive` get their labels in M7.
+Internal SQLite status values (`0001_init.sql`, `rolled_back` since `0005`) map to the PRD `DEP-9` UI labels via `store.DeploymentStatusLabel`: `probing` → `healthy`, `active` → `live`, `superseded` → `replaced by a newer deploy`, `switching` → `Switching traffic`, `inactive` → `Previous release`, `rolled_back` → `Rolled back` (owner wording, 2026-11-26); `queued`, `building`, `starting`, `failed`, `cancelled` map 1:1.
 | State | Event / Trigger | Next State | Action / Side Effect |
 |---|---|---|---|
 | `queued` | Build worker picks the deployment | `building` | One build at a time server-wide (`DEP-5`) |
@@ -490,11 +507,16 @@ Internal SQLite status values (`0001_init.sql`) map to the PRD `DEP-9` UI labels
 | `building` | Build fails / timeout (default 20 min, `DEP-7`) | `failed` | Prunes build context; records failure log |
 | `starting` | Quadlet dry-run & start unit | `probing` | Generates Quadlet file with `DefaultDependencies=false` |
 | `starting` | Dry-run fails / startup crash | `failed` | Removes Quadlet file; stops service |
-| `probing` | Run internal HTTP netns probe | `switching` | Executes internal netns probe (`dermaga probe`) in rootless pasta netns |
+| `building`/`starting` | `MemAvailable` < the release's memory limit | `failed` | Reason names both values; live release untouched (DEC-35) |
+| `probing` | Healthy, no live release yet (first deploy) | `active` | Route written for this release (`DEP-3`) |
+| `probing` | Healthy, a live release exists | `switching` | Starts the verified switch (§5.4 step 5) |
 | `probing` | Probe fails / app health start timeout (`APP-5`) | `failed` | Stops candidate container; retains previous release |
-| `switching` | Atomic Traefik router update | `active` | Verifies router token; switches public traffic; drains old |
-| `switching` | Router verification fails | `failed` | Restores previous Traefik config atomically |
-| `active` | Replaced by newer deployment | `inactive` | Retained as past release (last 5 kept for rollback) |
+| `switching` | Token B seen through Traefik | `active` | `FinishSwitch`; old release drained 10 s and stopped |
+| `switching` | A verify step times out (30 s) | `failed` | Live-only route written back; candidate removed (`DEP-2`) |
+| `switching` | Daemon stops mid-switch | `active` or `failed` | Restart recovery (§5.6): `active` if the route file already sends traffic to it |
+| `active` | Replaced by a newer deploy | `inactive` | Image kept while among the last 5 previous releases |
+| `active` | Replaced by a rollback | `rolled_back` | Same retention as `inactive` |
+| (new row) | Operator rolls back to a retained release | `starting` | `trigger=rollback`; no build; refused while the app builds |
 | `queued`/`building` | Operator clicks "Cancel" | `cancelled` | Terminates process group; cleans build context (`DEP-6`) |
 
 ### 6.2 App Runtime Status (`RUN-1`)
@@ -577,5 +599,9 @@ Every architectural decision and workaround adopted during spikes and design is 
 | **DEC-29** | 2026-11-25 | Align GitHub App connection flow with PRD under Settings → GitHub | PRD (`GHA-1`) places **Connect GitHub** under **Settings → GitHub** rather than `/setup`, and M4 unlocked the panel at `admin_created` with an optional hook domain step. Moving the manifest callback to `/settings/github/callback` and installation callback to `/settings/github/install-callback` keeps `/setup` focused on admin/TOTP/hook-domain and blocks Connect GitHub until `hook_domain` is set (`SETUP-2`). | Keeping `/setup/github/callback` in `/setup` (rejected: contradicts PRD `GHA-1` and forces GitHub connection during initial setup). | `docs/PRD/apps.md` (`GHA-1`), `internal/server/github.go` |
 | **DEC-30** | 2026-11-25 | `hook-relay` Quadlet uses `Rootfs=` on an empty directory with read-only `dermaga` binary | Eliminates any external base image or digest to maintain (`SEC-20`) because `dermaga` is a static `CGO_ENABLED=0` binary. Runs with `ReadOnly=true`, `NoNewPrivileges=true`, `DropCapability=ALL` (`CapEff=0`), `[Quadlet] DefaultDependencies=false` (`DEC-06`), `After=dermaga.service`, `Network=web.network`, and `hooks.sock` dir mounted read-only. | External `distroless` or `alpine/socat` image (rejected: adds external image dependency and digest churn). | `internal/quadlet/hook_relay.go`, `docs/DEPENDENCIES.md` §3 |
 | **DEC-31** | 2026-11-25 | Pass git installation tokens via `GIT_CONFIG_*` and build-args via `--build-arg KEY` env | Keeps installation tokens (`GHA-5`) and build-arg values out of `/proc/*/cmdline`, `.git/config`, logs, and the database. On Linux, `/proc/<pid>/environ` is mode `0400` owned by `server`, readable only by the same UID (`server`) or `root`. | Passing `--build-arg K=V` on argv (rejected: exposes values in `/proc/*/cmdline`); git URL credentials (rejected: exposes token in `ps` and `.git/config`). | `internal/builder/builder.go`, [M6 EVIDENCE](evidence/M6/EVIDENCE.md) |
+| **DEC-32** | 2026-11-26 | Immutable encrypted env versions referenced by each release (owner decision) | A rollback must restore the environment the release ran with, reproducibly, without putting secrets in release metadata. Every save of the runtime env stores a new `env_versions` row (AES-256-GCM, same binding as `apps.env_encrypted`, so version 1 reuses the existing ciphertext); `apps.env_version_id` is current, `deployments.env_version_id` is what the release ran with, and non-secret settings go to `deployments.runtime_config`. Versions a retained or in-flight release needs are never deleted. Build-time variables stay baked into the image (`DEC-07`, `DEC-31`). | One encrypted snapshot per deployment (M6: duplicates secrets per release and mixes them with plain settings); restoring the env at rollback time (rejected by the owner: not reproducible). | `internal/store/releases.go`, `0005_m7_releases.sql` |
+| **DEC-33** | 2026-11-26 | Switch proof through Traefik with an echoed token, two steps | The verify router's first middleware returns its token in `X-Dermaga-Verify`, so a response with the token can only come from the file just written; the second token is written in the same file that moves the main router, proving that move is loaded before the old release is stopped. Requests go to `127.0.0.1:443` with SNI = the primary domain and certificate checks off (loopback to our own Traefik; the certificate may still be pending; only the random token matters). | Fixed sleep after writing (no proof); comparing response bodies (apps differ); Traefik API (`DEC-01`). | `internal/deploy/switch.go`, `internal/traefik/render.go` |
+| **DEC-34** | 2026-11-26 | App containers run with `RunInit=true` (owner decision) | Many apps run as PID 1 and ignore SIGTERM: on Debian 13's Podman 5.4.2 `podman stop` of `sleep` took 10.17 s (then SIGKILL) without init and 0.15 s with it; the dry-run turns `RunInit=true` into `--init` (catatonit 0.2.1, installed with Podman), and an unknown key fails the dry-run. Old releases now stop right after the drain. | Leave it to each app (slow stops for naive apps). | `tmp/evidence/M7/logs/runinit-vm.log`, `internal/quadlet/render.go` |
+| **DEC-35** | 2026-11-26 | Memory check, rollback refusal, retention, crash recovery | Owner decisions: refuse a deploy (before the build and before the start) when `MemAvailable` < the release's memory limit; refuse a rollback while the app builds. Retention keeps the live release plus the newest 5 earlier live releases (`DEP-4`), never removing an image a retained release shares. After a crash the route file decides which release is live (§5.6). The reconciler's re-rendered unit now matches the deployed one (it used `localhost/<name>:rN`, an image that never existed, and dropped limits and the env file). | Starting anyway when memory is short (risks OOM of the live release); cancelling the build for a rollback (the build would replace the rollback when it finishes). | `internal/deploy/switch.go`, `internal/reconciler/switch.go` |
 
 

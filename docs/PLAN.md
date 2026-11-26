@@ -49,18 +49,17 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
 **M7** (0.7.0): Zero downtime: push-to-deploy, redeploy, rollback (`in progress`).
 
 - **Requirement IDs:** DEP-1, DEP-2, DEP-4, DEP-10, APP-8, REL-6.
-- **Handoff** (2026-11-26, `v0.6.2` tagged and verified; M7a not started):
-  - Done: M6 (`v0.6.0`, confirmed); `v0.6.1` UI redesign; `v0.6.2` (tag = `3e4d902`, CI and release
-    green, checksums verified with a negative control, installed on `dermaga-vm` from `fresh`, UI smoke via
-    the tunnel `test/vm/smoke_ui.mjs`); Version card truncates long dev versions (full value in `title`);
-    `oha` 1.17.0 and `gosmee` 0.32.1 pinned (`docs/DEPENDENCIES.md` §5), `oha --cacert --connect-to`
-    verified locally; SETUP §4.2 corrected; test-app replacement Containerfile verified locally.
-  - Found: `m3_check.sh access` could not unban (the nftables ban also cuts the open ControlMaster);
-    rewritten to schedule the unban on the VM (owner choice). The test app's `nc` loop cannot serve
-    concurrent requests and has no failable `/health`: the owner pushes the replacement before the M7 VM run.
-  - Also done: `m3_check.sh access` with the VM-side unban PASS, new `ssh dermaga` 71 s later PASS.
-  - Remaining: owner pushes the test-app replacement (`tmp/evidence/M7/testapp/Containerfile`); then M7a
-    backend (migration `0005`, blue-green switch, rollback, recovery, `RunInit=true`) and the chosen panel.
+- **Handoff** (2026-11-26, M7a code and local tests done; VM part waits for `v0.7.0-rc.1`):
+  - Done: `v0.6.2` (tagged, verified on the VM); shellcheck 0.10.0 local; test-app replacement pushed by the
+    owner. M7a: migration `0005` (env versions, `rolled_back`, runtime config, watch paths) with the `0004`
+    upgrade test; verified blue-green switch (DEC-33), drain, retention, memory check, rollback, restart
+    recovery in the reconciler, `RunInit=true` (DEC-34), real unit re-render; API (rollback, preview, memory
+    check, commit redeploy); panel (Deployments rows, rollback and redeploy dialogs). `make check` and
+    Playwright 10/10 green; negative controls recorded in `docs/evidence/M7/EVIDENCE.md`.
+  - Remaining for M7a: owner commits and tags `v0.7.0-rc.1`; GitHub App connected on the VM (owner);
+    owner pushes the broken-`/health` commit and its revert to `r3p-dev/dermaga-test-app`; VM run with `oha`
+    (redeploy, failing health via "A specific commit", rollback < 10 s, daemon killed mid-switch), seed.sh
+    for M7, then stop for review. M7b (push-to-deploy) after that.
   - Owner choices (2026-11-26, later): Deployments tab = rows layout (mockup A); rollback dialog = compact
     (mockup A, no typed confirmation); apps run with Quadlet `RunInit=true` (verified by dry-run on Debian 13
     before use); `m3_check.sh` unbans via VM-side `systemd-run` timers and proves the ban from fail2ban's log.

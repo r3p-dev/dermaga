@@ -6,15 +6,23 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Zero-downtime redeploy (`DEP-1`, `DEP-2`)**: a new release starts next to the live one, is health-checked, and the route moves through three atomic writes, each proven through Traefik with a token the verify router echoes (DEC-33); the old release drains 10 s and stops. Any failure before the switch completes restores the live-only route and removes the candidate.
+- **Rollback (`DEP-4`)** to the last 5 releases that were live: no rebuild, the release's own image and immutable encrypted env version (DEC-32); refused while the app builds ("Cancel the running build first").
+- **Memory check** before the build and before the start, and up front in the deploy and rollback dialogs.
+- **Restart recovery (`DEP-10`)**: after a crash mid-switch the route file decides which release is live; leftover verify routers are removed in place.
+- Migration `0005`: env versions, `rolled_back`, per-release runtime config, watch paths; pre-0005 release snapshots are converted at start.
+- Panel: Deployments tab with Redeploy (latest or a specific commit) and Roll back, rollback confirmation listing env variable names that differ, live status of the started release.
+- App containers run with `RunInit=true` (DEC-34).
+- `test/vm/smoke_ui.mjs`: UI smoke test of a freshly installed VM through an SSH tunnel (first-run setup, Dashboard at 1280/1920/375 in both themes, values compared with the API, no requirement codes).
+- `oha` 1.17.0 and `gosmee` 0.32.1 pinned with checksums for the M7 VM journey (`docs/DEPENDENCIES.md`).
+
 ### Changed
 - The Dashboard's Version card truncates long development versions on one line; the full value is in the tooltip.
 - `test/vm/m3_check.sh access` schedules the fail2ban unban on the VM before the denied logins (`systemd-run` timers at +60 s and +120 s), waits for a new login, and proves the ban from `/var/log/fail2ban.log`. The earlier ControlMaster unban could not work: the nftables ban also rejects packets on the already-open connection.
 
-### Added
-- `test/vm/smoke_ui.mjs`: UI smoke test of a freshly installed VM through an SSH tunnel (first-run setup, Dashboard at 1280/1920/375 in both themes, values compared with the API, no requirement codes).
-- `oha` 1.17.0 and `gosmee` 0.32.1 pinned with checksums for the M7 VM journey (`docs/DEPENDENCIES.md`).
-
 ### Fixed
+- The startup reconciler re-rendered missing app units with an image that never existed and without limits or env file; it now renders exactly what the deploy engine deployed.
 - `docs/SETUP.md` §4.2 pointed gosmee at the panel, which never serves `/hooks/github-app`; §7 explains why `on_reboot=restart` needs a cold start after reverting a running snapshot.
 
 ## [0.6.2] - 2026-11-26

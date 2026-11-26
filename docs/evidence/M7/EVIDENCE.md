@@ -174,3 +174,93 @@ Memory is high in the test runs because every test logs in and Argon2id verifica
 - **ARCHITECTURE cleanup (separate docs commit):** six stray copies of the `0004` migration snippet removed
   from §2, §4.2 and §5.4; the `cloning` status folded into `building` (the code fetches inside `building`);
   timeouts in §6.1 corrected to the code and PRD (build 20 min `DEP-7`, probe = app health start timeout `APP-5`).
+
+## M7a: zero-downtime redeploy and rollback (local part)
+
+Commit under review: `208ebb6` + the uncommitted M7a changes (dirty: the owner commits them; the VM part
+runs on `v0.7.0-rc.1` after the tag). Requirement IDs: `DEP-1`, `DEP-2`, `DEP-4`, `DEP-9`, `DEP-10`, `UI-3`,
+`UI-7`, `UI-8`.
+
+### Acceptance criteria
+
+| Criterion (req ID) | Status | Log file | Proof |
+| --- | --- | --- | --- |
+| `make check` (Go, Svelte, Tailwind, Prettier, policy, shellcheck) | PASS | `tmp/evidence/M7/logs/m7a-make-check.log` | all steps `ok` |
+| DEP-1: release started next to the live one, both verify steps proven, route moved, old drained and stopped, image kept | PASS | `tmp/evidence/M7/logs/m7a-go-tests.log` | `TestRedeploy_SwitchesWithProof_DEP1` |
+| DEP-2: failing health keeps the live release, route and unit | PASS | same | `TestRedeploy_HealthFails_OldStaysLive_DEP2` |
+| DEP-2: either verify step failing restores the live-only route | PASS | same | `TestRedeploy_VerifyFails_RestoresRoute_DEP2/step1`, `/step2` |
+| Negative control: without the route restore both step tests fail (`live=r2 verify=true` at step 2) | PASS | (run in this session, edit reverted) | see Decisions |
+| Memory check refuses before the build, with both values; live untouched (owner decision) | PASS | same | `TestMemoryCheck_RefusesDeploy` |
+| DEP-4: rollback runs r1's image with r1's env version, no build; r2 → Rolled back; panel env unchanged | PASS | same | `TestRollback_RestoresReleaseEnv_DEP4` |
+| Negative control: marking the replaced release `inactive` makes that test fail (`r2=inactive`) | PASS | (run in this session, edit reverted) | |
+| Rollback refused while the app builds ("Cancel the running build first", 409) | PASS | same | `TestRollback_RefusedWhileBuilding`, `TestRollbackAPI_RefusedWhileBuilding` |
+| DEP-4: retention keeps live + last 5; r1/r2 images removed; rollback to r2 refused, to r3 allowed | PASS | same | `TestRetention_KeepsLiveAndLastFive_DEP4` |
+| Migration `0005` from a populated `0004` DB; `rolled_back` accepted, unknown status rejected; legacy snapshot converted | PASS | same | `TestStoreMigration0004To0005_DEP4`, `TestEnvVersions_DEC32`, `TestLegacySnapshotConversion` |
+| DEP-10: crash after the main router moved → candidate adopted (also for a rollback); crash before → old kept; one live, one route, no verify router | PASS | same | `TestReconcile_CrashAfterMainSwitched_DEP10/push`, `/rollback`, `TestReconcile_CrashBeforeMainSwitched_DEP10` |
+| Negative control: without `recoverSwitches` all three crash tests fail | PASS | (run in this session, edit reverted) | `after recovery: live=dep_shop_r1 r1=active r2=switching` |
+| DEP-10: a re-rendered unit has the release's image, limits, init and env file (was `localhost/<name>:rN`) | PASS | same | `TestReconcile_ReRenderedUnitMatchesDeploy_DEP10` |
+| API: rollback, preview (names only, no values), memory check, commit redeploy; authentication on each route; audit entry | PASS | same | `TestRollbackAPI_DEP4`, `TestRedeployCommitValidation` |
+| `RunInit=true` on Podman 5.4.2: dry-run gives `--init`; unknown key rejected; stop 0.15 s vs 10.17 s | PASS | `tmp/evidence/M7/logs/runinit-vm.log` | DEC-34 |
+| Golden files: only `RunInit=true` (7 units) and the verify-ack middleware (switch golden) changed | PASS | (git diff in this session) | `7 +RunInit=true` |
+| UI: Deployments tab (mockup A), rollback dialog (mockup A), redeploy dialog, refusals, live status; axe AA at 1280/375, light and dark | PASS | `tmp/evidence/M7/logs/m7a-test-browser.log` | `10 passed`, `e2e/rollback.test.ts` |
+| Negative control: showing "Roll back" on every row fails the journey (`Expected: 1, Received: 3`) | PASS | (run in this session, edit reverted) | |
+| VM: oha 50 req/s over the Pebble certificate during (a) a redeploy and (b) a redeploy of a commit whose `/health` fails: 0 non-2xx, 0 connection errors | NOT RUN | — | needs `v0.7.0-rc.1`, a connected GitHub App on the VM and the owner's test-app pushes (report) |
+| VM: rollback < 10 s with zero downtime; daemon killed mid-switch → one live release, no verify router | NOT RUN | — | same |
+
+### Screens
+
+| Local file | Page | Width | Theme | Shows |
+| --- | --- | --- | --- | --- |
+| `tmp/evidence/M7/screenshots/m7a-deployments-1280-light.png` | App → Deployments | 1280 | light | Rows r3 live, r2 Previous release with Roll back, r1 failed with its reason; Redeploy ▾ on the right |
+| `tmp/evidence/M7/screenshots/m7a-deployments-375-dark.png` | App → Deployments | 375 | dark | Same rows stacked as cards, actions under each row, no clipping |
+| `tmp/evidence/M7/screenshots/m7a-rollback-dialog-1280-dark.png` | Rollback dialog | 1280 | dark | "Roll back shop to r2?", four bullets, env differences (~ API_KEY, + NEW_FLAG, − OLD_FLAG), amber revoked-secret note |
+| `tmp/evidence/M7/screenshots/m7a-rollback-dialog-375-light.png` | Rollback dialog | 375 | light | Same dialog fitting the narrow screen |
+| `tmp/evidence/M7/screenshots/m7a-redeploy-commit-error-1280-light.png` | Redeploy dialog | 1280 | light | "A specific commit" with the server's field error under Commit SHA; free memory line |
+| `tmp/evidence/M7/screenshots/m7a-redeploy-memory-1280-dark.png` | Redeploy dialog | 1280 | dark | Memory refusal (300 MiB available, 512 MiB needed); Deploy disabled |
+
+The UI journey uses mocked API responses (like the M6 journeys); the real path runs on the VM.
+
+### How it works
+
+Deploy dialog → `GET /api/apps/{id}/memory-check` → `POST /api/apps/{id}/deploy {commit?}` → `deploy.Engine`
+queue → build → `startAndSwitch` (unit with `RunInit`, health, three route writes proven through Traefik on
+`127.0.0.1:443`) → `FinishSwitch` → 10 s drain → stop old → retention. Rollback dialog →
+`GET /rollback-preview` (env names only) → `POST /rollback` → `Engine.Rollback` (no build, the release's image and
+env version) → same `startAndSwitch`. Restart → `reconciler.recoverSwitches` reads the route file first.
+Sequence and states: `docs/ARCHITECTURE.md` §5.4–§5.6, §6.1.
+
+### Code tour
+
+1. `internal/store/migrations/0005_m7_releases.sql`, `internal/store/releases.go`: env versions, `FinishSwitch`, one deployment column list.
+2. `internal/deploy/release.go`: `RuntimeConfig`, `ContainerSpecFor` (shared with the reconciler).
+3. `internal/deploy/switch.go`: memory check, `switchTraffic` (DEC-33), retention, legacy conversion.
+4. `internal/deploy/deploy.go`: `runOne` → `startAndSwitch`, `failRelease`, `Rollback`.
+5. `internal/traefik/render.go`: verify-ack middleware, `LiveRelease`.
+6. `internal/reconciler/switch.go`: `recoverSwitches`, `writeAppRoute`, `unitSpecFor`.
+7. `internal/server/rollback.go`: rollback, preview, memory check, commit validation.
+8. `ui/src/lib/components/RollbackDialog.svelte`, `RedeployDialog.svelte`, `ui/src/routes/apps/[id]/+page.svelte`.
+
+### Decisions & deviations
+
+- DEC-32 (env versions), DEC-33 (switch proof), DEC-34 (`RunInit`), DEC-35 (memory check, rollback refusal,
+  retention, crash recovery, reconciler unit fix) are in `docs/ARCHITECTURE.md` §7.
+- Negative controls were temporary source edits from backup copies; each was reverted and the tests re-run
+  green (`grep -c 'NEGATIVE CONTROL'` = 0 afterwards).
+- The verify request skips certificate checks on the loopback to our own Traefik (DEC-33): the certificate
+  may still be pending, and only the random token matters.
+- The redeploy dialog had no mockup; its copy and layout follow the rollback dialog (open question in the report).
+- Requests longer than the 10 s drain on the old release are cut (PRD `DEP-1` grace).
+
+### Suggested commits (`tmp/evidence/M7/logs/m7a-check-commits.log`)
+
+```text
+PASS static checks: 8 commits, 43 paths
+PASS commit 1: feat(store): add env versions and the rolled_back status
+PASS commit 2: feat(quadlet): run app containers with an init process
+PASS commit 3: feat(traefik): echo the verify token and read the live release
+PASS commit 4: feat(deploy): switch traffic with proof, roll back, keep 5 releases
+PASS commit 5: fix(reconciler): recover interrupted switches and render real units
+PASS commit 6: feat(server): add rollback, preview, memory check and commit redeploy
+PASS commit 7: feat(ui): add redeploy and rollback to the Deployments tab
+PASS commit 8: docs: record M7a design, decisions and local evidence
+```
