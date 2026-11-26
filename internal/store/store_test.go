@@ -28,8 +28,8 @@ func TestStoreMigrations_FreshAndRerun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CurrentVersion failed: %v", err)
 	}
-	if ver != 4 {
-		t.Errorf("expected version 4, got %d", ver)
+	if ver != 5 {
+		t.Errorf("expected version 5, got %d", ver)
 	}
 
 	info, err := os.Stat(dbPath)
@@ -52,8 +52,8 @@ func TestStoreMigrations_FreshAndRerun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CurrentVersion on rerun failed: %v", err)
 	}
-	if ver2 != 4 {
-		t.Errorf("expected version 4 after rerun, got %d", ver2)
+	if ver2 != 5 {
+		t.Errorf("expected version 5 after rerun, got %d", ver2)
 	}
 }
 
@@ -89,8 +89,8 @@ func TestStoreMigration0001To0002(t *testing.T) {
 
 	ctx := context.Background()
 	ver, err := s.CurrentVersion(ctx)
-	if err != nil || ver != 4 {
-		t.Fatalf("expected upgraded version 4, got %d (err=%v)", ver, err)
+	if err != nil || ver != 5 {
+		t.Fatalf("expected upgraded version 5, got %d (err=%v)", ver, err)
 	}
 
 	sess, err := s.GetSession(ctx, "old-hash")
@@ -141,8 +141,8 @@ func TestStoreMigration0002To0003(t *testing.T) {
 
 	ctx := context.Background()
 	ver, err := s.CurrentVersion(ctx)
-	if err != nil || ver != 4 {
-		t.Fatalf("expected upgraded version 4, got %d (err=%v)", ver, err)
+	if err != nil || ver != 5 {
+		t.Fatalf("expected upgraded version 5, got %d (err=%v)", ver, err)
 	}
 	hd, err := s.GetSetting(ctx, "hook_domain")
 	if err != nil || hd != "hooks.example.com" {
@@ -444,8 +444,8 @@ func TestStoreMigration0003To0004(t *testing.T) {
 
 	ctx := context.Background()
 	ver, err := s.CurrentVersion(ctx)
-	if err != nil || ver != 4 {
-		t.Fatalf("expected version 4, got %d (err=%v)", ver, err)
+	if err != nil || ver != 5 {
+		t.Fatalf("expected version 5, got %d (err=%v)", ver, err)
 	}
 	app, err := s.GetApp(ctx, "app_1")
 	if err != nil {
