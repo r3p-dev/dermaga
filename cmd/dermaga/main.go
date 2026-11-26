@@ -143,6 +143,7 @@ func runDaemon(args []string) error {
 	rec := reconciler.New(realHost, st, reconciler.Config{
 		QuadletDir:         paths.QuadletDir,
 		TraefikDynamicDir:  paths.TraefikDynamicDir,
+		EnvDir:             paths.EnvDir,
 		UserUnitDir:        paths.UserUnitDir,
 		TraefikDir:         paths.TraefikDir,
 		HookRelayRootfsDir: filepath.Join(filepath.Dir(*dbPath), "hook-relay-rootfs"),
@@ -151,9 +152,9 @@ func runDaemon(args []string) error {
 	})
 	if recReport, err := rec.Reconcile(context.Background()); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: startup reconciliation encountered error: %v\n", err)
-	} else if len(recReport.OrphansRemoved) > 0 || len(recReport.FilesReRendered) > 0 || len(recReport.UnitsStarted) > 0 || len(recReport.VerifyRoutersCleaned) > 0 {
-		fmt.Printf("Startup reconciliation complete: %d orphan(s) removed, %d file(s) re-rendered, %d unit(s) started, %d verify router(s) cleaned\n",
-			len(recReport.OrphansRemoved), len(recReport.FilesReRendered), len(recReport.UnitsStarted), len(recReport.VerifyRoutersCleaned))
+	} else if len(recReport.OrphansRemoved) > 0 || len(recReport.FilesReRendered) > 0 || len(recReport.UnitsStarted) > 0 || len(recReport.VerifyRoutersCleaned) > 0 || len(recReport.SwitchesRecovered) > 0 {
+		fmt.Printf("Startup reconciliation complete: %d orphan(s) removed, %d file(s) re-rendered, %d unit(s) started, %d verify router(s) cleaned, switches recovered: %v\n",
+			len(recReport.OrphansRemoved), len(recReport.FilesReRendered), len(recReport.UnitsStarted), len(recReport.VerifyRoutersCleaned), recReport.SwitchesRecovered)
 	}
 
 	daemonCtx, daemonCancel := context.WithCancel(context.Background())
@@ -625,6 +626,7 @@ func runReconcile(args []string) error {
 	dbPath := fs.String("db", paths.DBPath, "Path to SQLite database")
 	quadletDir := fs.String("quadlet-dir", paths.QuadletDir, "Path to Quadlet units directory")
 	traefikDir := fs.String("traefik-dir", paths.TraefikDynamicDir, "Path to Traefik dynamic configuration directory")
+	envDir := fs.String("env-dir", paths.EnvDir, "Path to release env files")
 	userUnitDir := fs.String("user-unit-dir", paths.UserUnitDir, "Path to systemd user units (Traefik sockets); empty skips the Traefik step")
 	traefikConfigDir := fs.String("traefik-config-dir", paths.TraefikDir, "Path to Traefik static config and acme.json; empty skips the Traefik step")
 	prune := fs.Bool("prune", false, "Allow pruning of orphan units even if database contains 0 active apps")
@@ -639,6 +641,7 @@ func runReconcile(args []string) error {
 	rec := reconciler.New(host.NewRealHost(), st, reconciler.Config{
 		QuadletDir:        *quadletDir,
 		TraefikDynamicDir: *traefikDir,
+		EnvDir:            *envDir,
 		AllowEmptyDBPrune: *prune,
 		UserUnitDir:       *userUnitDir,
 		TraefikDir:        *traefikConfigDir,
@@ -654,6 +657,7 @@ func runReconcile(args []string) error {
 	fmt.Printf("Files re-rendered:      %d %v\n", len(report.FilesReRendered), report.FilesReRendered)
 	fmt.Printf("Units started:          %d %v\n", len(report.UnitsStarted), report.UnitsStarted)
 	fmt.Printf("Verify routers cleaned: %d %v\n", len(report.VerifyRoutersCleaned), report.VerifyRoutersCleaned)
+	fmt.Printf("Switches recovered:     %d %v\n", len(report.SwitchesRecovered), report.SwitchesRecovered)
 	fmt.Printf("Foreign files reported: %d %v\n", len(report.ForeignFilesReported), report.ForeignFilesReported)
 	if report.SafeDefaultTriggered {
 		fmt.Println("Safe default active:    preserved managed units/configs because database has 0 active apps")

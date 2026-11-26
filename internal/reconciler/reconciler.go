@@ -22,6 +22,7 @@ import (
 type Config struct {
 	QuadletDir        string
 	TraefikDynamicDir string
+	EnvDir            string // release env files; a re-rendered unit references one only if it exists
 	AllowEmptyDBPrune bool
 	// UserUnitDir (~/.config/systemd/user) and TraefikDir (~/.local/share/dermaga/traefik) hold
 	// the Traefik sockets and static config. When either is empty the Traefik step is skipped.
@@ -39,6 +40,7 @@ type Report struct {
 	FilesReRendered      []string `json:"files_re_rendered"`
 	UnitsStarted         []string `json:"units_started"`
 	VerifyRoutersCleaned []string `json:"verify_routers_cleaned"`
+	SwitchesRecovered    []string `json:"switches_recovered"`
 	ForeignFilesReported []string `json:"foreign_files_reported"`
 	SafeDefaultTriggered bool     `json:"safe_default_triggered,omitempty"`
 }
@@ -66,6 +68,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 		FilesReRendered:      []string{},
 		UnitsStarted:         []string{},
 		VerifyRoutersCleaned: []string{},
+		SwitchesRecovered:    []string{},
 		ForeignFilesReported: []string{},
 	}
 
@@ -75,6 +78,11 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 	}
 	if err := r.host.MkdirAll(r.cfg.TraefikDynamicDir, 0755); err != nil {
 		return nil, fmt.Errorf("ensuring traefik dynamic dir %q: %w", r.cfg.TraefikDynamicDir, err)
+	}
+
+	// 0. A switch interrupted by a crash or reboot: the route file decides (DEP-10).
+	if err := r.recoverSwitches(ctx, report); err != nil {
+		return nil, err
 	}
 
 	// 1. Fetch active apps and their active deployments from SQLite
@@ -187,32 +195,10 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 	// 2b. Re-render missing Quadlet units for active apps
 	for unitFilename, rec := range activeUnits {
 		if !foundUnitsOnDisk[unitFilename] {
-			cSpec := quadlet.ContainerSpec{
-				AppName:          rec.App.Name,
-				ReleaseNumber:    rec.Deployment.ReleaseNumber,
-				Image:            fmt.Sprintf("localhost/%s:r%d", rec.App.Name, rec.Deployment.ReleaseNumber),
-				Network:          name.BridgeNetworkName(),
-				Port:             rec.App.Port,
-				DropCapabilities: true,
+			cSpec, err := r.unitSpecFor(rec)
+			if err != nil {
+				return nil, fmt.Errorf("container unit for %s: %w", rec.App.Name, err)
 			}
-			if rec.App.HealthType == "cmd" && rec.App.HealthCmd != nil && *rec.App.HealthCmd != "" {
-				cSpec.Health = quadlet.HealthSpec{
-					Type:          "cmd",
-					Cmd:           *rec.App.HealthCmd,
-					TimeoutSec:    rec.App.HealthTimeoutSec,
-					NotifyHealthy: true,
-				}
-			} else if rec.App.HealthType == "http" && rec.App.HealthPath != nil && *rec.App.HealthPath != "" {
-				cSpec.Health = quadlet.HealthSpec{
-					Type:          "http",
-					Path:          *rec.App.HealthPath,
-					TimeoutSec:    rec.App.HealthTimeoutSec,
-					NotifyHealthy: true,
-				}
-			} else {
-				cSpec.Health = quadlet.HealthSpec{Type: "none"}
-			}
-
 			cData, err := quadlet.RenderContainer(cSpec)
 			if err != nil {
 				return nil, fmt.Errorf("rendering container unit for %s: %w", rec.App.Name, err)
@@ -402,38 +388,8 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 	for appName, rec := range activeAppNames {
 		configFilename := fmt.Sprintf("%s%s.yml", name.AppPrefix, appName)
 		if !foundConfigsOnDisk[configFilename] {
-			var domSpecs []traefik.DomainSpec
-			for _, d := range rec.Domains {
-				redir := ""
-				if d.RedirectTo != nil {
-					redir = *d.RedirectTo
-				}
-				pfx := ""
-				if d.PathPrefix != nil {
-					pfx = *d.PathPrefix
-				}
-				domSpecs = append(domSpecs, traefik.DomainSpec{
-					Domain:      d.Domain,
-					IsPrimary:   d.IsPrimary,
-					RedirectTo:  redir,
-					PathPrefix:  pfx,
-					StripPrefix: d.StripPrefix,
-				})
-			}
-
-			appSpec := traefik.AppSpec{
-				AppName:       rec.App.Name,
-				ReleaseNumber: rec.Deployment.ReleaseNumber,
-				Port:          rec.App.Port,
-				Domains:       domSpecs,
-			}
-			appData, err := traefik.RenderApp(appSpec)
-			if err != nil {
-				return nil, fmt.Errorf("rendering traefik config for %s: %w", appName, err)
-			}
-			cfgPath := filepath.Join(r.cfg.TraefikDynamicDir, configFilename)
-			if err := r.host.WriteFileAtomic(cfgPath, appData, 0644); err != nil {
-				return nil, fmt.Errorf("writing traefik config for %s: %w", appName, err)
+			if err := r.writeAppRoute(rec); err != nil {
+				return nil, err
 			}
 			report.FilesReRendered = append(report.FilesReRendered, configFilename)
 		}
