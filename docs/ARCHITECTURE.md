@@ -105,17 +105,6 @@ sockets; plaintext env files (0600); a sudo-capable `server` user.
 
 Dermaga is designed as an autonomous, single-binary server platform running entirely within the unprivileged user session of Linux user `server` on **Debian 13**. It isolates application containers, reverse proxying, and administration through strict boundary layers:
 
--- Migration 0004_m6_apps_deploy.sql
-
-ALTER TABLE apps ADD COLUMN health_consecutive INTEGER NOT NULL DEFAULT 3;
-ALTER TABLE apps ADD COLUMN memory_limit TEXT NOT NULL DEFAULT '512m';
-ALTER TABLE apps ADD COLUMN cpu_limit TEXT NOT NULL DEFAULT '1.0';
-ALTER TABLE apps ADD COLUMN pids_limit INTEGER NOT NULL DEFAULT 128;
-ALTER TABLE apps ADD COLUMN read_only_root INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE apps ADD COLUMN add_capabilities TEXT NOT NULL DEFAULT '';
-
-ALTER TABLE deployments ADD COLUMN error_message TEXT NOT NULL DEFAULT '';
-ALTER TABLE deployments ADD COLUMN image_ref TEXT NOT NULL DEFAULT '';
 ```mermaid
 flowchart TD
     subgraph External["External Network & Operators"]
@@ -157,17 +146,6 @@ flowchart TD
     subgraph HealthChecks["Rootless Network Namespace Isolation"]
         Probe["dermaga probe (pasta netns)"] -- "HTTP probe via Aardvark-DNS" --> AppGreen
     end
--- Migration 0004_m6_apps_deploy.sql
-
-ALTER TABLE apps ADD COLUMN health_consecutive INTEGER NOT NULL DEFAULT 3;
-ALTER TABLE apps ADD COLUMN memory_limit TEXT NOT NULL DEFAULT '512m';
-ALTER TABLE apps ADD COLUMN cpu_limit TEXT NOT NULL DEFAULT '1.0';
-ALTER TABLE apps ADD COLUMN pids_limit INTEGER NOT NULL DEFAULT 128;
-ALTER TABLE apps ADD COLUMN read_only_root INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE apps ADD COLUMN add_capabilities TEXT NOT NULL DEFAULT '';
-
-ALTER TABLE deployments ADD COLUMN error_message TEXT NOT NULL DEFAULT '';
-ALTER TABLE deployments ADD COLUMN image_ref TEXT NOT NULL DEFAULT '';
 ```
 
 ### Boundary & Exposure Rules
@@ -273,17 +251,6 @@ Mounting note: Traefik mounts `~/.local/share/dermaga/traefik/dynamic/` as a dir
 
 The database schema uses text primary keys formatted as ULIDs (or SHA-256 hashes for session tokens, and autoincrement integers for audit logs and migrations), strict foreign key constraints, UTC ISO 8601 timestamps, and encrypted text columns for secrets.
 
--- Migration 0004_m6_apps_deploy.sql
-
-ALTER TABLE apps ADD COLUMN health_consecutive INTEGER NOT NULL DEFAULT 3;
-ALTER TABLE apps ADD COLUMN memory_limit TEXT NOT NULL DEFAULT '512m';
-ALTER TABLE apps ADD COLUMN cpu_limit TEXT NOT NULL DEFAULT '1.0';
-ALTER TABLE apps ADD COLUMN pids_limit INTEGER NOT NULL DEFAULT 128;
-ALTER TABLE apps ADD COLUMN read_only_root INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE apps ADD COLUMN add_capabilities TEXT NOT NULL DEFAULT '';
-
-ALTER TABLE deployments ADD COLUMN error_message TEXT NOT NULL DEFAULT '';
-ALTER TABLE deployments ADD COLUMN image_ref TEXT NOT NULL DEFAULT '';
 ```sql
 -- Migration 0001_init.sql
 
@@ -413,17 +380,6 @@ ALTER TABLE apps ADD COLUMN add_capabilities TEXT NOT NULL DEFAULT '';
 
 ALTER TABLE deployments ADD COLUMN error_message TEXT NOT NULL DEFAULT '';
 ALTER TABLE deployments ADD COLUMN image_ref TEXT NOT NULL DEFAULT '';
--- Migration 0004_m6_apps_deploy.sql
-
-ALTER TABLE apps ADD COLUMN health_consecutive INTEGER NOT NULL DEFAULT 3;
-ALTER TABLE apps ADD COLUMN memory_limit TEXT NOT NULL DEFAULT '512m';
-ALTER TABLE apps ADD COLUMN cpu_limit TEXT NOT NULL DEFAULT '1.0';
-ALTER TABLE apps ADD COLUMN pids_limit INTEGER NOT NULL DEFAULT 128;
-ALTER TABLE apps ADD COLUMN read_only_root INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE apps ADD COLUMN add_capabilities TEXT NOT NULL DEFAULT '';
-
-ALTER TABLE deployments ADD COLUMN error_message TEXT NOT NULL DEFAULT '';
-ALTER TABLE deployments ADD COLUMN image_ref TEXT NOT NULL DEFAULT '';
 ```
 
 ---
@@ -476,17 +432,7 @@ release workflow stamps the tag into `install.sh`; answers come from `/dev/tty`.
 6. Daemon identifies target application and branch; enqueues new deployment in the build queue.
 
 ### 5.4 Blue-Green Deployment Flow
--- Migration 0004_m6_apps_deploy.sql
 
-ALTER TABLE apps ADD COLUMN health_consecutive INTEGER NOT NULL DEFAULT 3;
-ALTER TABLE apps ADD COLUMN memory_limit TEXT NOT NULL DEFAULT '512m';
-ALTER TABLE apps ADD COLUMN cpu_limit TEXT NOT NULL DEFAULT '1.0';
-ALTER TABLE apps ADD COLUMN pids_limit INTEGER NOT NULL DEFAULT 128;
-ALTER TABLE apps ADD COLUMN read_only_root INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE apps ADD COLUMN add_capabilities TEXT NOT NULL DEFAULT '';
-
-ALTER TABLE deployments ADD COLUMN error_message TEXT NOT NULL DEFAULT '';
-ALTER TABLE deployments ADD COLUMN image_ref TEXT NOT NULL DEFAULT '';
 ```mermaid
 sequenceDiagram
     participant Q as Build Queue
@@ -510,17 +456,6 @@ sequenceDiagram
     S->>S: Wait 10s drain window
     S->>S: systemctl --user stop app-blue.service
     S-->>Q: Mark deployment active (Keep last 5 releases for instant rollback)
--- Migration 0004_m6_apps_deploy.sql
-
-ALTER TABLE apps ADD COLUMN health_consecutive INTEGER NOT NULL DEFAULT 3;
-ALTER TABLE apps ADD COLUMN memory_limit TEXT NOT NULL DEFAULT '512m';
-ALTER TABLE apps ADD COLUMN cpu_limit TEXT NOT NULL DEFAULT '1.0';
-ALTER TABLE apps ADD COLUMN pids_limit INTEGER NOT NULL DEFAULT 128;
-ALTER TABLE apps ADD COLUMN read_only_root INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE apps ADD COLUMN add_capabilities TEXT NOT NULL DEFAULT '';
-
-ALTER TABLE deployments ADD COLUMN error_message TEXT NOT NULL DEFAULT '';
-ALTER TABLE deployments ADD COLUMN image_ref TEXT NOT NULL DEFAULT '';
 ```
 
 1. **Build:** Daemon fetches bare mirror using repo-scoped token passed exclusively via `GIT_CONFIG_*` environment variables ([EVIDENCE.md §3](evidence/M0/EVIDENCE.md#3-authentication-rs256-jwt--git-over-https-bearer-vs-basic)). Runs `podman build` with `--memory` and `--cpus` limits. Streams build logs with SEC-9 masking.
@@ -545,23 +480,22 @@ All state transitions are explicit, strictly validated, and modified in exactly 
 
 ### 6.1 Deployment Status (`DEP-9`)
 
-Internal SQLite status values (`0001_init.sql`) map to the PRD `DEP-9` UI labels via `store.DeploymentStatusLabel`: `probing` → `healthy`, `active` → `live`; `queued`, `building`, `starting`, `failed`, `cancelled` map 1:1 (`superseded`, `switching`, and `inactive` remain internal until M7).
+Internal SQLite status values (`0001_init.sql`) map to the PRD `DEP-9` UI labels via `store.DeploymentStatusLabel`: `probing` → `healthy`, `active` → `live`, `superseded` → `replaced by a newer deploy`; `queued`, `building`, `starting`, `failed`, `cancelled` map 1:1. `switching` and `inactive` get their labels in M7.
 | State | Event / Trigger | Next State | Action / Side Effect |
 |---|---|---|---|
-| `queued` | Deployment created | `cloning` | Enqueued in single global build queue |
+| `queued` | Build worker picks the deployment | `building` | One build at a time server-wide (`DEP-5`) |
 | `queued` | Newer trigger arrives for same app | `superseded` | Replaced in queue by latest commit (`DEP-5`); live release untouched |
-| `cloning` | Fetch git repository | `building` | Uses repo-scoped installation token via `GIT_CONFIG_*` |
-| `cloning` | Git fetch fails / auth error | `failed` | Masks token; logs error; stops queue item |
+| `building` | Git fetch fails / auth error | `failed` | Fetch uses a repo-scoped installation token via `GIT_CONFIG_*`; token masked in logs |
 | `building` | Run `podman build` | `starting` | Enforces resource limits; streams logs with SEC-9 masking |
-| `building` | Build fails / timeout (15m) | `failed` | Prunes build context; records failure log |
+| `building` | Build fails / timeout (default 20 min, `DEP-7`) | `failed` | Prunes build context; records failure log |
 | `starting` | Quadlet dry-run & start unit | `probing` | Generates Quadlet file with `DefaultDependencies=false` |
 | `starting` | Dry-run fails / startup crash | `failed` | Removes Quadlet file; stops service |
 | `probing` | Run internal HTTP netns probe | `switching` | Executes internal netns probe (`dermaga probe`) in rootless pasta netns |
-| `probing` | Probe fails / timeout (5m) | `failed` | Stops candidate container; retains previous release |
+| `probing` | Probe fails / app health start timeout (`APP-5`) | `failed` | Stops candidate container; retains previous release |
 | `switching` | Atomic Traefik router update | `active` | Verifies router token; switches public traffic; drains old |
 | `switching` | Router verification fails | `failed` | Restores previous Traefik config atomically |
 | `active` | Replaced by newer deployment | `inactive` | Retained as past release (last 5 kept for rollback) |
-| `queued`/`cloning`/`building` | Operator clicks "Cancel" | `cancelled` | Terminates process group; cleans build context (`DEP-6`) |
+| `queued`/`building` | Operator clicks "Cancel" | `cancelled` | Terminates process group; cleans build context (`DEP-6`) |
 
 ### 6.2 App Runtime Status (`RUN-1`)
 | State | Event / Trigger | Next State | Action / Side Effect |
