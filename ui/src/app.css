@@ -1,51 +1,51 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  --color-brand-primary: var(--brand-primary);
-  --color-brand-hover: var(--brand-hover);
-  --color-brand-active: var(--brand-active);
-  --color-brand-ring: var(--brand-ring);
-  --color-brand-accent: var(--brand-accent);
-  --color-brand-navy: var(--brand-navy);
-  --color-brand-text: var(--brand-text);
-  --color-brand-badge-bg: var(--brand-badge-bg);
-  --color-brand-badge-border: var(--brand-badge-border);
-  --color-brand-badge-text: var(--brand-badge-text);
-  --color-brand-btn-text: var(--brand-btn-text);
+	--color-brand-primary: var(--brand-primary);
+	--color-brand-hover: var(--brand-hover);
+	--color-brand-active: var(--brand-active);
+	--color-brand-ring: var(--brand-ring);
+	--color-brand-accent: var(--brand-accent);
+	--color-brand-navy: var(--brand-navy);
+	--color-brand-text: var(--brand-text);
+	--color-brand-badge-bg: var(--brand-badge-bg);
+	--color-brand-badge-border: var(--brand-badge-border);
+	--color-brand-badge-text: var(--brand-badge-text);
+	--color-brand-btn-text: var(--brand-btn-text);
 }
 
 :root {
-  color-scheme: light;
+	color-scheme: light;
 
-  /* Brand Theme Tokens (Light Mode) derived from logo */
-  --brand-primary: #5b58a8;
-  --brand-hover: #4a478a;
-  --brand-active: #3c3972;
-  --brand-ring: #7c78ee;
-  --brand-accent: #c9c5fb;
-  --brand-navy: #1a1b36;
-  --brand-text: #5b58a8;
-  --brand-badge-bg: #f4f3fe;
-  --brand-badge-border: #dcd9fd;
-  --brand-badge-text: #4f4b9b;
-  --brand-btn-text: #ffffff;
+	/* Brand Theme Tokens (Light Mode) derived from logo */
+	--brand-primary: #5b58a8;
+	--brand-hover: #4a478a;
+	--brand-active: #3c3972;
+	--brand-ring: #7c78ee;
+	--brand-accent: #c9c5fb;
+	--brand-navy: #1a1b36;
+	--brand-text: #5b58a8;
+	--brand-badge-bg: #f4f3fe;
+	--brand-badge-border: #dcd9fd;
+	--brand-badge-text: #4f4b9b;
+	--brand-btn-text: #ffffff;
 }
 
 .dark {
-  color-scheme: dark;
+	color-scheme: dark;
 
-  /* Brand Theme Tokens (Dark Mode) derived from logo */
-  --brand-primary: #7c78ee;
-  --brand-hover: #8d8af1;
-  --brand-active: #9e9bf4;
-  --brand-ring: #7c78ee;
-  --brand-accent: #c9c5fb;
-  --brand-navy: #1a1b36;
-  --brand-text: #c9c5fb;
-  --brand-badge-bg: rgba(124, 120, 238, 0.15);
-  --brand-badge-border: rgba(124, 120, 238, 0.35);
-  --brand-badge-text: #c9c5fb;
-  --brand-btn-text: #1a1b36;
+	/* Brand Theme Tokens (Dark Mode) derived from logo */
+	--brand-primary: #7c78ee;
+	--brand-hover: #8d8af1;
+	--brand-active: #9e9bf4;
+	--brand-ring: #7c78ee;
+	--brand-accent: #c9c5fb;
+	--brand-navy: #1a1b36;
+	--brand-text: #c9c5fb;
+	--brand-badge-bg: rgba(124, 120, 238, 0.15);
+	--brand-badge-border: rgba(124, 120, 238, 0.35);
+	--brand-badge-text: #c9c5fb;
+	--brand-btn-text: #1a1b36;
 }
