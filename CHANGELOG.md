@@ -6,6 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-11-26
+
+### Changed
+- **UI redesign (Coolify-inspired)**: replaced the desktop top bar with a persistent left sidebar (bottom-pinned theme toggle and `Log out`), switched the Dashboard to an apps-first layout above a compact 4-stat Host Health strip, added a dedicated `/apps` page, renamed **Audit Log** to **Activity** (`/activity`, with `/audit-logs` redirecting to `/activity`), and adopted vertical sub-navigation (`SubNav`) for App Detail and Settings with `PageHeader` and `StatusBadge`.
+- **Frontend hygiene**: added `ui/.prettierrc.json` (`prettier-plugin-svelte` + `prettier-plugin-tailwindcss`), enforced Tailwind v4 canonical classes and `cssConflict` checks via `@tailwindcss/node`'s `canonicalizeCandidates` + `candidatesToCss` in `make check`, and enabled `svelte-check --fail-on-warnings`.
+- **License**: switched the repository license from Apache-2.0 to MIT (`LICENSE`, `ui/package.json`), attached `LICENSE` to GitHub Releases and `checksums.txt`, and rewrote `README.md` for `v0.6.0`+ with new UI screenshots.
+
 ## [0.6.0] - 2026-11-26
 
 ### Added
