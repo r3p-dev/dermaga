@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
+import { settleTransitions } from './helpers'
 
 async function evidenceShot(page: Page, name: string): Promise<void> {
 	const milestone = process.env.EVIDENCE_MILESTONE
@@ -10,6 +11,7 @@ async function evidenceShot(page: Page, name: string): Promise<void> {
 }
 
 async function assertAxeAA(page: Page, contextName: string) {
+	await settleTransitions(page)
 	const results = await new AxeBuilder({ page })
 		.withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
 		.analyze()

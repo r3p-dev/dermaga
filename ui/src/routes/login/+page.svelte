@@ -147,7 +147,7 @@
 					class="rounded bg-stone-100 px-1 py-0.5 font-mono text-xs text-stone-700 dark:bg-stone-800 dark:text-stone-300"
 				>
 					dermaga admin set-password
-				</code> on the server (SRV-1).
+				</code> on the server.
 			</p>
 		</div>
 	</div>

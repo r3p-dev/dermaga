@@ -273,7 +273,7 @@
 			</div>
 		</aside>
 
-		<!-- Narrow screen top bar + mobile nav (theme toggle & log out at the end) -->
+		<!-- Narrow screen: logo, theme toggle and log out on top; page links below -->
 		<header
 			class="sticky top-0 z-40 border-b border-stone-200 bg-white md:hidden dark:border-stone-800 dark:bg-stone-900"
 		>
@@ -285,10 +285,27 @@
 					<img src="/logo.svg" alt="dermaga" class="size-6 object-contain" />
 					<span>dermaga</span>
 				</a>
+				<div class="flex shrink-0 items-center gap-1.5 text-xs font-medium">
+					<button
+						type="button"
+						onclick={toggleTheme}
+						aria-label="Toggle theme"
+						class="rounded-md p-1.5 text-stone-600 transition hover:bg-stone-100 focus:ring-2 focus:ring-brand-ring focus:outline-none dark:text-stone-400 dark:hover:bg-stone-800"
+					>
+						{@render themeIcon()}
+					</button>
+					<button
+						type="button"
+						onclick={handleLogout}
+						class="rounded-md border border-stone-200 px-2.5 py-1.5 text-stone-700 transition hover:bg-stone-100 focus:ring-2 focus:ring-brand-ring focus:outline-none dark:border-stone-700 dark:text-stone-300 dark:hover:bg-stone-800"
+					>
+						Log out
+					</button>
+				</div>
 			</div>
 			<nav
 				aria-label="Mobile navigation"
-				class="flex items-center justify-between gap-2 overflow-x-auto border-t border-stone-200 px-3 py-2 text-xs font-medium dark:border-stone-800"
+				class="flex items-center gap-2 overflow-x-auto border-t border-stone-200 px-3 py-2 text-xs font-medium dark:border-stone-800"
 			>
 				<div class="flex shrink-0 items-center gap-1">
 					<a
@@ -326,23 +343,6 @@
 						Settings
 					</a>
 				</div>
-				<div class="flex shrink-0 items-center gap-1.5">
-					<button
-						type="button"
-						onclick={toggleTheme}
-						aria-label="Toggle theme"
-						class="rounded-md p-1.5 text-stone-600 transition hover:bg-stone-100 focus:ring-2 focus:ring-brand-ring focus:outline-none dark:text-stone-400 dark:hover:bg-stone-800"
-					>
-						{@render themeIcon()}
-					</button>
-					<button
-						type="button"
-						onclick={handleLogout}
-						class="rounded-md border border-stone-200 px-2.5 py-1.5 text-stone-700 transition hover:bg-stone-100 focus:ring-2 focus:ring-brand-ring focus:outline-none dark:border-stone-700 dark:text-stone-300 dark:hover:bg-stone-800"
-					>
-						Log out
-					</button>
-				</div>
 			</nav>
 		</header>
 	{:else}
@@ -373,7 +373,7 @@
 	{/if}
 
 	<div class="flex min-w-0 flex-1 flex-col">
-		<main class="mx-auto w-full max-w-6xl flex-1 p-4 md:p-8">
+		<main class="w-full flex-1 px-4 py-6 md:px-6 lg:px-8">
 			{#if loading}
 				<div
 					class="flex h-64 items-center justify-center text-sm text-stone-500 dark:text-stone-400"
@@ -422,11 +422,5 @@
 				{@render children()}
 			{/if}
 		</main>
-
-		<footer
-			class="border-t border-stone-200 px-4 py-4 text-center text-xs text-stone-500 dark:border-stone-800 dark:text-stone-400"
-		>
-			dermaga &bull; stateless rootless deployment platform
-		</footer>
 	</div>
 </div>

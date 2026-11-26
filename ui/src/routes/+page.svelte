@@ -28,6 +28,9 @@
 		return parts.join(' ')
 	}
 
+	// Idle memory budget for the daemon; above it the value turns amber.
+	const daemonMemoryTarget = 30 * 1024 * 1024
+
 	function formatBytes(bytes?: number): string {
 		if (!bytes) return '0 MB'
 		const mb = bytes / (1024 * 1024)
@@ -71,7 +74,7 @@
 <div class="space-y-6">
 	<PageHeader
 		title="Server Overview"
-		subtitle="Applications, host health, and daemon metrics"
+		subtitle="Your server and the apps running on it"
 	>
 		{#snippet actions()}
 			{#if status}
@@ -106,12 +109,12 @@
 		</div>
 	{:else}
 		{#if status}
-			<!-- Compact 4-stat host health strip -->
-			<section aria-label="Host metrics" class="space-y-2.5 pt-2">
+			<!-- Server overview: only values the API returns -->
+			<section aria-label="Server overview" class="space-y-2.5 pt-2">
 				<h2
 					class="text-xs font-semibold tracking-wider text-stone-600 uppercase dark:text-stone-400"
 				>
-					Host Health
+					Server
 				</h2>
 				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
 					<div
@@ -120,20 +123,28 @@
 						<span
 							class="block text-xs font-medium text-stone-600 dark:text-stone-400"
 						>
-							Daemon
+							Status
 						</span>
 						<div class="mt-1 flex items-baseline justify-between gap-2">
 							<span
-								class="text-base font-bold text-emerald-700 dark:text-emerald-400"
+								class="text-base font-bold {status.database_ok
+									? 'text-emerald-700 dark:text-emerald-400'
+									: 'text-red-700 dark:text-red-400'}"
 							>
-								Running
+								{status.database_ok ? 'Running' : 'Database error'}
 							</span>
 							<span
 								class="font-mono text-xs text-stone-600 tabular-nums dark:text-stone-400"
 							>
-								{formatUptime(status.uptime_sec)}
+								Up {formatUptime(status.uptime_sec)}
 							</span>
 						</div>
+						<span
+							class="mt-0.5 block text-xs text-stone-600 dark:text-stone-400"
+							title="Database schema version {status.schema_version}"
+						>
+							Database: {status.database_ok ? 'healthy' : 'error'}
+						</span>
 					</div>
 
 					<div
@@ -142,14 +153,20 @@
 						<span
 							class="block text-xs font-medium text-stone-600 dark:text-stone-400"
 						>
-							Footprint (NFR-2)
+							Memory
 						</span>
 						<div class="mt-1 flex items-baseline justify-between gap-2">
-							<span class="text-base font-bold tabular-nums">
+							<span
+								class="text-base font-bold tabular-nums {(status.daemon_rss ??
+									0) > daemonMemoryTarget
+									? 'text-amber-700 dark:text-amber-400'
+									: ''}"
+								title="Expected under 30 MB when idle"
+							>
 								{formatBytes(status.daemon_rss)}
 							</span>
 							<span class="text-xs text-stone-600 dark:text-stone-400">
-								Target &lt; 30 MB
+								Used by dermaga
 							</span>
 						</div>
 					</div>
@@ -160,18 +177,18 @@
 						<span
 							class="block text-xs font-medium text-stone-600 dark:text-stone-400"
 						>
-							SQLite
+							Apps
 						</span>
 						<div class="mt-1 flex items-baseline justify-between gap-2">
-							<span class="text-base font-bold text-brand-text tabular-nums">
-								v{status.schema_version}
+							<span class="text-base font-bold tabular-nums">
+								{appsLoading
+									? 'Loading'
+									: appsError
+										? 'Unavailable'
+										: apps.length}
 							</span>
-							<span
-								class="text-xs {status.database_ok
-									? 'text-emerald-700 dark:text-emerald-400'
-									: 'text-red-700 dark:text-red-400'}"
-							>
-								{status.database_ok ? 'Healthy' : 'Error'}
+							<span class="text-xs text-stone-600 dark:text-stone-400">
+								on this server
 							</span>
 						</div>
 					</div>
@@ -182,7 +199,7 @@
 						<span
 							class="block text-xs font-medium text-stone-600 dark:text-stone-400"
 						>
-							Binary
+							Version
 						</span>
 						<div class="mt-1 flex items-baseline justify-between gap-2">
 							<span class="font-mono text-base font-bold">

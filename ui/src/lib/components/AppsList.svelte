@@ -50,7 +50,9 @@
 			{error}
 		</div>
 	{:else if loading}
-		<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+		<div
+			class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+		>
 			{#each [1, 2] as _}
 				<div
 					class="h-32 animate-pulse rounded-xl bg-stone-100 dark:bg-stone-800/50"
@@ -94,7 +96,9 @@
 			</a>
 		</div>
 	{:else}
-		<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+		<div
+			class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+		>
 			{#each apps as app}
 				<a
 					href="/apps/{app.id}"

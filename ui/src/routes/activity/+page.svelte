@@ -130,7 +130,7 @@
 <div class="space-y-6">
 	<PageHeader
 		title="Activity"
-		subtitle="Immutable audit record of mutating actions and security events (AUD-1, AUD-2)"
+		subtitle="Immutable audit record of mutating actions and security events"
 	>
 		{#snippet actions()}
 			<div class="flex flex-wrap items-center gap-2.5">

@@ -702,7 +702,7 @@
 						<div
 							class="space-y-4 rounded-xl border border-stone-200 bg-white p-5 text-xs dark:border-stone-800 dark:bg-stone-900"
 						>
-							<h2 class="text-sm font-semibold">Health Check (APP-5)</h2>
+							<h2 class="text-sm font-semibold">Health Check</h2>
 							<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 								<div>
 									<label for="set-htype" class="mb-1 block font-medium">
@@ -786,9 +786,7 @@
 						<div
 							class="space-y-4 rounded-xl border border-stone-200 bg-white p-5 text-xs dark:border-stone-800 dark:bg-stone-900"
 						>
-							<h2 class="text-sm font-semibold">
-								Resources &amp; Security (APP-6)
-							</h2>
+							<h2 class="text-sm font-semibold">Resources &amp; Security</h2>
 							<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
 								<div>
 									<label for="set-mem" class="mb-1 block font-medium">
@@ -848,7 +846,7 @@
 						<div
 							class="space-y-4 rounded-xl border border-stone-200 bg-white p-5 text-xs dark:border-stone-800 dark:bg-stone-900"
 						>
-							<h2 class="text-sm font-semibold">Build (APP-7)</h2>
+							<h2 class="text-sm font-semibold">Build</h2>
 							<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
 								<div>
 									<label for="set-branch" class="mb-1 block font-medium">
@@ -903,7 +901,7 @@
 					>
 						<div>
 							<h2 class="text-sm font-semibold text-red-700 dark:text-red-400">
-								Remove App (APP-9)
+								Remove App
 							</h2>
 							<p class="mt-1 text-stone-600 dark:text-stone-400">
 								Permanently removes containers, images, Quadlet units, Traefik

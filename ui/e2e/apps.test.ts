@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
+import { settleTransitions } from './helpers'
 
 async function evidenceShot(page: Page, name: string): Promise<void> {
 	const milestone = process.env.EVIDENCE_MILESTONE
@@ -10,6 +11,7 @@ async function evidenceShot(page: Page, name: string): Promise<void> {
 }
 
 async function assertAxeAA(page: Page, contextName: string) {
+	await settleTransitions(page)
 	const results = await new AxeBuilder({ page })
 		.withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
 		.analyze()
@@ -380,7 +382,7 @@ test.describe('M6b: New App Wizard, App Tabs, Env, Logs (WIZ-1..6, APP-1/5/6/7/9
 		await page.evaluate(() => document.documentElement.classList.add('dark'))
 		await page.click('button[role="tab"]:has-text("Settings")')
 		await expect(
-			page.locator('text=Resources & Security (APP-6)')
+			page.getByRole('heading', { name: 'Resources & Security' })
 		).toBeVisible()
 		await assertAxeAA(page, 'App Settings (dark, narrow)')
 		await evidenceShot(page, 'm6b-app-settings-dark-narrow.png')
