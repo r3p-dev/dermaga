@@ -91,7 +91,7 @@ explanations.**
 - Tailwind classes in the markup; no custom CSS files beyond the theme entry point.
 - Tailwind v4 canonical classes only: no arbitrary values where a canonical utility exists (e.g. `h-px` not `h-[1px]`, `shrink-0` not `flex-shrink-0`, `bg-linear-to-r` not `bg-gradient-to-r`, `size-4` instead of `w-4 h-4`, `max-h-112` instead of `max-h-[28rem]`).
 - No deprecated APIs: Svelte 5 runes and snippets only (no `export let`, `$:`, `on:event`, `<slot>`, `createEventDispatcher`, `$$props`), and no deprecated SvelteKit, Vite, TypeScript, or DOM APIs.
-- Both rules are enforced by `make check` (`svelte-check --fail-on-warnings` and `bun run lint:tailwind`).
+- Both rules are enforced by `make check` (`svelte-check --fail-on-warnings`, `bun run lint:tailwind` using `@tailwindcss/node` `canonicalizeCandidates` + `candidatesToCss`, and `bun run format:check` using `ui/.prettierrc.json`).
 - Colors, spacing and type only from the theme's tokens; new tokens need my approval.
 - Dark and light themes; visible focus; AA contrast (`NFR-7`).
 - Visual design (layout, components, copy, the logo): ask me (`AGENTS.md` "Session start").

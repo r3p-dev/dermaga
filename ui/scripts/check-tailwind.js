@@ -1,7 +1,11 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { __unstable__loadDesignSystem } from "@tailwindcss/node";
+import { Scanner } from "@tailwindcss/oxide";
 
-const srcDir = join(import.meta.dirname, "..", "src");
+const uiDir = join(import.meta.dirname, "..");
+const srcDir = join(uiDir, "src");
+const cssPath = join(srcDir, "app.css");
 
 function walk(dir) {
   const out = [];
@@ -16,22 +20,22 @@ function walk(dir) {
   return out;
 }
 
-const checks = [
-  {
-    name: "deprecated Tailwind v3 utility",
-    re: /\b(?:flex-shrink-(?:0|\d+)|flex-grow-(?:0|\d+)|bg-gradient-to-[trbl]+|overflow-ellipsis|decoration-(?:slice|clone))\b/g,
-    hint: "Use Tailwind v4 canonical classes (shrink-*, grow-*, bg-linear-to-*, text-ellipsis, box-decoration-*).",
-  },
-  {
-    name: "non-canonical width/height pair (use size-*)",
-    re: /\bw-([0-9.]+)\s+h-\1\b|\bh-([0-9.]+)\s+w-\2\b/g,
-    hint: "Replace matching w-X h-X with size-X.",
-  },
-  {
-    name: "arbitrary spacing/size with canonical Tailwind v4 equivalent",
-    re: /\b(?:w|h|min-w|min-h|max-w|max-h|size|p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|gap|space-x|space-y)-\[(?:1px|[0-9]+(?:\.[0-9]+)?rem)\]/g,
-    hint: "Use canonical Tailwind v4 spacing/size utilities (e.g. h-px, max-h-112) instead of arbitrary values.",
-  },
+const css = readFileSync(cssPath, "utf8");
+const ds = await __unstable__loadDesignSystem(css, { base: srcDir });
+const scanner = new Scanner({
+  sources: [{ base: srcDir, pattern: "**/*", negated: false }],
+});
+const candidates = scanner.scan();
+const canonical = ds.canonicalizeCandidates(candidates);
+
+const nonCanonical = new Map();
+for (let i = 0; i < candidates.length; i++) {
+  if (canonical[i] !== candidates[i]) {
+    nonCanonical.set(candidates[i], canonical[i]);
+  }
+}
+
+const svelteChecks = [
   {
     name: "legacy Svelte 4 syntax or deprecated API",
     re: /\bexport\s+let\b|\bcreateEventDispatcher\b|\$\$props\b|\$\$restProps\b|<slot[\s>]|^\s*\$:\s|\bon:(?:click|submit|change|input|keydown|keyup)=/gm,
@@ -39,18 +43,94 @@ const checks = [
   },
 ];
 
+function extractCssProperties(cssText) {
+  const props = new Set();
+  if (!cssText) return props;
+  // Strip @property blocks; inspect only the innermost declaration block of the utility rule
+  const withoutAtProp = cssText.replace(/@property\s+[^{]+\{[^}]*\}/g, "");
+  const blockMatches = withoutAtProp.match(/\{([^{}]+)\}/g);
+  if (!blockMatches) return props;
+  for (const block of blockMatches) {
+    const inner = block.slice(1, -1);
+    for (const decl of inner.split(";")) {
+      const colon = decl.indexOf(":");
+      if (colon === -1) continue;
+      const prop = decl.slice(0, colon).trim();
+      if (prop && !prop.startsWith("--")) {
+        props.add(prop);
+      }
+    }
+  }
+  return props;
+}
+
+const allowedOverrides = new Set([
+  "border-style", // e.g. "border border-dashed"
+  "line-height", // e.g. "text-xs leading-relaxed"
+]);
+
 let failures = 0;
-for (const file of walk(srcDir)) {
+const files = walk(srcDir);
+
+for (const file of files) {
   const content = readFileSync(file, "utf8");
   const lines = content.split("\n");
+  const rel = relative(process.cwd(), file);
+
   for (let idx = 0; idx < lines.length; idx++) {
     const line = lines[idx];
-    for (const check of checks) {
+
+    // 1. Report any Tailwind v4 non-canonical class found by ds.canonicalizeCandidates
+    if (nonCanonical.size > 0) {
+      for (const [bad, good] of nonCanonical) {
+        const tokenRe = new RegExp(
+          `(?<=["'\\s])${bad.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=["'\\s])`,
+        );
+        if (tokenRe.test(line)) {
+          console.error(
+            `${rel}:${idx + 1}: suggestCanonicalClasses: "${bad}" -> "${good}"`,
+          );
+          failures++;
+        }
+      }
+    }
+
+    // 2. Check cssConflict on static class="..." attributes without dynamic expressions
+    const classAttrRe = /\bclass="([^"{}]+)"/g;
+    let attrMatch;
+    while ((attrMatch = classAttrRe.exec(line)) !== null) {
+      const tokens = attrMatch[1].trim().split(/\s+/).filter(Boolean);
+      if (tokens.length < 2) continue;
+      const compiled = ds.candidatesToCss(tokens);
+      const seenByProp = new Map();
+      for (let t = 0; t < tokens.length; t++) {
+        const token = tokens[t];
+        // Group by variant prefix (e.g. "md:", "dark:", or "")
+        const lastColon = token.lastIndexOf(":");
+        const variant = lastColon === -1 ? "" : token.slice(0, lastColon);
+        for (const prop of extractCssProperties(compiled[t])) {
+          if (allowedOverrides.has(prop)) continue;
+          const key = `${variant}::${prop}`;
+          const prev = seenByProp.get(key);
+          if (prev && prev !== token) {
+            console.error(
+              `${rel}:${idx + 1}: cssConflict: "${prev}" and "${token}" both set "${prop}"`,
+            );
+            failures++;
+          } else {
+            seenByProp.set(key, token);
+          }
+        }
+      }
+    }
+
+    // 3. Legacy Svelte 4 / deprecated APIs
+    for (const check of svelteChecks) {
       check.re.lastIndex = 0;
       const match = check.re.exec(line);
       if (match) {
         console.error(
-          `${relative(process.cwd(), file)}:${idx + 1}: ${check.name}: "${match[0]}" — ${check.hint}`,
+          `${rel}:${idx + 1}: ${check.name}: "${match[0]}" — ${check.hint}`,
         );
         failures++;
       }
@@ -61,4 +141,6 @@ for (const file of walk(srcDir)) {
 if (failures > 0) {
   process.exit(1);
 }
-console.log("tailwind & svelte hygiene: 0 issues");
+console.log(
+  `tailwind & svelte hygiene: 0 issues (${candidates.length} candidates checked)`,
+);

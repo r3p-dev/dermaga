@@ -41,7 +41,7 @@ _Filled in as dependencies are added (M1 onward)._
 | `tailwindcss` 4.3.5, `@tailwindcss/vite` 4.3.5 | UI (build) | Utility-first CSS | M1 |
 | `typescript` 6.0.3 | UI (build) | Type checking; 6.x because `@sveltejs/kit` 3.2.0 requires `^6.0.0` and `svelte-check` 4.7.8 accepts `^5 \|\| ^6` | M1 (6.0.3 since M3) |
 | `svelte-check` 4.7.8 | UI (build) | Svelte type checking | M1 |
-| `prettier` 3.10.1, `prettier-plugin-svelte` 4.2.0 | UI (build) | Code formatting | M1 (4.2.0 since DEC-25) |
+| `prettier` 3.10.1, `prettier-plugin-svelte` 4.2.0, `prettier-plugin-tailwindcss` 0.8.1 | UI (build) | Code formatting and Tailwind class sorting | M1 (4.2.0 since DEC-25; tailwindcss plugin 0.8.1 in v0.6.1) |
 | `@playwright/test` 1.65.1 | UI (test) | Browser end-to-end tests | M1 |
 | `@axe-core/playwright` 4.14.0 | UI (test) | WCAG 2.1 AA checks on the rendered page | M1 |
 
