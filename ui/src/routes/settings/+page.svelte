@@ -12,6 +12,9 @@
 	} from '#lib/api.js';
 	import HookDomainForm from '#lib/components/HookDomainForm.svelte';
 	import GitHubSettings from '#lib/components/GitHubSettings.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import StatusBadge from '#lib/components/StatusBadge.svelte';
+	import SubNav, { type SubNavItem } from '#lib/components/SubNav.svelte';
 	import type {
 		SessionInfo,
 		AccessSettingsResponse,
@@ -21,6 +24,13 @@
 	import { onMount } from 'svelte';
 
 	type Tab = 'access' | 'security' | 'hook-domain' | 'github';
+
+	const settingsTabs: SubNavItem[] = [
+		{ id: 'access', label: 'Access' },
+		{ id: 'security', label: 'Security' },
+		{ id: 'hook-domain', label: 'Hook Domain' },
+		{ id: 'github', label: 'GitHub' }
+	];
 
 	let tab = $state<Tab>('access');
 	let session = $state<SessionInfo | null>(null);
@@ -264,65 +274,24 @@
 </svelte:head>
 
 <div class="space-y-6">
-	<div class="pb-4 border-b border-stone-200 dark:border-stone-800">
-		<h1 class="text-2xl font-bold tracking-tight">Settings</h1>
-		<p class="text-xs text-stone-600 dark:text-stone-400 mt-1">Panel access, admin security, and webhook domain</p>
-	</div>
+	<PageHeader title="Settings" subtitle="Panel access, admin security, and webhook domain" />
 
-	<div class="flex flex-wrap gap-1 border-b border-stone-200 dark:border-stone-800 pb-2" role="tablist" aria-label="Settings sections">
-		<button
-			type="button"
-			role="tab"
-			aria-selected={tab === 'access'}
-			onclick={() => switchTab('access')}
-			class="px-3.5 py-2 rounded-md text-xs font-medium transition {tab === 'access'
-				? 'bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900'
-				: 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'}"
-		>
-			Access
-		</button>
-		<button
-			type="button"
-			role="tab"
-			aria-selected={tab === 'security'}
-			onclick={() => switchTab('security')}
-			class="px-3.5 py-2 rounded-md text-xs font-medium transition {tab === 'security'
-				? 'bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900'
-				: 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'}"
-		>
-			Security
-		</button>
-		<button
-			type="button"
-			role="tab"
-			aria-selected={tab === 'hook-domain'}
-			onclick={() => switchTab('hook-domain')}
-			class="px-3.5 py-2 rounded-md text-xs font-medium transition {tab === 'hook-domain'
-				? 'bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900'
-				: 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'}"
-		>
-			Hook Domain
-		</button>
-		<button
-			type="button"
-			role="tab"
-			aria-selected={tab === 'github'}
-			onclick={() => switchTab('github')}
-			class="px-3.5 py-2 rounded-md text-xs font-medium transition {tab === 'github'
-				? 'bg-stone-900 dark:bg-stone-100 text-white dark:text-stone-900'
-				: 'text-stone-700 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800'}"
-		>
-			GitHub
-		</button>
-	</div>
+	<div class="flex flex-col md:flex-row gap-6 items-start">
+		<SubNav
+			items={settingsTabs}
+			active={tab}
+			onSelect={(id) => switchTab(id as Tab)}
+			ariaLabel="Settings sections"
+		/>
 
-	{#if error}
-		<div role="alert" class="p-4 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300 text-sm">
-			{error}
-		</div>
-	{:else if loading}
-		<div class="py-12 text-center text-sm text-stone-600 dark:text-stone-400">Loading settings...</div>
-	{:else if tab === 'access'}
+		<div class="flex-1 min-w-0 w-full space-y-4">
+			{#if error}
+				<div role="alert" class="p-4 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300 text-sm">
+					{error}
+				</div>
+			{:else if loading}
+				<div class="py-12 text-center text-sm text-stone-600 dark:text-stone-400">Loading settings...</div>
+			{:else if tab === 'access'}
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 			<!-- Laptop & Mobile SSH Access (LAP-3) -->
 			<section class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-6 shadow-sm space-y-4">
@@ -465,11 +434,9 @@
 
 			<!-- TOTP Management (ADM-4, SEC-10) -->
 			<section class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl p-6 shadow-sm space-y-4">
-				<div>
+				<div class="flex items-center justify-between gap-2">
 					<h2 class="text-base font-semibold">Two-Factor Authentication (TOTP)</h2>
-					<p class="text-xs text-stone-600 dark:text-stone-400 mt-1">
-						Status: {session?.totp_enabled ? 'Enabled' : 'Disabled'}
-					</p>
+					<StatusBadge label={session?.totp_enabled ? 'enabled' : 'disabled'} />
 				</div>
 
 				{#if totpErr}
@@ -531,4 +498,6 @@
 	{:else if tab === 'github'}
 		<GitHubSettings onSwitchToHookDomain={() => switchTab('hook-domain')} />
 	{/if}
+		</div>
+	</div>
 </div>

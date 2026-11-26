@@ -10,6 +10,8 @@
 	} from '#lib/api.js';
 	import DomainDNSChecker from '#lib/components/DomainDNSChecker.svelte';
 	import EnvEditor from '#lib/components/EnvEditor.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import StatusBadge from '#lib/components/StatusBadge.svelte';
 	import type {
 		EnvVarInput,
 		GitHubStatusResponse,
@@ -245,13 +247,11 @@
 </svelte:head>
 
 <div class="max-w-3xl mx-auto space-y-6">
-	<div class="flex items-center justify-between gap-4 pb-4 border-b border-stone-200 dark:border-stone-800">
-		<div>
-			<h1 class="text-2xl font-bold tracking-tight">New App</h1>
-			<p class="text-xs text-stone-600 dark:text-stone-400 mt-1">Deploy a GitHub repository to your server</p>
-		</div>
-		<a href="/" class="text-xs text-stone-600 dark:text-stone-400 hover:underline">Back to Dashboard</a>
-	</div>
+	<PageHeader
+		title="New App"
+		subtitle="Deploy a GitHub repository to your server"
+		breadcrumbs={[{ label: 'Dashboard', href: '/' }, { label: 'New App' }]}
+	/>
 
 	{#if loadError}
 		<div role="alert" class="p-4 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300 text-xs">
@@ -639,9 +639,10 @@ CMD ["/app"]</pre>
 						<div class="flex flex-wrap items-center justify-between gap-2">
 							<div class="flex items-center gap-2 text-xs">
 								<span class="font-medium">Status:</span>
-								<span class="px-2 py-0.5 rounded-full font-mono text-[11px] border border-stone-300 dark:border-stone-700">
-									{deployStatus || 'queued'}
-								</span>
+								<StatusBadge
+									label={deployStatus || 'queued'}
+									pulse={deployStatus === 'queued' || deployStatus === 'building' || deployStatus === 'starting' || deployStatus === 'healthy'}
+								/>
 							</div>
 							<div class="flex items-center gap-2">
 								{#if deployStatus === 'queued' || deployStatus === 'building' || deployStatus === 'starting' || deployStatus === 'healthy'}

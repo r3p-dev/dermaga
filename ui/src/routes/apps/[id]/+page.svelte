@@ -13,17 +13,20 @@
 		updateAppSettings
 	} from '#lib/api.js';
 	import EnvEditor from '#lib/components/EnvEditor.svelte';
+	import PageHeader from '#lib/components/PageHeader.svelte';
+	import StatusBadge from '#lib/components/StatusBadge.svelte';
+	import SubNav, { type SubNavItem } from '#lib/components/SubNav.svelte';
 	import type { AppDetailResponse, DeploymentInfo, EnvVarInput } from '#lib/types/api.js';
 	import { onDestroy, onMount } from 'svelte';
 
 	type TabId = 'overview' | 'deployments' | 'logs' | 'environment' | 'settings' | 'danger';
-	const tabs: { id: TabId; label: string }[] = [
+	const tabs: SubNavItem[] = [
 		{ id: 'overview', label: 'Overview' },
 		{ id: 'deployments', label: 'Deployments' },
 		{ id: 'logs', label: 'Logs' },
 		{ id: 'environment', label: 'Environment' },
 		{ id: 'settings', label: 'Settings' },
-		{ id: 'danger', label: 'Danger zone' }
+		{ id: 'danger', label: 'Danger zone', danger: true }
 	];
 
 	let activeTab = $state<TabId>('overview');
@@ -324,55 +327,49 @@
 	{:else if loading || !app}
 		<div class="h-48 rounded-xl bg-stone-100 dark:bg-stone-800/50 animate-pulse"></div>
 	{:else}
-		<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-stone-200 dark:border-stone-800">
-			<div class="min-w-0">
-				<div class="flex items-center gap-2 text-xs text-stone-500 dark:text-stone-400 mb-1">
-					<a href="/" class="hover:underline">Dashboard</a>
-					<span>/</span>
-					<span class="font-mono truncate">{app.name}</span>
-				</div>
-				<h1 class="text-2xl font-bold tracking-tight truncate">{app.name}</h1>
-				<p class="text-xs font-mono text-stone-600 dark:text-stone-400 truncate mt-0.5">
-					{app.repo_full_name} ({app.branch}) &bull; {app.primary_domain}
-				</p>
-			</div>
-			<button
-				type="button"
-				onclick={handleTriggerDeploy}
-				disabled={deploying}
-				class="px-4 py-2 text-xs font-medium rounded-md bg-brand-primary text-brand-btn-text hover:bg-brand-hover disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brand-ring transition w-fit"
-			>
-				{deploying ? 'Queueing...' : 'Deploy'}
-			</button>
-		</div>
-
-		<!-- Tab bar (horizontally scrollable & keyboard-reachable on narrow screens) -->
-		<div role="tablist" aria-label="App sections" class="flex items-center gap-1 overflow-x-auto border-b border-stone-200 dark:border-stone-800 pb-px">
-			{#each tabs as t}
+		<PageHeader
+			title={app.name}
+			subtitle="{app.repo_full_name} ({app.branch}) &bull; {app.primary_domain}"
+			breadcrumbs={[{ label: 'Dashboard', href: '/' }, { label: app.name }]}
+		>
+			{#snippet actions()}
+				{#if app && app.deployments.length > 0}
+					{@const latest = app.deployments[0]}
+					<StatusBadge
+						label={latest.status_label}
+						pulse={latest.status_label === 'queued' || latest.status_label === 'building' || latest.status_label === 'starting' || latest.status_label === 'healthy'}
+					/>
+				{/if}
 				<button
 					type="button"
-					role="tab"
-					aria-selected={activeTab === t.id}
-					onclick={() => selectTab(t.id)}
-					class="shrink-0 px-3.5 py-2 text-xs font-medium border-b-2 transition focus:outline-none focus:ring-2 focus:ring-brand-ring rounded-t {activeTab === t.id
-						? 'border-brand-primary text-brand-text'
-						: 'border-transparent text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-stone-100'}"
+					onclick={handleTriggerDeploy}
+					disabled={deploying}
+					class="px-4 py-2 text-xs font-medium rounded-lg bg-brand-primary text-brand-btn-text hover:bg-brand-hover disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-brand-ring transition w-fit shadow-sm"
 				>
-					{t.label}
+					{deploying ? 'Queueing...' : 'Deploy'}
 				</button>
-			{/each}
-		</div>
+			{/snippet}
+		</PageHeader>
 
-		{#if actionMsg}
-			<div role="status" class="p-3 rounded-md bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs">
-				{actionMsg}
-			</div>
-		{/if}
-		{#if actionErr}
-			<div role="alert" class="p-3 rounded-md bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300 text-xs">
-				{actionErr}
-			</div>
-		{/if}
+		<div class="flex flex-col md:flex-row gap-6 items-start">
+			<SubNav
+				items={tabs}
+				active={activeTab}
+				onSelect={(id) => selectTab(id as TabId)}
+				ariaLabel="App sections"
+			/>
+
+			<div class="flex-1 min-w-0 w-full space-y-4">
+				{#if actionMsg}
+					<div role="status" class="p-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 text-xs">
+						{actionMsg}
+					</div>
+				{/if}
+				{#if actionErr}
+					<div role="alert" class="p-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300 text-xs">
+						{actionErr}
+					</div>
+				{/if}
 
 		{#if activeTab === 'overview'}
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -416,10 +413,8 @@
 							<div class="rounded-lg border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
 								<div class="min-w-0 space-y-1">
 									<div class="flex flex-wrap items-center gap-2">
-										<span class="font-mono font-semibold">r{dep.release_number}</span>
-										<span class="px-2 py-0.5 rounded-full border border-stone-300 dark:border-stone-700 font-mono text-[11px]">
-											{dep.status_label}
-										</span>
+										<span class="font-mono font-semibold tabular-nums">r{dep.release_number}</span>
+										<StatusBadge label={dep.status_label} />
 										<span class="text-stone-500 dark:text-stone-400">{dep.trigger}</span>
 										<span class="text-stone-500 dark:text-stone-400">{formatDuration(dep.started_at, dep.finished_at)}</span>
 									</div>
@@ -688,5 +683,7 @@
 				</button>
 			</form>
 		{/if}
+			</div>
+		</div>
 	{/if}
 </div>
