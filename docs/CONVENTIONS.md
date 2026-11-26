@@ -188,6 +188,12 @@ Comments are optional. Write one only when it gives information the code can't.
 - Shell scripts: `shellcheck` (enforced in CI, optional locally; §7.1).
 - All part of `make check`. Do not hand-format against the tools.
 
+### 10.1 Editor & formatting
+
+- **Precedence**: `ui/.prettierrc.json` overrides VS Code `prettier.*` settings; workspace `.vscode/settings.json` overrides user settings; per-language blocks (`"[svelte]"`, `"[typescript]"`, etc.) override global editor defaults; `overrides` in `ui/.prettierrc.json` override top-level Prettier options. `.editorconfig` is the fallback for editors/tools without Prettier (`gofmt` tabs for `*.go` and `Makefile`, 2 spaces elsewhere).
+- **Changing a rule**: edit `ui/.prettierrc.json` and run `cd ui && bun run format` (or `npm run format`), keeping the reformat in its own commit.
+- **Verifying**: run `make check` (or `cd ui && bun run format:check`). Saving `.svelte`, `.ts`, `.js`, `.json`, or `.css` files in VS Code uses `ui/node_modules/prettier` with `ui/.prettierrc.json` and produces zero diff against `bun run format`.
+
 ## 11. No deprecated code
 
 - Check the current official documentation before using an API. If it is marked deprecated (in the
