@@ -32,6 +32,18 @@ check() {
 
 port_closed() { ! timeout 5 bash -c "</dev/tcp/$host/$1" 2>/dev/null; }
 
+panel_answers() {
+  local headers status location
+  headers=$(as_server 'curl -sS -D - -o /dev/null --max-time 5 http://127.0.0.1:7070/' | tr -d '\r') || return 1
+  status=$(printf '%s\n' "$headers" | awk 'NR==1 {print $2}')
+  location=$(printf '%s\n' "$headers" | awk 'tolower($1) == "location:" {print $2; exit}')
+  case "$status" in
+    200) return 0 ;;
+    302) [[ $location == /setup || $location == /setup\?* || $location == /login || $location == /login\?* ]] ;;
+    *) return 1 ;;
+  esac
+}
+
 # denied USER [ssh options...]: the login is refused, and sshd offers only publickey.
 denied() {
   local user=$1 out
@@ -44,7 +56,7 @@ denied() {
 case $cmd in
   access)
     check "server logs in with the key on port $port" as_server true
-    check "panel answers on 127.0.0.1:7070 on the server" bash -c "[[ \$(ssh ${ssh_opts[*]} -i $key server@$host curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:7070/) == 200 ]]"
+    check "panel answers on 127.0.0.1:7070 on the server" panel_answers
     check "firewall rules open only ssh, 80, 443/tcp, 443/udp" bash -c "ssh ${ssh_opts[*]} -i $key server@$host cat /etc/nftables.conf | grep -E 'dport' | tee /dev/stderr | grep -qx '    tcp dport { $port } accept comment \"ssh\"'"
     check "old port 22 closed" port_closed 22
     check "panel port 7070 closed from outside (SEC-2)" port_closed 7070
@@ -117,7 +129,7 @@ case $cmd in
     ;;
   running)
     check "dermaga, Traefik and its sockets active" as_server systemctl --user is-active dermaga.service traefik.service traefik-http.socket traefik-https.socket
-    check "panel answers on 127.0.0.1:7070" bash -c "[[ \$(ssh ${ssh_opts[*]} -i $key server@$host curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:7070/) == 200 ]]"
+    check "panel answers on 127.0.0.1:7070" panel_answers
     check "Traefik answers on :80 from the laptop" bash -c "curl -s -o /dev/null --max-time 5 http://$host/"
     # The remote shell expands ~ to server's home on the VM.
     # shellcheck disable=SC2088
