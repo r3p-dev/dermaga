@@ -172,7 +172,7 @@ test.describe("First-Run Setup Journey (M4a: SETUP-1, SETUP-2, SETUP-3, SEC-8)",
 
       // Narrow + dark mode check on TOTP step
       await page.setViewportSize({ width: 375, height: 812 });
-      await page.click('button[aria-label="Toggle theme"]');
+      await page.locator('button[aria-label*="Toggle theme"]:visible').click();
       await expect(page.locator("html")).toHaveClass(/dark/);
       await assertAxeAA(page, "Setup TOTP step (dark, narrow)");
       await evidenceShot(page, "m4a-setup-totp-dark-narrow.png");
@@ -205,7 +205,7 @@ test.describe("First-Run Setup Journey (M4a: SETUP-1, SETUP-2, SETUP-3, SEC-8)",
       ).toHaveCount(0);
 
       // 5. Log out and sign back in with password + TOTP
-      await page.click('button:has-text("Log out")');
+      await page.locator('button:has-text("Log out"):visible').click();
       await expect(page).toHaveURL(/\/login$/);
       await page.fill("#admin-password", "Correct-Horse-Battery-99");
       await page.click('button[type="submit"]');

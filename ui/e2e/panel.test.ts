@@ -40,8 +40,11 @@ async function assertThemeBackgrounds(
   const bodyBg = await getComputedRgb(page, "body");
   expect(bodyBg).toBe(expectedBodyBg);
 
-  const headerBg = await getComputedRgb(page, "header");
-  expect(headerBg).toBe(expectedSurfaceBg);
+  const navSelector = (await page.locator("aside").first().isVisible())
+    ? "aside"
+    : "header";
+  const navBg = await getComputedRgb(page, navSelector);
+  expect(navBg).toBe(expectedSurfaceBg);
 
   const card = page.locator(".bg-white, .dark\\:bg-stone-900").first();
   if (await card.isVisible()) {
@@ -130,7 +133,7 @@ test.describe("Dermaga Theme & Panel Journeys (M1-dark)", () => {
 
     // Toggle to Dark Theme
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.click('button[aria-label="Toggle theme"]');
+    await page.locator('button[aria-label*="Toggle theme"]:visible').click();
     await expect(page.locator("html")).toHaveClass(/dark/);
 
     // Verify Dark computed backgrounds and Axe AA
@@ -165,7 +168,7 @@ test.describe("Dermaga Theme & Panel Journeys (M1-dark)", () => {
     await expect(page).toHaveURL("http://127.0.0.1:7070/");
     await expect(page.locator("h1")).toHaveText("Server Overview");
     await expect(page.locator("text=Daemon Active")).toBeVisible();
-    await expect(page.locator('header img[alt="dermaga"]')).toBeVisible();
+    await expect(page.locator('aside img[alt="dermaga"]')).toBeVisible();
 
     // Verify Dashboard Dark Theme
     await assertThemeBackgrounds(page, "dark");
@@ -178,7 +181,7 @@ test.describe("Dermaga Theme & Panel Journeys (M1-dark)", () => {
 
     // Switch Dashboard to Light Theme
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.click('button[aria-label="Toggle theme"]');
+    await page.locator('button[aria-label*="Toggle theme"]:visible').click();
     await expect(page.locator("html")).not.toHaveClass(/dark/);
     await assertThemeBackgrounds(page, "light");
     await assertAxeAA(page, "Dashboard Desktop Light");
@@ -190,7 +193,7 @@ test.describe("Dermaga Theme & Panel Journeys (M1-dark)", () => {
 
     // 4. Navigate to Audit Log
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.click('a:has-text("Audit Log")');
+    await page.locator('a:has-text("Audit Log"):visible').click();
     await expect(page).toHaveURL("http://127.0.0.1:7070/audit-logs");
     await expect(page.locator("h1")).toHaveText("Audit Log");
     await expect(page.locator("table")).toBeVisible();
@@ -218,7 +221,7 @@ test.describe("Dermaga Theme & Panel Journeys (M1-dark)", () => {
 
     // Switch Audit Log to Dark Theme
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.click('button[aria-label="Toggle theme"]');
+    await page.locator('button[aria-label*="Toggle theme"]:visible').click();
     await expect(page.locator("html")).toHaveClass(/dark/);
     await assertThemeBackgrounds(page, "dark");
     await assertAxeAA(page, "Audit Log Desktop Dark");
@@ -230,7 +233,7 @@ test.describe("Dermaga Theme & Panel Journeys (M1-dark)", () => {
 
     // 5. Logout
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.click('button:has-text("Log out")');
+    await page.locator('button:has-text("Log out"):visible').click();
     await expect(page).toHaveURL(/.*\/login/);
   });
 });

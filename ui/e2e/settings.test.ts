@@ -36,7 +36,7 @@ test.describe("Settings & Narrow Audit Log (M4b: LAP-3, ADM-4, ADM-5, SEC-10, CO
     await expect(page).toHaveURL(/\/$/);
 
     // Navigate to Settings -> Access
-    await page.click('header nav a:has-text("Settings")');
+    await page.locator('a:has-text("Settings"):visible').click();
     await expect(page).toHaveURL(/\/settings/);
     await expect(page.locator("h1")).toHaveText("Settings");
     await expect(page.locator("text=Active Sessions")).toBeVisible();
@@ -51,7 +51,7 @@ test.describe("Settings & Narrow Audit Log (M4b: LAP-3, ADM-4, ADM-5, SEC-10, CO
     await evidenceShot(page, "m4b-settings-security-light-desktop.png");
 
     // Settings -> Hook Domain (dark mode)
-    await page.click('button[aria-label="Toggle theme"]');
+    await page.locator('button[aria-label*="Toggle theme"]:visible').click();
     await page.click('button[role="tab"]:has-text("Hook Domain")');
     await expect(page.locator("#hook-domain-input")).toBeVisible();
     await assertAxeAA(page, "Settings Hook Domain tab (dark, desktop)");

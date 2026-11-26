@@ -142,7 +142,7 @@ test.describe("Settings -> GitHub (M5a: GHA-1, GHA-3, GHA-6, GHA-8)", () => {
     await evidenceShot(page, "m5a-github-connected-light-desktop.png");
 
     // 4. Dark mode + narrow viewport (375x812) stacked repository rows
-    await page.click('button[aria-label="Toggle theme"]');
+    await page.locator('button[aria-label*="Toggle theme"]:visible').click();
     await page.setViewportSize({ width: 375, height: 812 });
     const hasOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth > window.innerWidth,
