@@ -191,21 +191,35 @@ test.describe("Dermaga Theme & Panel Journeys (M1-dark)", () => {
     await assertAxeAA(page, "Dashboard Narrow Light");
     await evidenceShot(page, "dashboard-narrow-light.png");
 
-    // 4. Navigate to Audit Log
+    // 4. Navigate to Apps
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.locator('a:has-text("Audit Log"):visible').click();
-    await expect(page).toHaveURL("http://127.0.0.1:7070/audit-logs");
-    await expect(page.locator("h1")).toHaveText("Audit Log");
-    await expect(page.locator("table")).toBeVisible();
-
-    // Verify Light Audit Log
+    await page.locator('a:has-text("Apps"):visible').click();
+    await expect(page).toHaveURL("http://127.0.0.1:7070/apps");
+    await expect(page.locator("h1")).toHaveText("Apps");
+    await expect(page.locator('a:has-text("New app")')).toBeVisible();
     await assertThemeBackgrounds(page, "light");
-    await assertAxeAA(page, "Audit Log Desktop Light");
-    await evidenceShot(page, "audit-desktop-light.png");
+    await assertAxeAA(page, "Apps Desktop Light");
+    await evidenceShot(page, "apps-desktop-light.png");
 
     await page.setViewportSize({ width: 375, height: 667 });
-    await assertAxeAA(page, "Audit Log Narrow Light");
-    await evidenceShot(page, "audit-narrow-light.png");
+    await assertAxeAA(page, "Apps Narrow Light");
+    await evidenceShot(page, "apps-narrow-light.png");
+
+    // 5. Navigate to Activity (and verify /audit-logs redirect)
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/audit-logs");
+    await expect(page).toHaveURL("http://127.0.0.1:7070/activity");
+    await expect(page.locator("h1")).toHaveText("Activity");
+    await expect(page.locator("table")).toBeVisible();
+
+    // Verify Light Activity
+    await assertThemeBackgrounds(page, "light");
+    await assertAxeAA(page, "Activity Desktop Light");
+    await evidenceShot(page, "activity-desktop-light.png");
+
+    await page.setViewportSize({ width: 375, height: 667 });
+    await assertAxeAA(page, "Activity Narrow Light");
+    await evidenceShot(page, "activity-narrow-light.png");
 
     // Check filters
     const filter = page.locator("#origin-filter");
@@ -219,19 +233,19 @@ test.describe("Dermaga Theme & Panel Journeys (M1-dark)", () => {
     await expect(timeFilter).toBeVisible();
     await timeFilter.selectOption("1h");
 
-    // Switch Audit Log to Dark Theme
+    // Switch Activity to Dark Theme
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.locator('button[aria-label*="Toggle theme"]:visible').click();
     await expect(page.locator("html")).toHaveClass(/dark/);
     await assertThemeBackgrounds(page, "dark");
-    await assertAxeAA(page, "Audit Log Desktop Dark");
-    await evidenceShot(page, "audit-desktop-dark.png");
+    await assertAxeAA(page, "Activity Desktop Dark");
+    await evidenceShot(page, "activity-desktop-dark.png");
 
     await page.setViewportSize({ width: 375, height: 667 });
-    await assertAxeAA(page, "Audit Log Narrow Dark");
-    await evidenceShot(page, "audit-narrow-dark.png");
+    await assertAxeAA(page, "Activity Narrow Dark");
+    await evidenceShot(page, "activity-narrow-dark.png");
 
-    // 5. Logout
+    // 6. Logout
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.locator('button:has-text("Log out"):visible').click();
     await expect(page).toHaveURL(/.*\/login/);

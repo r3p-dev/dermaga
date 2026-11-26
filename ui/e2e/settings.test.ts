@@ -57,11 +57,11 @@ test.describe("Settings & Narrow Audit Log (M4b: LAP-3, ADM-4, ADM-5, SEC-10, CO
     await assertAxeAA(page, "Settings Hook Domain tab (dark, desktop)");
     await evidenceShot(page, "m4b-settings-hook-domain-dark-desktop.png");
 
-    // Narrow Audit Log stacked rows (375x812, no horizontal scroll)
+    // Narrow Activity stacked rows (375x812, no horizontal scroll)
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.goto("/audit-logs");
+    await page.goto("/activity");
     await expect(
-      page.locator('div[aria-label="Audit log list"] article').first(),
+      page.locator('div[aria-label="Activity list"] article').first(),
     ).toBeVisible();
     const hasOverflow = await page.evaluate(
       () => document.documentElement.scrollWidth > window.innerWidth,
