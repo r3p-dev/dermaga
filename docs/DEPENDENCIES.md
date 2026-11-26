@@ -38,7 +38,7 @@ _Filled in as dependencies are added (M1 onward)._
 | `@sveltejs/vite-plugin-svelte` 7.3.1 | UI (build) | Svelte integration for Vite | M1 |
 | `svelte` 5.57.3 | UI (build) | Svelte 5 compiler | M1 |
 | `vite` 8.3.8 | UI (build) | Build tool | M1 |
-| `tailwindcss` 4.3.5, `@tailwindcss/vite` 4.3.5 | UI (build) | Utility-first CSS | M1 |
+| `tailwindcss` 4.3.5, `@tailwindcss/vite` 4.3.5 (`@tailwindcss/node` 4.3.5, `@tailwindcss/oxide` 4.3.5) | UI (build & lint) | Utility-first CSS; `ui/scripts/check-tailwind.js` pins and uses `@tailwindcss/node` (`__unstable__loadDesignSystem`, `canonicalizeCandidates`, `candidatesToCss`) + `@tailwindcss/oxide` (`Scanner`) | M1 (hygiene script v0.6.1) |
 | `typescript` 6.0.3 | UI (build) | Type checking; 6.x because `@sveltejs/kit` 3.2.0 requires `^6.0.0` and `svelte-check` 4.7.8 accepts `^5 \|\| ^6` | M1 (6.0.3 since M3) |
 | `svelte-check` 4.7.8 | UI (build) | Svelte type checking | M1 |
 | `prettier` 3.10.1, `prettier-plugin-svelte` 4.2.0, `prettier-plugin-tailwindcss` 0.8.1 | UI (build) | Code formatting and Tailwind class sorting | M1 (4.2.0 since DEC-25; tailwindcss plugin 0.8.1 in v0.6.1) |
