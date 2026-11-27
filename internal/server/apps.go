@@ -400,6 +400,8 @@ func (s *Server) handleGetApp(w http.ResponseWriter, r *http.Request) {
 		PidsLimit:         app.PidsLimit,
 		ReadOnlyRoot:      app.ReadOnlyRoot,
 		AddCapabilities:   caps,
+		AutoDeploy:        app.AutoDeploy,
+		WatchPaths:        app.WatchPaths,
 		PrimaryDomain:     primary,
 		ActiveReleaseID:   app.ActiveReleaseID,
 		Env:               envMeta,
@@ -488,6 +490,17 @@ func (s *Server) handleUpdateAppSettings(w http.ResponseWriter, r *http.Request)
 	}
 	app.ReadOnlyRoot = req.ReadOnlyRoot
 	app.AddCapabilities = strings.Join(req.AddCapabilities, ",")
+	if req.AutoDeploy != nil {
+		app.AutoDeploy = *req.AutoDeploy
+	}
+	if req.WatchPaths != nil {
+		wp, err := deploy.NormalizeWatchPaths(*req.WatchPaths)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		app.WatchPaths = wp
+	}
 
 	if err := s.cfg.Store.UpdateApp(r.Context(), app); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to update app settings")

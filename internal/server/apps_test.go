@@ -206,3 +206,69 @@ func TestAppsAPI_RuntimeLogMasking_SEC9_LOG1(t *testing.T) {
 		t.Fatalf("expected [MASKED] in runtime log stream: %s", body)
 	}
 }
+
+// APP-8: auto-deploy and watch paths are saved through the settings form, validated server-side,
+// and left unchanged when a request omits them.
+func TestAppsAPI_AutoDeployAndWatchPaths_APP8(t *testing.T) {
+	srv, s, _, token := setupAppsTestServer(t)
+	ctx := context.Background()
+	app := &store.App{ID: "app_w", Name: "web", RepoOwner: "octo", RepoName: "portfolio", Branch: "main",
+		Port: 3000, HealthType: "none", MemoryLimit: "512m", AutoDeploy: true}
+	if err := s.CreateApp(ctx, app); err != nil {
+		t.Fatalf("CreateApp: %v", err)
+	}
+	f, tr := false, true
+	settings := func(auto *bool, watch *string) UpdateAppSettingsRequest {
+		return UpdateAppSettingsRequest{Branch: "main", Port: 3000, HealthType: "none", AutoDeploy: auto, WatchPaths: watch}
+	}
+	str := func(v string) *string { return &v }
+
+	if rr := doAPIReq(srv, http.MethodPatch, "/api/apps/app_w", "", settings(&f, nil)); rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rr.Code)
+	}
+	for _, bad := range []string{"/web/", "../up", "[abc"} {
+		rr := doAPIReq(srv, http.MethodPatch, "/api/apps/app_w", token, settings(&f, str("ok/\n"+bad)))
+		if rr.Code != http.StatusBadRequest || !strings.Contains(rr.Body.String(), "watch path") || strings.Contains(rr.Body.String(), "APP-8") {
+			t.Fatalf("bad watch path %q: %d %s", bad, rr.Code, rr.Body.String())
+		}
+	}
+	if got, _ := s.GetApp(ctx, "app_w"); !got.AutoDeploy || got.WatchPaths != "" {
+		t.Fatalf("a refused request changed the app: %+v", got)
+	}
+
+	rr := doAPIReq(srv, http.MethodPatch, "/api/apps/app_w", token, settings(&f, str(" web/ \r\n\n go.* ")))
+	var resp AppDetailResponse
+	_ = json.Unmarshal(rr.Body.Bytes(), &resp)
+	if rr.Code != http.StatusOK || resp.AutoDeploy || resp.WatchPaths != "web/\ngo.*" {
+		t.Fatalf("save: %d auto=%v watch=%q", rr.Code, resp.AutoDeploy, resp.WatchPaths)
+	}
+	rr = doAPIReq(srv, http.MethodPatch, "/api/apps/app_w", token, settings(nil, nil))
+	_ = json.Unmarshal(rr.Body.Bytes(), &resp)
+	if resp.AutoDeploy || resp.WatchPaths != "web/\ngo.*" {
+		t.Fatalf("omitted fields changed: auto=%v watch=%q", resp.AutoDeploy, resp.WatchPaths)
+	}
+	rr = doAPIReq(srv, http.MethodPatch, "/api/apps/app_w", token, settings(&tr, str("")))
+	_ = json.Unmarshal(rr.Body.Bytes(), &resp)
+	if !resp.AutoDeploy || resp.WatchPaths != "" {
+		t.Fatalf("re-enable: auto=%v watch=%q", resp.AutoDeploy, resp.WatchPaths)
+	}
+}
+
+// APP-8: Settings → GitHub shows the newest ignored push with its reason.
+func TestGitHubStatus_LastIgnoredPush_APP8(t *testing.T) {
+	srv, s, _, token := setupAppsTestServer(t)
+	ctx := context.Background()
+	_ = s.SetSetting(ctx, settingGitHubAppID, "123") // connected: delivery info is shown only then
+	var status GitHubStatusResponse
+	_ = json.Unmarshal(doAPIReq(srv, http.MethodGet, "/api/settings/github", token, nil).Body.Bytes(), &status)
+	if status.LastIgnoredPush != nil {
+		t.Fatalf("no ignored push yet, got %+v", status.LastIgnoredPush)
+	}
+	_ = s.RecordAudit(ctx, "webhook", "github", "push_ignored", "Push to dev (abc1234) ignored for web: the app deploys from main.", nil, nil)
+	_ = s.RecordAudit(ctx, "webhook", "github", "push_deploy", "Push to main (def5678) queued release r2 for web.", nil, nil)
+	rr := doAPIReq(srv, http.MethodGet, "/api/settings/github", token, nil)
+	_ = json.Unmarshal(rr.Body.Bytes(), &status)
+	if rr.Code != http.StatusOK || status.LastIgnoredPush == nil || !strings.Contains(status.LastIgnoredPush.Description, "deploys from main") {
+		t.Fatalf("last ignored push: %d %+v", rr.Code, status.LastIgnoredPush)
+	}
+}

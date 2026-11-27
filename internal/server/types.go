@@ -226,6 +226,14 @@ type GitHubStatusResponse struct {
 	Installations []GitHubInstallationInfo `json:"installations"`
 	Repositories  []GitHubRepositoryInfo   `json:"repositories"`
 	LastDelivery  *GitHubDeliveryInfo      `json:"last_delivery,omitempty"`
+	// LastIgnoredPush is the newest push that deployed nothing for an app, with the reason (APP-8).
+	LastIgnoredPush *GitHubIgnoredPushInfo `json:"last_ignored_push,omitempty"`
+}
+
+// GitHubIgnoredPushInfo is an Activity entry for a push that deployed nothing (APP-8).
+type GitHubIgnoredPushInfo struct {
+	Description string `json:"description"`
+	CreatedAt   string `json:"created_at"`
 }
 
 // GitHubManifestStartResponse returns the GitHub form action URL and manifest JSON (GHA-1).
@@ -360,6 +368,8 @@ type UpdateAppSettingsRequest struct {
 	PidsLimit         int      `json:"pids_limit"`
 	ReadOnlyRoot      bool     `json:"read_only_root"`
 	AddCapabilities   []string `json:"add_capabilities"`
+	AutoDeploy        *bool    `json:"auto_deploy,omitempty"` // APP-8; omitted = unchanged
+	WatchPaths        *string  `json:"watch_paths,omitempty"` // APP-8; omitted = unchanged
 }
 
 // UpdateAppEnvRequest replaces an app's environment variables (APP-1).
@@ -427,6 +437,8 @@ type AppDetailResponse struct {
 	PidsLimit         int              `json:"pids_limit"`
 	ReadOnlyRoot      bool             `json:"read_only_root"`
 	AddCapabilities   []string         `json:"add_capabilities"`
+	AutoDeploy        bool             `json:"auto_deploy"`
+	WatchPaths        string           `json:"watch_paths"`
 	PrimaryDomain     string           `json:"primary_domain"`
 	ActiveReleaseID   *string          `json:"active_release_id,omitempty"`
 	Env               []EnvVarMetadata `json:"env"`

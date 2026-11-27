@@ -321,6 +321,17 @@ export interface GitHubStatusResponse {
   installations: GitHubInstallationInfo[];
   repositories: GitHubRepositoryInfo[];
   last_delivery?: GitHubDeliveryInfo;
+  /**
+   * LastIgnoredPush is the newest push that deployed nothing for an app, with the reason (APP-8).
+   */
+  last_ignored_push?: GitHubIgnoredPushInfo;
+}
+/**
+ * GitHubIgnoredPushInfo is an Activity entry for a push that deployed nothing (APP-8).
+ */
+export interface GitHubIgnoredPushInfo {
+  description: string;
+  created_at: string;
 }
 /**
  * GitHubManifestStartResponse returns the GitHub form action URL and manifest JSON (GHA-1).
@@ -471,6 +482,8 @@ export interface UpdateAppSettingsRequest {
   pids_limit: number /* int */;
   read_only_root: boolean;
   add_capabilities: string[];
+  auto_deploy?: boolean; // APP-8; omitted = unchanged
+  watch_paths?: string; // APP-8; omitted = unchanged
 }
 /**
  * UpdateAppEnvRequest replaces an app's environment variables (APP-1).
@@ -546,6 +559,8 @@ export interface AppDetailResponse {
   pids_limit: number /* int */;
   read_only_root: boolean;
   add_capabilities: string[];
+  auto_deploy: boolean;
+  watch_paths: string;
   primary_domain: string;
   active_release_id?: string;
   env: EnvVarMetadata[];

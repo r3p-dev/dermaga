@@ -128,6 +128,10 @@ func (s *Server) buildGitHubStatus(ctx context.Context) (GitHubStatusResponse, e
 		}
 	}
 
+	if ign, err := s.cfg.Store.ListAuditLogs(ctx, store.AuditFilter{Event: "push_ignored", Limit: 1}); err == nil && len(ign) > 0 {
+		resp.LastIgnoredPush = &GitHubIgnoredPushInfo{Description: ign[0].Description, CreatedAt: ign[0].CreatedAt}
+	}
+
 	return resp, nil
 }
 
