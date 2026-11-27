@@ -96,18 +96,7 @@ func (r *Reconciler) writeAppRoute(rec store.ActiveAppRecord) error {
 	if err != nil {
 		return err
 	}
-	domSpecs := make([]traefik.DomainSpec, 0, len(rec.Domains))
-	for _, d := range rec.Domains {
-		var redir, pfx string
-		if d.RedirectTo != nil {
-			redir = *d.RedirectTo
-		}
-		if d.PathPrefix != nil {
-			pfx = *d.PathPrefix
-		}
-		domSpecs = append(domSpecs, traefik.DomainSpec{Domain: d.Domain, IsPrimary: d.IsPrimary, RedirectTo: redir, PathPrefix: pfx, StripPrefix: d.StripPrefix})
-	}
-	data, err := traefik.RenderApp(traefik.AppSpec{AppName: rec.App.Name, ReleaseNumber: rec.Deployment.ReleaseNumber, Port: rc.Port, Domains: domSpecs})
+	data, err := traefik.RenderApp(deploy.RouteSpecFor(&rec.App, rec.Domains, rec.Deployment.ReleaseNumber, rc.Port, nil))
 	if err != nil {
 		return fmt.Errorf("rendering traefik config for %s: %w", rec.App.Name, err)
 	}

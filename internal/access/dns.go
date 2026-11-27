@@ -73,3 +73,26 @@ func CheckDomainDNS(ctx context.Context, domain, serverIP string, lookup DNSLook
 
 	return res
 }
+
+// PointsHere reports whether the domain can get a certificate on this server: its A record is the
+// server's address and no AAAA record points elsewhere (TLS-2, DEC-38).
+func (r DNSCheckResult) PointsHere() bool {
+	return r.AMatches && !r.AAAAMismatch
+}
+
+// ResolverEnv names the test-only DNS server override (DEC-44). Only the VM test drop-in of the
+// user unit sets it; `dermaga doctor` warns while it is set.
+const ResolverEnv = "DERMAGA_DNS_RESOLVER"
+
+// LookupFor returns a DNSLookup that asks only the DNS server at addr ("host:port"), or nil (the
+// system resolver) when addr is empty.
+func LookupFor(addr string) DNSLookup {
+	if addr == "" {
+		return nil
+	}
+	r := &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+		var d net.Dialer
+		return d.DialContext(ctx, network, addr)
+	}}
+	return r.LookupIP
+}

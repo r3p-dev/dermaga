@@ -117,38 +117,7 @@ func (e *Engine) appLock(appID string) chan struct{} {
 	return l
 }
 
-// ---- routes ----
-
-// writeRoute renders the app's route file with the main service on release `live` (port) and,
-// when sw is set, a verify router on the candidate (DEC-16, DEC-33), and writes it atomically.
-func (e *Engine) writeRoute(ctx context.Context, app *store.App, live, port int, sw *traefik.SwitchSpec) (primary, prefix string, err error) {
-	domains, err := e.store.ListDomainsByApp(ctx, app.ID)
-	if err != nil {
-		return "", "", fmt.Errorf("loading domains: %w", err)
-	}
-	specs := make([]traefik.DomainSpec, 0, len(domains))
-	for _, d := range domains {
-		var redir, pfx string
-		if d.RedirectTo != nil {
-			redir = *d.RedirectTo
-		}
-		if d.PathPrefix != nil {
-			pfx = *d.PathPrefix
-		}
-		if d.IsPrimary {
-			primary, prefix = d.Domain, pfx
-		}
-		specs = append(specs, traefik.DomainSpec{Domain: d.Domain, IsPrimary: d.IsPrimary, RedirectTo: redir, PathPrefix: pfx, StripPrefix: d.StripPrefix})
-	}
-	data, err := traefik.RenderApp(traefik.AppSpec{AppName: app.Name, ReleaseNumber: live, Port: port, Domains: specs, Switch: sw})
-	if err != nil {
-		return "", "", fmt.Errorf("rendering traefik route: %w", err)
-	}
-	if err := e.host.WriteFileAtomic(filepath.Join(e.cfg.TraefikDynamicDir, name.AppDynamicFilename(app.Name)), data, 0600); err != nil {
-		return "", "", fmt.Errorf("writing traefik route: %w", err)
-	}
-	return primary, prefix, nil
-}
+// ---- routes (route.go builds and writes them) ----
 
 // waitVerified polls Traefik until a request carrying token gets it back (the verify router of the
 // file just written is loaded) from a reachable candidate, or the switch timeout passes.

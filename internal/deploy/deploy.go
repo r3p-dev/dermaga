@@ -38,6 +38,11 @@ type Config struct {
 	SwitchTimeout     time.Duration // default 30s per Traefik verification step
 	// VerifyRoute asks Traefik for host+path with the verify token (default: the netns probe to Traefik's verify entrypoint).
 	VerifyRoute func(ctx context.Context, host, path, token string) (bool, error)
+	// ACMEPath is Traefik's acme.json, read for certificate status (TLS-3, DEC-41).
+	ACMEPath string
+	// DNSMatches says whether a domain's DNS points to this server (TLS-2, DEC-38).
+	DNSMatches func(ctx context.Context, domain string) bool
+	Now        func() time.Time // default time.Now
 }
 
 // Engine manages the single global build queue and deployment lifecycle (DEP-5–DEP-9).
@@ -61,6 +66,8 @@ type Engine struct {
 	baseCtx     context.Context          // daemon lifetime, for rollbacks that outlive the request
 	wake        chan struct{}
 	stopCh      chan struct{}
+	dnsChecked  map[string]time.Time // domain ID -> last DNS check of a domain still waiting (DEC-38)
+	lastSyncErr map[string]string    // app ID -> last route sync failure already in Activity
 }
 
 // NewEngine creates a deployment Engine.
@@ -81,17 +88,19 @@ func NewEngine(s *store.Store, h host.Host, gh *github.Client, b *builder.Builde
 		cfg.SwitchTimeout = 30 * time.Second
 	}
 	e := &Engine{
-		store:     s,
-		host:      h,
-		gh:        gh,
-		builder:   b,
-		cfg:       cfg,
-		pending:   make(map[string]string),
-		cancelled: make(map[string]bool),
-		appLocks:  make(map[string]chan struct{}),
-		baseCtx:   context.Background(),
-		wake:      make(chan struct{}, 1),
-		stopCh:    make(chan struct{}),
+		store:       s,
+		host:        h,
+		gh:          gh,
+		builder:     b,
+		cfg:         cfg,
+		pending:     make(map[string]string),
+		cancelled:   make(map[string]bool),
+		appLocks:    make(map[string]chan struct{}),
+		dnsChecked:  make(map[string]time.Time),
+		lastSyncErr: make(map[string]string),
+		baseCtx:     context.Background(),
+		wake:        make(chan struct{}, 1),
+		stopCh:      make(chan struct{}),
 	}
 	if e.cfg.VerifyRoute == nil {
 		e.cfg.VerifyRoute = e.verifyThroughTraefik
