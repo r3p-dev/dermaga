@@ -164,7 +164,7 @@ test.describe('Dermaga Theme & Panel Journeys (M1-dark)', () => {
 		await page.click('button[type="submit"]')
 
 		// Should navigate to dashboard (retaining Dark Theme from localStorage)
-		await expect(page).toHaveURL('http://127.0.0.1:7070/')
+		await expect(page).toHaveURL(/\/$/)
 		await expect(page.locator('h1')).toHaveText('Server Overview')
 		await expect(page.locator('text=Daemon Active')).toBeVisible()
 		await expect(page.locator('aside img[alt="dermaga"]')).toBeVisible()
@@ -193,7 +193,7 @@ test.describe('Dermaga Theme & Panel Journeys (M1-dark)', () => {
 		// 4. Navigate to Apps
 		await page.setViewportSize({ width: 1280, height: 800 })
 		await page.locator('a:has-text("Apps"):visible').click()
-		await expect(page).toHaveURL('http://127.0.0.1:7070/apps')
+		await expect(page).toHaveURL(/\/apps$/)
 		await expect(page.locator('h1')).toHaveText('Apps')
 		await expect(page.locator('a:has-text("New app")')).toBeVisible()
 		await assertThemeBackgrounds(page, 'light')
@@ -207,7 +207,7 @@ test.describe('Dermaga Theme & Panel Journeys (M1-dark)', () => {
 		// 5. Navigate to Activity (and verify /audit-logs redirect)
 		await page.setViewportSize({ width: 1280, height: 800 })
 		await page.goto('/audit-logs')
-		await expect(page).toHaveURL('http://127.0.0.1:7070/activity')
+		await expect(page).toHaveURL(/\/activity$/)
 		await expect(page.locator('h1')).toHaveText('Activity')
 		await expect(page.locator('table')).toBeVisible()
 
