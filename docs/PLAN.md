@@ -22,7 +22,7 @@ backups come in v1.1.
 | M4  | 0.4.0   | First-run setup and panel access                  | completed         | M4a yes: confirmed by owner, 2026-11-25 (v0.4.0-rc.1); M4b yes: confirmed by owner, 2026-11-25 (owner tags v0.4.0-rc.2 [superseded], v0.4.0-rc.3, v0.4.0) | 20      |
 | M5  | 0.5.0   | Connect GitHub                                    | completed         | M5a yes: confirmed by owner, 2026-11-25; M5b yes: confirmed by owner, 2026-11-25 (v0.5.0-rc.1, v0.5.0)                                                                       | 28      |
 | M6  | 0.6.0   | First deploy: wizard, build, env, logs            | completed         | yes: confirmed by owner, 2026-11-26 (v0.6.0-rc.1–v0.6.0-rc.3, v0.6.0)                                                                                                          | 36      |
-| M7  | 0.7.0   | Zero downtime: push-to-deploy, redeploy, rollback | in progress       | –                                                                                                                                                                               | 32      |
+| M7  | 0.7.0   | Zero downtime: push-to-deploy, redeploy, rollback | completed         | yes: confirmed by owner, 2026-11-27 (v0.7.0-rc.1–v0.7.0-rc.5, v0.7.0) | 32      |
 | M8  | 0.8.0   | Domains, HTTPS, headers, middleware               | not started       | –                                                                                                                                                                               | 28      |
 | M9  | 0.9.0   | Server care: app status, disk, dashboard, doctor  | not started       | –                                                                                                                                                                               | 24      |
 | M10 | 0.10.0  | Updating dermaga, migration guide                 | not started       | –                                                                                                                                                                               | 24      |
@@ -46,10 +46,10 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
 
 ## Active milestone
 
-**M7** (0.7.0): Zero downtime: push-to-deploy, redeploy, rollback (`in progress`).
+**M7** (0.7.0): Zero downtime: push-to-deploy, redeploy, rollback (`completed`, confirmed by owner 2026-11-27; M8 starts in a new session).
 
 - **Requirement IDs:** DEP-1, DEP-2, DEP-4, DEP-10, APP-8, REL-6.
-- **Handoff** (2026-11-27, M7 done; `v0.7.0-rc.5` proven on the VM; waiting for the owner's `v0.7.0` tag and confirmation):
+- **Handoff** (2026-11-27, M7 completed: owner tagged `v0.7.0` (`4b37ae2`, CI and Release green) and confirmed M7; the gosmee forwarder now lives in `test/vm/gosmee-forward.sh`; next session: M8 plan first):
   - Done: rc.5 VM run (scratch swept on start, app removed twice with 0 leftovers, demo state restored); CHANGELOG `[0.7.0]`; owner cleanup of the smee run done.
   - Next: owner tags `v0.7.0` and confirms M7; then M8 (domains, HTTPS, headers, middleware).
 - **rc.4 handoff** (2026-11-27, M7b VM run on `v0.7.0-rc.4` done):
