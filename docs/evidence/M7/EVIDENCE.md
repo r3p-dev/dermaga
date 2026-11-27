@@ -358,7 +358,7 @@ Owner decisions on the rc.2 findings, all before M7b.
 | Negative controls: env sweep off; orphan path keeps the env file with the sweep off; no drain; stage lines not saved; short values masked again; `d.ImageRef` removed at start; interrupted image kept; hint never shown: each makes its test FAIL; files restored byte for byte and green | PASS | `rc3-negative-controls.log` |
 | `seed.sh` invariant check (`test/vm/m7_invariants.py`) against a correct state and four broken ones (two live releases, verify router left, previous release running, live image missing) | PASS | `rc3-seed-invariants-control.log` |
 | `make check` | PASS | `rc3-make-check.log` |
-| VM: upgrade rc.2 → rc.3, `kill -9` mid-switch (env file gone, log present, drain observed), rollback under oha, denied logins last | NOT RUN | after the `v0.7.0-rc.3` tag |
+| VM checks on `v0.7.0-rc.3` | PASS | see "M7a on the VM, rc.3" |
 
 Screens (`tmp/evidence/M7/screenshots/`):
 
@@ -371,3 +371,33 @@ Screens (`tmp/evidence/M7/screenshots/`):
 Deviation: the rollback exception first written in the engine's start-up image cleanup was dead code (a
 rollback never builds, so the tag removed for it never exists); the negative control showed it and it was
 removed. The control now targets the real risk (removing `image_ref`).
+
+## M7a on the VM, rc.3 (`v0.7.0-rc.3` = `main` = `233d4b4`, CI and Release green)
+
+The `v0.7.0-rc.3` tag is lightweight (the suggested command was `git tag`, not `git tag -a`); from rc.4 on the
+tag commands are annotated (owner request).
+
+| Check | Status | Log (`tmp/evidence/M7/logs/`) |
+|---|---|---|
+| Release checksums match; the binary with 1 byte appended fails (negative control) | PASS | `rc3-release-checksums.log`, `rc3-release-checksums-negative.log` |
+| Upgrade rc.2 → rc.3 per SETUP §6.3 (no installer): rc.3 running, Traefik not restarted (same InvocationID; `traefik.yml` unmarked since Pebble), GitHub `connected`, app 200; the startup sweep removed the stale `testapp-r5.env` left by the rc.2 crash test ("1 orphan(s) removed [testapp-r5.env]") | PASS | `rc3-vm-upgrade.log` |
+| `kill -9` at switch write 2 (main → r7, verify router present) under `oha -q 50 -c 10 -z 150s`: 7501 × 200, 0 errors; "switches recovered: [testapp: r7 live (switch completed)]", 1 verify router cleaned, one live release | PASS | `rc3-vm-kill-midswitch.log` |
+| Drain observed: "Draining testapp r6 for 10s" → "Stopped testapp r6 after the drain" 10.3 s apart; 1 s samples show `app-testapp-r6` running and `testapp-r6.env` present until 02:08:15, both gone at 02:08:16 | PASS | `rc3-vm-kill-midswitch.log` |
+| Log up to the crash: r7's log in the DB has every stage line up to "==> Traefik reaches r7 through the verify router" (the last stage before write 2); the commit SHA is no longer masked (`…b9ffb2`, DEC-36) | PASS | `rc3-vm-kill-midswitch.log` |
+| Rollback r7 → r2 (new release r8): POST 09:10:38.695 → r2's image serving at 09:10:45.518 (6.8 s); r8 runs image `testapp:r2` with `GREETING=v1`, only `testapp-r8.env` left; 4501 × 200, 0 errors | PASS | `rc3-vm-rollback.log` |
+| `m7_invariants.py`: one live release (r8), no verify router, containers only for live releases; images kept for r7, r6, r5, r4, r2 (retention: 5) | PASS | `rc3-vm-invariants.log` |
+| `m3_check.sh access` last (VM-side unban), bans 1 → 2, new login after unban | PASS | `rc3-vm-m3-access.log` |
+| New `ssh dermaga` (owner config) 30 s after the access check | PASS | `rc3-vm-new-ssh-dermaga.log` |
+
+Excerpt (`tmp/evidence/M7/logs/rc3-vm-kill-midswitch.log`):
+
+```text
+02:08:02.746 SIGKILL dermaga pid 48101 at write 2: main -> http://app-testapp-r7:8080, verify router present
+2026-11-27T02:08:05+00:00 dermaga-vm dermaga[49424]: Draining testapp r6 for 10s before stopping it (it lost its traffic before the restart)
+2026-11-27T02:08:05+00:00 dermaga-vm dermaga[49424]: Startup reconciliation complete: 0 orphan(s) removed [], 0 file(s) re-rendered, 0 unit(s) started, 1 verify router(s) cleaned, switches recovered: [testapp: r7 live (switch completed)], draining: [testapp r6]
+02:08:15 running: ['app-testapp-r6', 'app-testapp-r7'] env files: ['testapp-r6.env', 'testapp-r7.env']
+02:08:16 running: ['app-testapp-r7'] env files: ['testapp-r7.env']
+2026-11-27T02:08:16+00:00 dermaga-vm dermaga[49424]: Stopped testapp r6 after the drain
+drain duration: 10.3 s
+RESULT rc3-kill-midswitch: oha non-2xx=0 connection-errors=0 /version non-200=0 release=active
+```
