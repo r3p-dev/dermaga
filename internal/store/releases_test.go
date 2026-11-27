@@ -48,8 +48,8 @@ func TestStoreMigration0004To0005_DEP4(t *testing.T) {
 	defer s.Close()
 	ctx := context.Background()
 
-	if ver, err := s.CurrentVersion(ctx); err != nil || ver != 5 {
-		t.Fatalf("expected version 5, got %d (err=%v)", ver, err)
+	if ver, err := s.CurrentVersion(ctx); err != nil || ver != 6 {
+		t.Fatalf("expected version 6, got %d (err=%v)", ver, err)
 	}
 	app, err := s.GetApp(ctx, "app_1")
 	if err != nil || app.EnvVersionID == nil || app.WatchPaths != "" {

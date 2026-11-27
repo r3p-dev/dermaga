@@ -50,6 +50,17 @@ type Domain struct {
 	PathPrefix  *string `json:"path_prefix"`
 	StripPrefix bool    `json:"strip_prefix"`
 	CreatedAt   string  `json:"created_at"`
+	// DNS gate and certificate state (migration 0006, DEC-38)
+	DNSVerifiedAt   *string `json:"dns_verified_at"`
+	CertRequestedAt *string `json:"cert_requested_at"`
+	CertFailedAt    *string `json:"cert_failed_at"`
+	CertError       string  `json:"cert_error"`
+}
+
+// Routed reports whether the domain belongs in the route: its DNS passed once and its certificate
+// order has not failed since it last entered the route (DEC-38).
+func (d Domain) Routed() bool {
+	return d.DNSVerifiedAt != nil && d.CertFailedAt == nil
 }
 
 // Deployment represents a deployment release of an application (DEP-9).
@@ -221,30 +232,74 @@ func (s *Store) listApps(ctx context.Context, where string, args ...any) ([]App,
 
 // CreateDomain inserts a new domain routing record.
 func (s *Store) CreateDomain(ctx context.Context, d *Domain) error {
+	return insertDomain(ctx, s.db, d)
+}
+
+type execer interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
+func insertDomain(ctx context.Context, db execer, d *Domain) error {
 	if d.CreatedAt == "" {
 		d.CreatedAt = time.Now().UTC().Format(time.RFC3339)
 	}
-	isPrimaryInt := 0
-	if d.IsPrimary {
-		isPrimaryInt = 1
-	}
-	stripPrefixInt := 0
-	if d.StripPrefix {
-		stripPrefixInt = 1
-	}
-
-	query := `
-		INSERT INTO domains (id, app_id, domain, is_primary, redirect_to, path_prefix, strip_prefix, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`
-	_, err := s.db.ExecContext(ctx, query, d.ID, d.AppID, d.Domain, isPrimaryInt, d.RedirectTo, d.PathPrefix, stripPrefixInt, d.CreatedAt)
+	_, err := db.ExecContext(ctx, `
+		INSERT INTO domains (id, app_id, domain, is_primary, redirect_to, path_prefix, strip_prefix, created_at,
+			dns_verified_at, cert_requested_at, cert_failed_at, cert_error)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, d.ID, d.AppID, d.Domain, d.IsPrimary, d.RedirectTo, d.PathPrefix, d.StripPrefix, d.CreatedAt,
+		d.DNSVerifiedAt, d.CertRequestedAt, d.CertFailedAt, d.CertError)
 	return err
+}
+
+// ReplaceDomains makes domains the app's complete domain set in one transaction (APP-2, APP-10).
+func (s *Store) ReplaceDomains(ctx context.Context, appID string, domains []Domain) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `DELETE FROM domains WHERE app_id = ?`, appID); err != nil {
+		return fmt.Errorf("removing old domains: %w", err)
+	}
+	for i := range domains {
+		domains[i].AppID = appID
+		if err := insertDomain(ctx, tx, &domains[i]); err != nil {
+			return fmt.Errorf("saving domain %s: %w", domains[i].Domain, err)
+		}
+	}
+	return tx.Commit()
+}
+
+// SetDomainState stores a domain's DNS gate and certificate state (DEC-38).
+func (s *Store) SetDomainState(ctx context.Context, d Domain) error {
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE domains SET dns_verified_at = ?, cert_requested_at = ?, cert_failed_at = ?, cert_error = ?
+		WHERE id = ?`, d.DNSVerifiedAt, d.CertRequestedAt, d.CertFailedAt, d.CertError, d.ID)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
+// DomainOwner returns the ID of the app a host belongs to, or "" when no app uses it (APP-2).
+func (s *Store) DomainOwner(ctx context.Context, domain string) (string, error) {
+	var appID string
+	err := s.db.QueryRowContext(ctx, `SELECT app_id FROM domains WHERE domain = ?`, domain).Scan(&appID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	return appID, err
 }
 
 // ListDomainsByApp retrieves all domains associated with an app.
 func (s *Store) ListDomainsByApp(ctx context.Context, appID string) ([]Domain, error) {
 	query := `
-		SELECT id, app_id, domain, is_primary, redirect_to, path_prefix, strip_prefix, created_at
+		SELECT id, app_id, domain, is_primary, redirect_to, path_prefix, strip_prefix, created_at,
+			dns_verified_at, cert_requested_at, cert_failed_at, cert_error
 		FROM domains WHERE app_id = ? ORDER BY is_primary DESC, domain ASC
 	`
 	rows, err := s.db.QueryContext(ctx, query, appID)
@@ -258,7 +313,8 @@ func (s *Store) ListDomainsByApp(ctx context.Context, appID string) ([]Domain, e
 		var d Domain
 		var isPrimaryInt, stripPrefixInt int
 		var createdAt sql.NullString
-		if err := rows.Scan(&d.ID, &d.AppID, &d.Domain, &isPrimaryInt, &d.RedirectTo, &d.PathPrefix, &stripPrefixInt, &createdAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.AppID, &d.Domain, &isPrimaryInt, &d.RedirectTo, &d.PathPrefix, &stripPrefixInt, &createdAt,
+			&d.DNSVerifiedAt, &d.CertRequestedAt, &d.CertFailedAt, &d.CertError); err != nil {
 			return nil, fmt.Errorf("scanning domain: %w", err)
 		}
 		d.IsPrimary = (isPrimaryInt == 1)
@@ -531,4 +587,22 @@ func (s *Store) scanApp(row rowScanner) (*App, error) {
 		a.UpdatedAt = updatedAt.String
 	}
 	return &a, nil
+}
+
+// ListDomainHosts returns every app domain, for server-wide checks such as certificate expiry (TLS-4).
+func (s *Store) ListDomainHosts(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT domain FROM domains ORDER BY domain`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var d string
+		if err := rows.Scan(&d); err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
 }
