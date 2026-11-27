@@ -560,7 +560,7 @@ PASS commit 5: docs: record the M7b push-to-deploy design and local evidence (lo
 
 Binary: the published release, upgraded per SETUP §6.3. Real deliveries: the owner pointed the GitHub App's webhook
 URL at a fresh smee channel (secret unchanged); `gosmee` 0.32.1 ran on the workstation with
-`--noReplay --exec tmp/evidence/M7/gosmee-forward.sh`, which sends each body byte for byte to
+`--noReplay --exec tmp/evidence/M7/gosmee-forward.sh` (since moved to `test/vm/gosmee-forward.sh`, unchanged in behavior), which sends each body byte for byte to
 `https://hooks.dermaga.test/hooks/github-app` (`curl --resolve … --cacert <Pebble root>`), so deliveries take the
 public path: Traefik 443 → hook-relay → `hooks.sock`. The smee URL is in no log (`gosmee-client.log` has only
 `<smee-url>`; its one `smee.io` line is gosmee's `/version` probe). The owner did every push to

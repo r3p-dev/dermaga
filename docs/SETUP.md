@@ -140,14 +140,15 @@ For local development or testing behind NAT where GitHub cannot deliver webhooks
    such options, so its `--exec` hook runs a forwarder that does exactly that (verified in M7b on
    `v0.7.0-rc.4`: real deliveries accepted, the same body with one byte changed refused with 401):
    ```fish
-   tmp/tools/bin/gosmee client --nocolor --noReplay --exec $PWD/tmp/evidence/M7/gosmee-forward.sh (cat tmp/smee-url) http://127.0.0.1:9
+   tmp/tools/bin/gosmee client --nocolor --noReplay --exec $PWD/test/vm/gosmee-forward.sh (cat tmp/smee-url) http://127.0.0.1:9
    ```
-   `gosmee-forward.sh` (gitignored, under `tmp/evidence/M7/`) posts `$GOSMEE_PAYLOAD_FILE` with
-   `curl --data-binary` (byte for byte) and the GitHub headers from `$GOSMEE_HEADERS_FILE`
-   (`Content-Type`, `User-Agent`, `X-GitHub-Event`, `X-GitHub-Delivery`, `X-GitHub-Hook-ID`,
-   `X-Hub-Signature-256`) to `https://<hook-domain>/hooks/github-app`, and logs only the event,
-   delivery ID, body size and hash, and the HTTP status. `--noReplay` keeps gosmee itself from
-   posting anywhere; `http://127.0.0.1:9` is only a required placeholder. For the run the owner sets
+   `test/vm/gosmee-forward.sh` posts `$GOSMEE_PAYLOAD_FILE` with `curl --data-binary` (byte for
+   byte) and the GitHub headers from `$GOSMEE_HEADERS_FILE` (`Content-Type`, `User-Agent`,
+   `X-GitHub-Event`, `X-GitHub-Delivery`, `X-GitHub-Hook-ID`, `X-Hub-Signature-256`) to
+   `https://<hook-domain>/hooks/github-app`, and logs only the event, delivery ID, body size and
+   hash, and the HTTP status (to `tmp/evidence/M7/logs/` by default; the Pebble root is expected at
+   `tmp/evidence/M7/pebble-minica.pem`; the script header lists the overrides). `--noReplay` keeps
+   gosmee itself from posting anywhere; `http://127.0.0.1:9` is only a required placeholder. For the run the owner sets
    the GitHub App's webhook URL to the smee channel (secret unchanged) and afterwards back to
    `https://<hook-domain>/hooks/github-app`.
 4. **Security Warning:** Smee channels are public and unauthenticated. **Never** point production webhooks or sensitive repositories at a public smee channel. Use smee strictly with throwaway test repositories.
