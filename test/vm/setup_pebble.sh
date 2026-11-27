@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Sets up Pebble (local ACME test CA) on dermaga-vm network `web` and configures
-# Traefik's `le` resolver to use Pebble + its API CA cert (idempotent).
+# Traefik's `le` resolver to use Pebble + its API CA cert (idempotent). traefik.yml loses dermaga's
+# marker, so the reconciler no longer re-renders or starts Traefik until the VM is reverted.
 set -Eeuo pipefail
 
 VM_HOST="${1:-dermaga-vm}"
@@ -41,7 +42,9 @@ cfg = json.loads(body)
 acme = cfg["certificatesResolvers"]["le"]["acme"]
 acme["caServer"] = "https://pebble:14000/dir"
 acme["caCertificates"] = ["/etc/traefik/pebble-api-ca.pem"]
-open(p, "w").write(header + json.dumps(cfg, indent=2) + "\n")
+# Without the dermaga marker line the file is foreign to the reconciler, so a daemon restart cannot
+# re-render it back to the real CA (tests must never use it).
+open(p, "w").write(json.dumps(cfg, indent=2) + "\n")
 '
 
 systemctl --user restart traefik.service
