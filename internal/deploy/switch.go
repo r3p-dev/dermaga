@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"dermaga/internal/crypto"
+	"dermaga/internal/host"
 	"dermaga/internal/name"
 	"dermaga/internal/quadlet"
 	"dermaga/internal/store"
@@ -22,6 +23,10 @@ import (
 
 // RetainedReleases is how many earlier live releases keep their image for rollback (DEP-4).
 const RetainedReleases = 5
+
+// DefaultDrainGrace is how long a release that lost its traffic keeps running before it is
+// stopped, after a normal switch and after one recovered at startup (PRD DEP-1 grace).
+const DefaultDrainGrace = 10 * time.Second
 
 // ErrBuildRunning refuses a rollback while the same app is building (owner decision; the API
 // shows it as "Cancel the running build first").
@@ -250,10 +255,19 @@ func (e *Engine) switchTraffic(ctx context.Context, app *store.App, live, livePo
 // stopRelease stops a release that no longer serves and removes its unit and env file. The image
 // stays for rollback until retention removes it.
 func (e *Engine) stopRelease(ctx context.Context, appName string, release int) {
-	_, _ = e.host.RunCommand(ctx, "systemctl", "--user", "stop", name.AppServiceName(appName, release))
-	_ = e.host.Remove(filepath.Join(e.cfg.QuadletDir, name.AppQuadletFilename(appName, release)))
-	_ = e.host.Remove(EnvFilePath(e.cfg.EnvDir, appName, release))
+	_ = RemoveReleaseUnit(ctx, e.host, e.cfg.QuadletDir, e.cfg.EnvDir, appName, release)
 	_, _ = e.host.RunCommand(ctx, "systemctl", "--user", "daemon-reload")
+}
+
+// RemoveReleaseUnit stops a release's service and removes its unit and its env file (runtime
+// secrets): the cleanup shared by the engine and the startup reconciler, so neither leaves a
+// per-release file behind. The image is kept (retention decides). The caller reloads systemd.
+func RemoveReleaseUnit(ctx context.Context, h host.Host, quadletDir, envDir, appName string, release int) error {
+	_, _ = h.RunCommand(ctx, "systemctl", "--user", "stop", name.AppServiceName(appName, release))
+	if envDir != "" {
+		_ = h.Remove(EnvFilePath(envDir, appName, release))
+	}
+	return h.Remove(filepath.Join(quadletDir, name.AppQuadletFilename(appName, release)))
 }
 
 // RetainedSet returns the releases that keep their image: the live one plus the newest

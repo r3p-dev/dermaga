@@ -153,9 +153,9 @@ func runDaemon(args []string) error {
 	})
 	if recReport, err := rec.Reconcile(context.Background()); err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: startup reconciliation encountered error: %v\n", err)
-	} else if len(recReport.OrphansRemoved) > 0 || len(recReport.FilesReRendered) > 0 || len(recReport.UnitsStarted) > 0 || len(recReport.VerifyRoutersCleaned) > 0 || len(recReport.SwitchesRecovered) > 0 {
-		fmt.Printf("Startup reconciliation complete: %d orphan(s) removed, %d file(s) re-rendered, %d unit(s) started, %d verify router(s) cleaned, switches recovered: %v\n",
-			len(recReport.OrphansRemoved), len(recReport.FilesReRendered), len(recReport.UnitsStarted), len(recReport.VerifyRoutersCleaned), recReport.SwitchesRecovered)
+	} else if len(recReport.OrphansRemoved) > 0 || len(recReport.FilesReRendered) > 0 || len(recReport.UnitsStarted) > 0 || len(recReport.VerifyRoutersCleaned) > 0 || len(recReport.SwitchesRecovered) > 0 || len(recReport.Draining) > 0 {
+		fmt.Printf("Startup reconciliation complete: %d orphan(s) removed %v, %d file(s) re-rendered, %d unit(s) started, %d verify router(s) cleaned, switches recovered: %v, draining: %v\n",
+			len(recReport.OrphansRemoved), recReport.OrphansRemoved, len(recReport.FilesReRendered), len(recReport.UnitsStarted), len(recReport.VerifyRoutersCleaned), recReport.SwitchesRecovered, recReport.Draining)
 	}
 
 	daemonCtx, daemonCancel := context.WithCancel(context.Background())
@@ -673,9 +673,11 @@ func runReconcile(args []string) error {
 	fmt.Printf("Units started:          %d %v\n", len(report.UnitsStarted), report.UnitsStarted)
 	fmt.Printf("Verify routers cleaned: %d %v\n", len(report.VerifyRoutersCleaned), report.VerifyRoutersCleaned)
 	fmt.Printf("Switches recovered:     %d %v\n", len(report.SwitchesRecovered), report.SwitchesRecovered)
+	fmt.Printf("Draining:               %d %v\n", len(report.Draining), report.Draining)
 	fmt.Printf("Foreign files reported: %d %v\n", len(report.ForeignFilesReported), report.ForeignFilesReported)
 	if report.SafeDefaultTriggered {
 		fmt.Println("Safe default active:    preserved managed units/configs because database has 0 active apps")
 	}
+	rec.WaitDrains()
 	return nil
 }

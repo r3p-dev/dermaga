@@ -454,9 +454,9 @@ func TestStoreMigration0003To0004(t *testing.T) {
 	if app.MemoryLimit != "512m" || app.CPULimit != "1.0" || app.PidsLimit != 128 || app.HealthConsecutive != 3 {
 		t.Fatalf("unexpected upgraded app defaults: %+v", app)
 	}
-	n, err := s.FailInFlightDeployments(ctx, "daemon restarted")
-	if err != nil || n != 1 {
-		t.Fatalf("FailInFlightDeployments: n=%d err=%v", n, err)
+	failed, err := s.FailInFlightDeployments(ctx, "daemon restarted")
+	if err != nil || len(failed) != 1 || failed[0].ID != "dep_1" || failed[0].Status != "failed" {
+		t.Fatalf("FailInFlightDeployments: %+v err=%v", failed, err)
 	}
 	dep, err := s.GetDeployment(ctx, "dep_1")
 	if err != nil || dep.Status != "failed" || dep.ErrorMessage != "daemon restarted" || dep.FinishedAt == nil {

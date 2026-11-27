@@ -49,6 +49,7 @@ type Engine struct {
 	cfg     Config
 
 	mu          sync.Mutex
+	logSaveMu   sync.Mutex        // serializes log saves so an older snapshot never overwrites a newer one
 	order       []string          // appID queue order
 	pending     map[string]string // appID -> queued depID
 	activeDepID string
@@ -73,7 +74,7 @@ func NewEngine(s *store.Store, h host.Host, gh *github.Client, b *builder.Builde
 		cfg.MeminfoPath = "/proc/meminfo"
 	}
 	if cfg.DrainGrace <= 0 {
-		cfg.DrainGrace = 10 * time.Second
+		cfg.DrainGrace = DefaultDrainGrace
 	}
 	if cfg.SwitchTimeout <= 0 {
 		cfg.SwitchTimeout = 30 * time.Second
@@ -110,8 +111,16 @@ func (e *Engine) Start(ctx context.Context) error {
 		// Serving must not depend on it: those releases just cannot be rolled back to.
 		fmt.Fprintf(os.Stderr, "Warning: converting pre-0005 release snapshots: %v\n", err)
 	}
-	if _, err := e.store.FailInFlightDeployments(ctx, "daemon restarted mid-deployment"); err != nil {
+	failed, err := e.store.FailInFlightDeployments(ctx, "daemon restarted mid-deployment")
+	if err != nil {
 		return fmt.Errorf("failing interrupted deployments: %w", err)
+	}
+	// The reconciler already removed their units and env files; the image their own build tagged is
+	// never used again. Not d.ImageRef: a rollback's points at the image of the release it restores.
+	for _, d := range failed {
+		if app, err := e.store.GetApp(ctx, d.AppID); err == nil {
+			_, _ = e.host.RunCommand(ctx, "podman", "rmi", "--ignore", builder.ImageRef(app.Name, d.ReleaseNumber))
+		}
 	}
 	go e.workerLoop(ctx)
 	return nil
@@ -176,7 +185,7 @@ func (e *Engine) Cancel(ctx context.Context, depID string) error {
 				return err
 			}
 			e.builder.Logs().Append(depID, "==> Deployment cancelled while queued")
-			_ = e.store.SetDeploymentBuildLogs(ctx, depID, e.builder.Logs().Snapshot(depID))
+			e.saveLogs(ctx, depID)
 			e.builder.Logs().Finish(depID)
 			return nil
 		}
@@ -268,7 +277,8 @@ func (e *Engine) runOne(parentCtx context.Context, depID string) {
 		e.mu.Unlock()
 		return c || errors.Is(runCtx.Err(), context.Canceled)
 	}
-	logf := func(line string) { e.builder.Logs().Append(depID, line) }
+	logf, stopLogs := e.releaseLogger(parentCtx, depID)
+	defer stopLogs()
 	fail := func(err error, imageRef string) {
 		if imageRef == "" {
 			imageRef = builder.ImageRef(app.Name, dep.ReleaseNumber)
@@ -455,9 +465,43 @@ func (e *Engine) startAndSwitch(ctx context.Context, app *store.App, dep *store.
 	return nil
 }
 
+// saveLogs writes a release's log so far to the DB.
+func (e *Engine) saveLogs(ctx context.Context, depID string) {
+	e.logSaveMu.Lock()
+	defer e.logSaveMu.Unlock()
+	_ = e.store.SetDeploymentBuildLogs(context.WithoutCancel(ctx), depID, e.builder.Logs().Snapshot(depID))
+}
+
+// releaseLogger returns the stage logger of a running release: each "==>" line is saved at once
+// and build output in between every 2 s, so a release adopted after a crash keeps its log up to
+// the crash point (DEP-10). stop ends the periodic save.
+func (e *Engine) releaseLogger(ctx context.Context, depID string) (logf func(string), stop func()) {
+	done := make(chan struct{})
+	go func() {
+		t := time.NewTicker(2 * time.Second)
+		defer t.Stop()
+		last := ""
+		for {
+			select {
+			case <-done:
+				return
+			case <-t.C:
+				if cur := e.builder.Logs().Snapshot(depID); cur != last {
+					last = cur
+					e.saveLogs(ctx, depID)
+				}
+			}
+		}
+	}()
+	return func(line string) {
+		e.builder.Logs().Append(depID, line)
+		e.saveLogs(ctx, depID)
+	}, func() { close(done) }
+}
+
 func (e *Engine) finishLive(ctx context.Context, depID string) {
 	e.builder.Logs().Append(depID, "==> Deployment is live")
-	_ = e.store.SetDeploymentBuildLogs(ctx, depID, e.builder.Logs().Snapshot(depID))
+	e.saveLogs(ctx, depID)
 	e.builder.Logs().Finish(depID)
 }
 
@@ -476,7 +520,7 @@ func (e *Engine) failRelease(ctx context.Context, app *store.App, dep *store.Dep
 	} else {
 		e.builder.Logs().Append(dep.ID, "==> Deployment failed: "+msg)
 	}
-	_ = e.store.SetDeploymentBuildLogs(ctx, dep.ID, e.builder.Logs().Snapshot(dep.ID))
+	e.saveLogs(ctx, dep.ID)
 	_ = e.store.UpdateDeploymentStatus(ctx, dep.ID, status, msg, &now)
 	e.builder.Logs().Finish(dep.ID)
 }
@@ -550,7 +594,8 @@ func (e *Engine) Rollback(ctx context.Context, appID, targetID string) (*store.D
 	go func() {
 		defer func() { <-lock }()
 		bctx := e.baseCtx
-		logf := func(line string) { e.builder.Logs().Append(dep.ID, line) }
+		logf, stopLogs := e.releaseLogger(bctx, dep.ID)
+		defer stopLogs()
 		logf(fmt.Sprintf("==> Rolling back to r%d: image %s, its environment and settings (no rebuild)", target.ReleaseNumber, target.ImageRef))
 		env, err := e.releaseEnv(bctx, dep)
 		if err == nil {
@@ -642,11 +687,8 @@ func (e *Engine) cleanupCandidate(app *store.App, relNum int, imageRef string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	serviceName := name.AppServiceName(app.Name, relNum)
-	_, _ = e.host.RunCommand(ctx, "systemctl", "--user", "stop", serviceName)
-	_ = e.host.Remove(filepath.Join(e.cfg.QuadletDir, name.AppQuadletFilename(app.Name, relNum)))
+	_ = RemoveReleaseUnit(ctx, e.host, e.cfg.QuadletDir, e.cfg.EnvDir, app.Name, relNum)
 	_, _ = e.host.RunCommand(ctx, "systemctl", "--user", "daemon-reload")
-	_ = e.host.Remove(EnvFilePath(e.cfg.EnvDir, app.Name, relNum))
 	if imageRef != "" {
 		_, _ = e.host.RunCommand(ctx, "podman", "rmi", "-f", imageRef)
 	}

@@ -29,6 +29,7 @@ func setupTestEnvironment(t *testing.T) (*store.Store, *host.FakeHost, reconcile
 	cfg := reconciler.Config{
 		QuadletDir:        "/home/server/.config/containers/systemd",
 		TraefikDynamicDir: "/home/server/.local/share/dermaga/traefik/dynamic",
+		EnvDir:            "/home/server/.local/share/dermaga/env",
 	}
 
 	return st, fh, cfg

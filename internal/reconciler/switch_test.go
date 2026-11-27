@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"dermaga/internal/deploy"
 	"dermaga/internal/host"
@@ -41,8 +42,8 @@ func TestReconcile_ReRenderedUnitMatchesDeploy_DEP10(t *testing.T) {
 	}
 }
 
-// seedSwitch sets up app "shop" with r1 live and r2 in "switching" (trigger given), both units on
-// disk, and the route file as it was when the daemon stopped.
+// seedSwitch sets up app "shop" with r1 live and r2 in "switching" (trigger given), both units and
+// env files on disk, and the route file as it was when the daemon stopped.
 func seedSwitch(t *testing.T, st *store.Store, fh *host.FakeHost, cfg reconciler.Config, trigger string, main int, token string) {
 	t.Helper()
 	ctx := context.Background()
@@ -57,6 +58,7 @@ func seedSwitch(t *testing.T, st *store.Store, fh *host.FakeHost, cfg reconciler
 			t.Fatalf("render unit: %v", err)
 		}
 		_ = fh.WriteFileAtomic(filepath.Join(cfg.QuadletDir, fmt.Sprintf("app-shop-r%d.container", rel)), unit, 0644)
+		_ = fh.WriteFileAtomic(deploy.EnvFilePath(cfg.EnvDir, "shop", rel), []byte("SECRET=x\n"), 0600)
 	}
 	route, err := traefik.RenderApp(traefik.AppSpec{
 		AppName: "shop", ReleaseNumber: main, Port: 8080,
@@ -79,6 +81,11 @@ func liveRoute(t *testing.T, fh *host.FakeHost, cfg reconciler.Config) (int, boo
 	return rel, verify
 }
 
+func exists(fh *host.FakeHost, path string) bool {
+	_, err := fh.Stat(path)
+	return err == nil
+}
+
 func stopped(fh *host.FakeHost, svc string) bool {
 	for _, c := range fh.Commands {
 		if c.Name == "systemctl" && strings.Join(c.Args, " ") == "--user stop "+svc {
@@ -90,15 +97,18 @@ func stopped(fh *host.FakeHost, svc string) bool {
 
 // TestReconcile_CrashAfterMainSwitched_DEP10: the file already sends traffic to r2 (step 2 of the
 // switch was written): the DB adopts r2, the old release becomes previous (rolled back after a
-// rollback), the verify router goes, r1 is stopped. Exactly one live release, one route.
+// rollback), the verify router goes. r1 lost its traffic just before the crash, so it drains for
+// DrainGrace like after a normal switch, then its unit and env file go. One live release, one route.
 func TestReconcile_CrashAfterMainSwitched_DEP10(t *testing.T) {
 	for trigger, oldStatus := range map[string]string{"push": "inactive", "rollback": "rolled_back"} {
 		t.Run(trigger, func(t *testing.T) {
 			st, fh, cfg := setupTestEnvironment(t)
 			ctx := context.Background()
+			cfg.DrainGrace = 50 * time.Millisecond
 			seedSwitch(t, st, fh, cfg, trigger, 2, "tok-b-123")
 
-			report, err := reconciler.New(fh, st, cfg).Reconcile(ctx)
+			rec := reconciler.New(fh, st, cfg)
+			report, err := rec.Reconcile(ctx)
 			if err != nil {
 				t.Fatalf("Reconcile: %v", err)
 			}
@@ -111,8 +121,17 @@ func TestReconcile_CrashAfterMainSwitched_DEP10(t *testing.T) {
 			if rel, verify := liveRoute(t, fh, cfg); rel != 2 || verify {
 				t.Fatalf("route: r%d verify=%v", rel, verify)
 			}
-			if !stopped(fh, "app-shop-r1.service") || stopped(fh, "app-shop-r2.service") {
-				t.Fatalf("r1 must be stopped, r2 kept")
+			unit1 := filepath.Join(cfg.QuadletDir, "app-shop-r1.container")
+			env1 := deploy.EnvFilePath(cfg.EnvDir, "shop", 1)
+			if stopped(fh, "app-shop-r1.service") || !exists(fh, unit1) || !exists(fh, env1) || strings.Join(report.Draining, ",") != "shop r1" {
+				t.Fatalf("r1 must keep running during the drain: draining=%v", report.Draining)
+			}
+			rec.WaitDrains()
+			if !stopped(fh, "app-shop-r1.service") || exists(fh, unit1) || exists(fh, env1) {
+				t.Fatalf("after the drain r1 must be stopped and its unit and env file removed")
+			}
+			if stopped(fh, "app-shop-r2.service") || !exists(fh, deploy.EnvFilePath(cfg.EnvDir, "shop", 2)) {
+				t.Fatalf("live r2 must keep running with its env file")
 			}
 			if len(report.SwitchesRecovered) != 1 || !strings.Contains(report.SwitchesRecovered[0], "switch completed") {
 				t.Fatalf("report: %v", report.SwitchesRecovered)
@@ -142,7 +161,37 @@ func TestReconcile_CrashBeforeMainSwitched_DEP10(t *testing.T) {
 	if !stopped(fh, "app-shop-r2.service") || stopped(fh, "app-shop-r1.service") {
 		t.Fatalf("the r2 candidate must be stopped, r1 kept")
 	}
+	// The candidate never served traffic: no drain; its env file (secrets) goes with its unit.
+	if len(report.Draining) != 0 || exists(fh, deploy.EnvFilePath(cfg.EnvDir, "shop", 2)) || exists(fh, filepath.Join(cfg.QuadletDir, "app-shop-r2.container")) {
+		t.Fatalf("r2 unit and env file must be removed at once (draining=%v)", report.Draining)
+	}
+	if !exists(fh, deploy.EnvFilePath(cfg.EnvDir, "shop", 1)) {
+		t.Fatalf("live r1 env file must stay")
+	}
 	if len(report.VerifyRoutersCleaned) != 1 {
 		t.Fatalf("verify router cleanup not reported: %+v", report)
+	}
+}
+
+// TestReconcile_StrayEnvFilesRemoved_DEP10: an env file whose release has no unit (e.g. a crash
+// between removing the unit and the file) holds secrets nobody uses: removed; the live one stays.
+func TestReconcile_StrayEnvFilesRemoved_DEP10(t *testing.T) {
+	st, fh, cfg := setupTestEnvironment(t)
+	ctx := context.Background()
+	seedActiveApp(t, st, "blog", 2, 3000, "blog.example.com")
+	live := deploy.EnvFilePath(cfg.EnvDir, "blog", 2)
+	stray := deploy.EnvFilePath(cfg.EnvDir, "blog", 1)
+	_ = fh.WriteFileAtomic(live, []byte("K=v\n"), 0600)
+	_ = fh.WriteFileAtomic(stray, []byte("K=old\n"), 0600)
+
+	report, err := reconciler.New(fh, st, cfg).Reconcile(ctx)
+	if err != nil {
+		t.Fatalf("Reconcile: %v", err)
+	}
+	if exists(fh, stray) || !exists(fh, live) {
+		t.Fatalf("stray env file must go, live one stay (orphans: %v)", report.OrphansRemoved)
+	}
+	if !strings.Contains(strings.Join(report.OrphansRemoved, ","), "blog-r1.env") {
+		t.Fatalf("stray env file not reported: %v", report.OrphansRemoved)
 	}
 }

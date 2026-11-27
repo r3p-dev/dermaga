@@ -411,18 +411,28 @@ func (s *Store) SetDeploymentImageRef(ctx context.Context, id, imageRef string) 
 	return err
 }
 
-// FailInFlightDeployments marks any queued or in-progress deployments as failed after a daemon restart.
-func (s *Store) FailInFlightDeployments(ctx context.Context, reason string) (int64, error) {
+// FailInFlightDeployments marks any queued or in-progress deployments as failed after a daemon
+// restart and returns them, so their leftovers (image) can be cleaned up.
+func (s *Store) FailInFlightDeployments(ctx context.Context, reason string) ([]Deployment, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
-	res, err := s.db.ExecContext(ctx, `
+	rows, err := s.db.QueryContext(ctx, `
 		UPDATE deployments
 		SET status = 'failed', error_message = ?, finished_at = ?
-		WHERE status IN ('queued', 'building', 'starting', 'probing', 'switching')`,
-		reason, now)
+		WHERE status IN ('queued', 'building', 'starting', 'probing', 'switching')
+		RETURNING `+deploymentCols, reason, now)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return res.RowsAffected()
+	defer rows.Close()
+	var deps []Deployment
+	for rows.Next() {
+		dep, err := scanDeployment(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scanning deployment: %w", err)
+		}
+		deps = append(deps, *dep)
+	}
+	return deps, rows.Err()
 }
 
 // SetActiveRelease updates the active release ID for an app.

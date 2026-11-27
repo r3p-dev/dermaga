@@ -10,7 +10,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
+	"dermaga/internal/deploy"
 	"dermaga/internal/host"
 	"dermaga/internal/name"
 	"dermaga/internal/quadlet"
@@ -32,6 +35,9 @@ type Config struct {
 	HookRelayRootfsDir string
 	BinaryPath         string
 	SocketDir          string
+	// DrainGrace is how long a release that lost its traffic before the restart keeps running
+	// before it is stopped (default deploy.DefaultDrainGrace).
+	DrainGrace time.Duration
 }
 
 // Report records the outcome of a reconciliation pass (DEP-10).
@@ -41,19 +47,24 @@ type Report struct {
 	UnitsStarted         []string `json:"units_started"`
 	VerifyRoutersCleaned []string `json:"verify_routers_cleaned"`
 	SwitchesRecovered    []string `json:"switches_recovered"`
+	Draining             []string `json:"draining"` // "<app> r<n>": stopped after DrainGrace
 	ForeignFilesReported []string `json:"foreign_files_reported"`
 	SafeDefaultTriggered bool     `json:"safe_default_triggered,omitempty"`
 }
 
 // Reconciler inspects the persistent store and host filesystem to achieve self-healing.
 type Reconciler struct {
-	host  host.Host
-	store *store.Store
-	cfg   Config
+	host   host.Host
+	store  *store.Store
+	cfg    Config
+	drains sync.WaitGroup
 }
 
 // New initializes a new Reconciler.
 func New(h host.Host, s *store.Store, cfg Config) *Reconciler {
+	if cfg.DrainGrace <= 0 {
+		cfg.DrainGrace = deploy.DefaultDrainGrace
+	}
 	return &Reconciler{
 		host:  h,
 		store: s,
@@ -69,6 +80,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 		UnitsStarted:         []string{},
 		VerifyRoutersCleaned: []string{},
 		SwitchesRecovered:    []string{},
+		Draining:             []string{},
 		ForeignFilesReported: []string{},
 	}
 
@@ -111,6 +123,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 	}
 
 	foundUnitsOnDisk := make(map[string]bool)
+	draining := make(map[string]bool)
 	hasNetworkUnit := false
 
 	for _, entry := range quadletEntries {
@@ -162,9 +175,15 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 					report.SafeDefaultTriggered = true
 					continue
 				}
-				serviceName := name.AppServiceName(appName, relNum)
-				_, _ = r.host.RunCommand(ctx, "systemctl", "--user", "stop", serviceName)
-				if err := r.host.Remove(filePath); err == nil {
+				if r.wasLive(ctx, appName, relNum) {
+					// It served traffic until the switch (or was draining): same grace as a normal
+					// switch before it stops; its unit and env file stay until then.
+					draining[fname] = true
+					report.Draining = append(report.Draining, fmt.Sprintf("%s r%d", appName, relNum))
+					r.drainAndStop(appName, relNum)
+					continue
+				}
+				if err := deploy.RemoveReleaseUnit(ctx, r.host, r.cfg.QuadletDir, r.cfg.EnvDir, appName, relNum); err == nil {
 					report.OrphansRemoved = append(report.OrphansRemoved, fname)
 					daemonReloadNeeded = true
 				}
@@ -172,6 +191,25 @@ func (r *Reconciler) Reconcile(ctx context.Context) (*Report, error) {
 		} else {
 			// Foreign file! Never touch, report per DEP-10
 			report.ForeignFilesReported = append(report.ForeignFilesReported, fname)
+		}
+	}
+
+	// 2a'. Env files (runtime secrets) of releases with neither a live nor a draining unit, e.g.
+	// after a crash between removing a unit and its env file.
+	if r.cfg.EnvDir != "" && (len(activeApps) > 0 || r.cfg.AllowEmptyDBPrune) {
+		envEntries, _ := r.host.ReadDir(r.cfg.EnvDir)
+		for _, entry := range envEntries {
+			fname := entry.Name()
+			if entry.IsDir() || !strings.HasSuffix(fname, ".env") {
+				continue
+			}
+			unit := name.AppPrefix + strings.TrimSuffix(fname, ".env") + ".container"
+			if _, live := activeUnits[unit]; live || draining[unit] {
+				continue
+			}
+			if err := r.host.Remove(filepath.Join(r.cfg.EnvDir, fname)); err == nil {
+				report.OrphansRemoved = append(report.OrphansRemoved, fname)
+			}
 		}
 	}
 
@@ -627,3 +665,32 @@ func parseContainerFilename(fname string) (string, int, bool) {
 	}
 	return appName, relNum, true
 }
+
+// wasLive reports whether a release served traffic before (previous or rolled back): one whose
+// unit is still on disk lost its traffic just before the restart.
+func (r *Reconciler) wasLive(ctx context.Context, appName string, release int) bool {
+	app, err := r.store.GetAppByName(ctx, appName)
+	if err != nil {
+		return false
+	}
+	d, err := r.store.FindDeploymentByRelease(ctx, app.ID, release)
+	return err == nil && (d.Status == "inactive" || d.Status == "rolled_back")
+}
+
+// drainAndStop stops a release after DrainGrace in the background, with the cleanup the engine
+// uses after a normal switch (unit and env file). WaitDrains waits for it.
+func (r *Reconciler) drainAndStop(appName string, release int) {
+	fmt.Printf("Draining %s r%d for %s before stopping it (it lost its traffic before the restart)\n", appName, release, r.cfg.DrainGrace)
+	r.drains.Add(1)
+	go func() {
+		defer r.drains.Done()
+		time.Sleep(r.cfg.DrainGrace)
+		ctx := context.Background()
+		_ = deploy.RemoveReleaseUnit(ctx, r.host, r.cfg.QuadletDir, r.cfg.EnvDir, appName, release)
+		_, _ = r.host.RunCommand(ctx, "systemctl", "--user", "daemon-reload")
+		fmt.Printf("Stopped %s r%d after the drain\n", appName, release)
+	}()
+}
+
+// WaitDrains blocks until every release drained by Reconcile is stopped (one-shot callers).
+func (r *Reconciler) WaitDrains() { r.drains.Wait() }

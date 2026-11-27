@@ -455,3 +455,61 @@ func TestCheckVerifyResponse_DEP1(t *testing.T) {
 		}
 	}
 }
+
+// TestReleaseLog_SavedUpToSwitch_DEP10: the log in the DB already holds every stage line when
+// Traefik is asked to verify, so a release adopted after a crash at that point keeps its log.
+func TestReleaseLog_SavedUpToSwitch_DEP10(t *testing.T) {
+	s, _, eng, key := setupTestEngine(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	_ = eng.Start(ctx)
+	app := newTestApp(t, s, key, "shop", map[string]string{"K": "v1"})
+	deployAndWait(t, s, eng, app.ID, "c1", "active")
+
+	var atVerify []string
+	inner := eng.cfg.VerifyRoute
+	eng.cfg.VerifyRoute = func(ctx context.Context, h, p, tok string) (bool, error) {
+		deps, _ := s.ListDeploymentsByApp(ctx, app.ID)
+		atVerify = append(atVerify, deps[0].BuildLogs) // newest first: the candidate
+		return inner(ctx, h, p, tok)
+	}
+	deployAndWait(t, s, eng, app.ID, "c2", "active")
+	if len(atVerify) < 2 {
+		t.Fatalf("verify called %d times", len(atVerify))
+	}
+	if !strings.Contains(atVerify[0], "==> Starting release r2") {
+		t.Fatalf("log in the DB at the first verify step lacks the start line:\n%q", atVerify[0])
+	}
+	if last := atVerify[len(atVerify)-1]; !strings.Contains(last, "==> Traefik reaches r2 through the verify router") {
+		t.Fatalf("log in the DB at the last verify step lacks the verify line:\n%q", last)
+	}
+}
+
+// TestStart_RemovesImagesOfInterruptedReleases: after a restart the image of a release that was
+// building or starting is removed; a rollback's image belongs to the release it restores and stays.
+func TestStart_RemovesImagesOfInterruptedReleases(t *testing.T) {
+	s, fh, eng, key := setupTestEngine(t)
+	app := newTestApp(t, s, key, "shop", map[string]string{"K": "v1"})
+	ctx := context.Background()
+	for _, d := range []store.Deployment{
+		{ID: "dep_b", AppID: app.ID, ReleaseNumber: 2, Status: "starting", Trigger: "manual", CommitHash: "c2", CommitMessage: "m"},
+		{ID: "dep_r", AppID: app.ID, ReleaseNumber: 3, Status: "switching", Trigger: "rollback", CommitHash: "c1", CommitMessage: "m", ImageRef: "localhost/dermaga/shop:r1"},
+	} {
+		if err := s.CreateDeployment(ctx, &d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	if err := eng.Start(runCtx); err != nil {
+		t.Fatal(err)
+	}
+	if !ran(fh, "podman", "rmi", "--ignore", "localhost/dermaga/shop:r2") {
+		t.Fatalf("image of the interrupted r2 must be removed")
+	}
+	for _, c := range fh.Commands {
+		if c.Name == "podman" && strings.Contains(strings.Join(c.Args, " "), "shop:r1") {
+			t.Fatalf("rollback image must stay: %v", c.Args)
+		}
+	}
+}
