@@ -2,7 +2,7 @@
 {
   "http": {
     "routers": {
-      "app-internal-portal": {
+      "app-internal-portal-host-0": {
         "entryPoints": [
           "websecure"
         ],

@@ -2,7 +2,7 @@
 {
   "http": {
     "routers": {
-      "app-portfolio": {
+      "app-portfolio-host-0": {
         "entryPoints": [
           "websecure"
         ],

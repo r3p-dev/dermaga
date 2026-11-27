@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -331,7 +332,7 @@ func RenderApp(spec AppSpec) ([]byte, error) {
 	// 7. Path Prefix Stripping
 	var stripPrefixes []string
 	for _, d := range spec.Domains {
-		if d.PathPrefix != "" && d.StripPrefix {
+		if d.PathPrefix != "" && d.StripPrefix && !slices.Contains(stripPrefixes, d.PathPrefix) {
 			stripPrefixes = append(stripPrefixes, d.PathPrefix)
 		}
 	}
@@ -344,63 +345,58 @@ func RenderApp(spec AppSpec) ([]byte, error) {
 		appMiddlewareChain = append(appMiddlewareChain, stripMidName)
 	}
 
-	// 8. Construct Routing Rules
-	var activeHosts []string
-	var primaryDomain string
-	var pathPrefix string
-
-	for idx, d := range spec.Domains {
+	// 8. Routers: one per host, so each domain gets its own certificate and a domain with wrong DNS
+	// or a failed order cannot block the others (DEC-39). Pending domains get no router yet (DEC-38).
+	var primaryDomain, pathPrefix string
+	var serving, redirects []DomainSpec
+	for _, d := range spec.Domains {
 		if d.IsPrimary {
 			primaryDomain = d.Domain
 		}
 		if d.PathPrefix != "" && pathPrefix == "" {
 			pathPrefix = d.PathPrefix
 		}
-
-		if d.RedirectTo != "" {
-			// Domain has a 301 redirect configured
-			redirectMidName := fmt.Sprintf("%s-redirect-%d", appIdentifier, idx)
-			middlewares[redirectMidName] = Middleware{
-				RedirectRegex: &RedirectRegex{
-					Regex:       fmt.Sprintf(`^https?://%s/(.*)`, regexp.QuoteMeta(d.Domain)),
-					Replacement: fmt.Sprintf("https://%s/${1}", d.RedirectTo),
-					Permanent:   true,
-				},
-			}
-			redirectRouterName := fmt.Sprintf("%s-redirect-%d", appIdentifier, idx)
-			routers[redirectRouterName] = Router{
-				EntryPoints: []string{"websecure"},
-				Rule:        fmt.Sprintf("Host(`%s`)", d.Domain),
-				Service:     appIdentifier,
-				Middlewares: []string{redirectMidName},
-				TLS:         &RouterTLS{CertResolver: CertResolverName},
-			}
-		} else {
-			activeHosts = append(activeHosts, d.Domain)
+		switch {
+		case d.Pending:
+		case d.RedirectTo != "":
+			redirects = append(redirects, d)
+		default:
+			serving = append(serving, d)
 		}
 	}
+	byDomain := func(list []DomainSpec) {
+		sort.Slice(list, func(i, j int) bool { return list[i].Domain < list[j].Domain })
+	}
+	byDomain(serving)
+	byDomain(redirects)
 
-	sort.Strings(activeHosts)
-
-	// Main Application Router
-	if len(activeHosts) > 0 {
-		var hostRules []string
-		for _, h := range activeHosts {
-			hostRules = append(hostRules, fmt.Sprintf("Host(`%s`)", h))
-		}
-		mainRule := strings.Join(hostRules, " || ")
-		if len(hostRules) > 1 {
-			mainRule = "(" + mainRule + ")"
-		}
+	for i, d := range serving {
+		rule := fmt.Sprintf("Host(`%s`)", d.Domain)
 		if pathPrefix != "" {
-			mainRule = fmt.Sprintf("%s && PathPrefix(`%s`)", mainRule, pathPrefix)
+			rule = fmt.Sprintf("%s && PathPrefix(`%s`)", rule, pathPrefix)
 		}
-
-		routers[appIdentifier] = Router{
+		routers[fmt.Sprintf("%s-host-%d", appIdentifier, i)] = Router{
 			EntryPoints: []string{"websecure"},
-			Rule:        mainRule,
+			Rule:        rule,
 			Service:     appIdentifier,
 			Middlewares: appMiddlewareChain,
+			TLS:         &RouterTLS{CertResolver: CertResolverName},
+		}
+	}
+	for i, d := range redirects {
+		name := fmt.Sprintf("%s-redirect-%d", appIdentifier, i)
+		middlewares[name] = Middleware{
+			RedirectRegex: &RedirectRegex{
+				Regex:       fmt.Sprintf(`^https?://%s/(.*)`, regexp.QuoteMeta(d.Domain)),
+				Replacement: fmt.Sprintf("https://%s/${1}", d.RedirectTo),
+				Permanent:   true,
+			},
+		}
+		routers[name] = Router{
+			EntryPoints: []string{"websecure"},
+			Rule:        fmt.Sprintf("Host(`%s`)", d.Domain),
+			Service:     appIdentifier,
+			Middlewares: []string{name},
 			TLS:         &RouterTLS{CertResolver: CertResolverName},
 		}
 	}

@@ -1,0 +1,75 @@
+# managed by dermaga; app=shop
+{
+  "http": {
+    "routers": {
+      "app-shop-host-0": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "Host(`store.example.com`)",
+        "service": "app-shop",
+        "middlewares": [
+          "app-shop-headers"
+        ],
+        "tls": {
+          "certResolver": "le"
+        }
+      },
+      "app-shop-verify": {
+        "entryPoints": [
+          "verify"
+        ],
+        "rule": "Host(`shop.example.com`) \u0026\u0026 Header(`X-Dermaga-Verify`, `pending-token`)",
+        "service": "app-shop-candidate",
+        "middlewares": [
+          "app-shop-verify-ack",
+          "app-shop-headers"
+        ],
+        "priority": 10000
+      }
+    },
+    "services": {
+      "app-shop": {
+        "loadBalancer": {
+          "servers": [
+            {
+              "url": "http://app-shop-r3:3000"
+            }
+          ]
+        }
+      },
+      "app-shop-candidate": {
+        "loadBalancer": {
+          "servers": [
+            {
+              "url": "http://app-shop-r4:3000"
+            }
+          ]
+        }
+      }
+    },
+    "middlewares": {
+      "app-shop-headers": {
+        "headers": {
+          "stsSeconds": 31536000,
+          "stsIncludeSubdomains": true,
+          "contentTypeNosniff": true,
+          "customFrameOptionsValue": "SAMEORIGIN",
+          "referrerPolicy": "strict-origin-when-cross-origin",
+          "customResponseHeaders": {
+            "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=()",
+            "Server": "",
+            "X-Powered-By": ""
+          }
+        }
+      },
+      "app-shop-verify-ack": {
+        "headers": {
+          "customResponseHeaders": {
+            "X-Dermaga-Verify": "pending-token"
+          }
+        }
+      }
+    }
+  }
+}

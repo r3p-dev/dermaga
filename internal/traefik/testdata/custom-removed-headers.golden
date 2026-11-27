@@ -2,7 +2,7 @@
 {
   "http": {
     "routers": {
-      "app-custom-headers-app": {
+      "app-custom-headers-app-host-0": {
         "entryPoints": [
           "websecure"
         ],

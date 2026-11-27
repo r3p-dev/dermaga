@@ -2,7 +2,7 @@
 {
   "http": {
     "routers": {
-      "app-docs-service": {
+      "app-docs-service-host-0": {
         "entryPoints": [
           "websecure"
         ],

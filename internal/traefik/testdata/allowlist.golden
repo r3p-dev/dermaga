@@ -2,7 +2,7 @@
 {
   "http": {
     "routers": {
-      "app-secure-admin": {
+      "app-secure-admin-host-0": {
         "entryPoints": [
           "websecure"
         ],

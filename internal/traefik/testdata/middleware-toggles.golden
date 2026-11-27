@@ -2,7 +2,7 @@
 {
   "http": {
     "routers": {
-      "app-blog": {
+      "app-blog-host-0": {
         "entryPoints": [
           "websecure"
         ],

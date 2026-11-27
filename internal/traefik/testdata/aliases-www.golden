@@ -2,11 +2,11 @@
 {
   "http": {
     "routers": {
-      "app-landing": {
+      "app-landing-host-0": {
         "entryPoints": [
           "websecure"
         ],
-        "rule": "(Host(`landing.com`) || Host(`landing.net`))",
+        "rule": "Host(`landing.com`)",
         "service": "app-landing",
         "middlewares": [
           "app-landing-headers"
@@ -15,27 +15,40 @@
           "certResolver": "le"
         }
       },
-      "app-landing-redirect-2": {
+      "app-landing-host-1": {
+        "entryPoints": [
+          "websecure"
+        ],
+        "rule": "Host(`landing.net`)",
+        "service": "app-landing",
+        "middlewares": [
+          "app-landing-headers"
+        ],
+        "tls": {
+          "certResolver": "le"
+        }
+      },
+      "app-landing-redirect-0": {
         "entryPoints": [
           "websecure"
         ],
         "rule": "Host(`www.landing.com`)",
         "service": "app-landing",
         "middlewares": [
-          "app-landing-redirect-2"
+          "app-landing-redirect-0"
         ],
         "tls": {
           "certResolver": "le"
         }
       },
-      "app-landing-redirect-3": {
+      "app-landing-redirect-1": {
         "entryPoints": [
           "websecure"
         ],
         "rule": "Host(`www.landing.net`)",
         "service": "app-landing",
         "middlewares": [
-          "app-landing-redirect-3"
+          "app-landing-redirect-1"
         ],
         "tls": {
           "certResolver": "le"
@@ -68,14 +81,14 @@
           }
         }
       },
-      "app-landing-redirect-2": {
+      "app-landing-redirect-0": {
         "redirectRegex": {
           "regex": "^https?://www\\.landing\\.com/(.*)",
           "replacement": "https://landing.com/${1}",
           "permanent": true
         }
       },
-      "app-landing-redirect-3": {
+      "app-landing-redirect-1": {
         "redirectRegex": {
           "regex": "^https?://www\\.landing\\.net/(.*)",
           "replacement": "https://landing.com/${1}",

@@ -38,6 +38,9 @@ type DomainSpec struct {
 	RedirectTo  string
 	PathPrefix  string
 	StripPrefix bool
+	// Pending: DNS not verified yet or the certificate order failed; no router until it clears
+	// (DEC-38). The primary domain still names the verify router, which listens only on :8099.
+	Pending bool
 }
 
 // HeaderSpec defines security and custom response headers for an app.

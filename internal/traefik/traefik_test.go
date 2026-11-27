@@ -4,6 +4,7 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -168,6 +169,23 @@ func TestTraefikGolden(t *testing.T) {
 				VerifyToken:            "test-switch-verify-token-999",
 			},
 		},
+		// DEC-38: pending domains get no router; the pending primary still names the verify router.
+		"pending-domains": {
+			AppName:       "shop",
+			ReleaseNumber: 3,
+			Port:          3000,
+			Domains: []DomainSpec{
+				{Domain: "shop.example.com", IsPrimary: true, Pending: true},
+				{Domain: "store.example.com"},
+				{Domain: "new.example.com", Pending: true},
+				{Domain: "www.shop.example.com", RedirectTo: "shop.example.com", Pending: true},
+			},
+			Switch: &SwitchSpec{
+				CandidateReleaseNumber: 4,
+				CandidatePort:          3000,
+				VerifyToken:            "pending-token",
+			},
+		},
 	}
 
 	for name, spec := range appCases {
@@ -224,5 +242,20 @@ func TestLiveRelease_DEP10(t *testing.T) {
 	}
 	if _, _, ok := LiveRelease([]byte("# managed by dermaga; app=shop\nnot json"), "shop"); ok {
 		t.Fatalf("garbage must not parse")
+	}
+}
+
+// TestStripPrefixOncePerPrefix: the path prefix is app-wide, so several domains carrying it give
+// one stripPrefix entry, not one per domain.
+func TestStripPrefixOncePerPrefix(t *testing.T) {
+	data, err := RenderApp(AppSpec{AppName: "blog", ReleaseNumber: 1, Port: 80, Domains: []DomainSpec{
+		{Domain: "a.example.com", IsPrimary: true, PathPrefix: "/blog", StripPrefix: true},
+		{Domain: "b.example.com", PathPrefix: "/blog", StripPrefix: true},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(string(data), `"/blog"`); n != 1 {
+		t.Fatalf("want the prefix once in stripPrefix, found %d times:\n%s", n, data)
 	}
 }

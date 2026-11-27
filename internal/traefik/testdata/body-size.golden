@@ -2,7 +2,7 @@
 {
   "http": {
     "routers": {
-      "app-uploader": {
+      "app-uploader-host-0": {
         "entryPoints": [
           "websecure"
         ],
