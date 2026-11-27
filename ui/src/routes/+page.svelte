@@ -108,6 +108,20 @@
 			</div>
 		</div>
 	{:else}
+		{#if status?.certificate_warnings?.length}
+			<div
+				role="alert"
+				class="space-y-1 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+			>
+				{#each status.certificate_warnings as w}
+					<p>{w}</p>
+				{/each}
+				<p class="text-xs">
+					Check the domain's DNS and that port 80 is reachable; the app's
+					Domains tab shows each domain's status.
+				</p>
+			</div>
+		{/if}
 		{#if status}
 			<!-- Server overview: only values the API returns -->
 			<section aria-label="Server overview" class="space-y-2.5 pt-2">

@@ -11,6 +11,7 @@
 		updateAppEnv,
 		updateAppSettings
 	} from '#lib/api.js'
+	import DomainsTab from '#lib/components/DomainsTab.svelte'
 	import EnvEditor from '#lib/components/EnvEditor.svelte'
 	import PageHeader from '#lib/components/PageHeader.svelte'
 	import RedeployDialog from '#lib/components/RedeployDialog.svelte'
@@ -26,12 +27,19 @@
 	import { onDestroy, onMount } from 'svelte'
 
 	type TabId =
-		'overview' | 'deployments' | 'logs' | 'environment' | 'settings' | 'danger'
+		| 'overview'
+		| 'deployments'
+		| 'logs'
+		| 'environment'
+		| 'domains'
+		| 'settings'
+		| 'danger'
 	const tabs: SubNavItem[] = [
 		{ id: 'overview', label: 'Overview' },
 		{ id: 'deployments', label: 'Deployments' },
 		{ id: 'logs', label: 'Logs' },
 		{ id: 'environment', label: 'Environment' },
+		{ id: 'domains', label: 'Domains' },
 		{ id: 'settings', label: 'Settings' },
 		{ id: 'danger', label: 'Danger zone', danger: true }
 	]
@@ -773,6 +781,8 @@
 							</div>
 						{/if}
 					</div>
+				{:else if activeTab === 'domains'}
+					<DomainsTab appId={app.id} />
 				{:else if activeTab === 'settings'}
 					<form onsubmit={handleSaveSettings} class="space-y-5">
 						<div

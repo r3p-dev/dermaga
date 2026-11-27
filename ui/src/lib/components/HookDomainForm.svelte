@@ -4,7 +4,7 @@
 		checkHookDomainDNS,
 		saveHookDomain
 	} from '#lib/api.js'
-	import type { HookDomainDNSInfo } from '#lib/types/api.js'
+	import type { CertificateInfo, HookDomainDNSInfo } from '#lib/types/api.js'
 	import { onMount } from 'svelte'
 
 	let {
@@ -18,6 +18,7 @@
 	let domain = $state('')
 	let serverIP = $state('')
 	let dnsInfo = $state<HookDomainDNSInfo | null>(null)
+	let certificate = $state<CertificateInfo | null>(null)
 	let loading = $state(true)
 	let checking = $state(false)
 	let saving = $state(false)
@@ -30,6 +31,7 @@
 			domain = res.hook_domain || ''
 			serverIP = res.server_ip || ''
 			dnsInfo = res.dns_check || null
+			certificate = res.certificate || null
 		} catch (err) {
 			error =
 				err instanceof Error
@@ -74,6 +76,7 @@
 				domain = res.hook_domain
 				serverIP = res.server_ip
 				dnsInfo = res.dns_check || null
+				certificate = res.certificate || null
 				successMsg = `Saved ${res.hook_domain} and updated Traefik routing.`
 				onSaved?.(res.hook_domain)
 			}
@@ -176,6 +179,28 @@
 							: 'none'}
 					</div>
 				</div>
+			{/if}
+
+			{#if certificate}
+				<p class="text-xs text-stone-700 dark:text-stone-300">
+					{#if certificate.status === 'active'}
+						HTTPS certificate active until {new Date(
+							certificate.expires_at ?? ''
+						).toLocaleDateString('en-GB', {
+							day: 'numeric',
+							month: 'short',
+							year: 'numeric'
+						})}.
+						{#if certificate.expiring_soon}
+							<span class="text-amber-800 dark:text-amber-300">
+								It is close to expiry and has not been renewed.
+							</span>
+						{/if}
+					{:else}
+						No HTTPS certificate yet. Traefik requests it once DNS points to
+						this server.
+					{/if}
+				</p>
 			{/if}
 
 			<div class="flex flex-col gap-2.5 sm:flex-row">

@@ -40,6 +40,8 @@ import type {
 	DeleteAppRequest,
 	DeploymentInfo,
 	MemoryCheckResponse,
+	DomainsResponse,
+	UpdateDomainsRequest,
 	RollbackPreview
 } from './types/api.js'
 
@@ -655,4 +657,54 @@ export function streamRuntimeLogs(
 		handlers.onDone?.()
 	})
 	return () => es.close()
+}
+
+export async function getDomains(appId: string): Promise<DomainsResponse> {
+	const res = await fetch(`/api/apps/${encodeURIComponent(appId)}/domains`)
+	const data = await res.json().catch(() => ({}))
+	if (!res.ok) {
+		throw new Error(data.error || `Failed to load domains: ${res.statusText}`)
+	}
+	return data
+}
+
+export type DomainsResult =
+	| { ok: true; data: DomainsResponse }
+	| { ok: false; error: string; fields?: Record<string, string> }
+
+// Saving domains applies the route through Traefik before it is stored (APP-10); a refusal keeps
+// the previous domains and returns Traefik's reason or the fields that need a change.
+export async function updateDomains(
+	appId: string,
+	req: UpdateDomainsRequest
+): Promise<DomainsResult> {
+	const res = await fetch(`/api/apps/${encodeURIComponent(appId)}/domains`, {
+		method: 'PUT',
+		headers: { 'Content-Type': 'application/json' },
+		body: JSON.stringify(req)
+	})
+	const data = await res.json().catch(() => ({}))
+	if (!res.ok) {
+		return {
+			ok: false,
+			error: data.error || `Failed to save domains: ${res.statusText}`,
+			fields: data.fields
+		}
+	}
+	return { ok: true, data }
+}
+
+export async function checkDomainsAgain(appId: string): Promise<DomainsResult> {
+	const res = await fetch(
+		`/api/apps/${encodeURIComponent(appId)}/domains/check`,
+		{ method: 'POST' }
+	)
+	const data = await res.json().catch(() => ({}))
+	if (!res.ok) {
+		return {
+			ok: false,
+			error: data.error || `Failed to check again: ${res.statusText}`
+		}
+	}
+	return { ok: true, data }
 }

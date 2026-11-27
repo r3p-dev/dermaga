@@ -6,12 +6,14 @@
 		domain = $bindable(''),
 		fieldError = null,
 		inputId = 'app-domain-input',
-		label = 'Primary Domain'
+		label = 'Primary Domain',
+		pendingNote = 'You can still deploy now while DNS propagates.'
 	}: {
 		domain: string
 		fieldError?: string | null
 		inputId?: string
 		label?: string
+		pendingNote?: string
 	} = $props()
 
 	let checking = $state(false)
@@ -93,7 +95,7 @@
 					pointing to
 					<code class="font-mono font-semibold">
 						{dnsResult.expected_ip || 'your server IP'}
-					</code>. You can still deploy now while DNS propagates.
+					</code>. {pendingNote}
 				</p>
 			{/if}
 		</div>
