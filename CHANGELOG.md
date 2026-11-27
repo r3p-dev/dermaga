@@ -6,6 +6,24 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- **Domains tab (`APP-2`)**: primary domain, aliases and redirects to the primary (301, with a one-click `www` ↔ apex redirect), an app-wide path prefix, make primary and remove; every change is the whole set, validated by the server (no wildcards, `xn--` form for non-ASCII names, not the hook domain, not another app's domain).
+- **Safe route changes (`APP-10`)**: a domain change goes live only after Traefik answers through a verify router on the live release; otherwise the previous route file is written back, nothing is saved and Traefik's own error is shown. Refused with "starting or switching traffic" while a release of the app is starting or switching.
+- **DNS gate (`TLS-2`)**: a domain is routed, and so gets its certificate requested, only once its DNS points to this server; waiting domains are checked every 5 minutes and on "Check again", with the record to create shown in the panel (DEC-38).
+- **Certificate status (`TLS-3`, `TLS-5`)**: active with expiry, waiting for DNS, requesting, or failed with the certificate authority's reason in plain words, its own detail and the next automatic try; the hook domain shows its certificate in Settings → Hook Domain (DEC-41).
+- A domain without a certificate whose order failed leaves the route until "Check again" or the hourly retry, because Traefik retries every failed order on any config change (DEC-38).
+- **Expiry warnings (`TLS-4`)**: certificates with less than 1/6 of their lifetime left (Traefik renews at 1/3) show on the dashboard and in `dermaga doctor`.
+- Migration `0006`: DNS and certificate state per domain; domains that exist before the upgrade stay routed.
+- `DERMAGA_DNS_RESOLVER` (test only, set by a drop-in on `dermaga-vm`): DNS checks ask that server; the daemon logs it at start and `doctor` warns while it is set (DEC-44).
+
+### Changed
+- Every host of an app now has its own Traefik router and certificate (DEC-39); one domain with wrong DNS or a failed order no longer blocks the certificate of the others. The first sync after an upgrade rewrites existing route files this way, proven through Traefik.
+- The switch, the startup reconciler and panel edits build the route with one function (`deploy.RouteSpecFor`, DEC-40).
+- The new-app wizard checks the domain's syntax on the server.
+
+### Fixed
+- A path prefix shared by several domains appeared once per domain in the strip-prefix middleware.
+
 ## [0.7.0] - 2026-11-27
 
 ### Added

@@ -74,7 +74,20 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
     and the blocklist; `acme.json` = `le.Certificates[].domain.main` + base64 PEM; Traefik never retries a
     failed order by itself but retries **every** failed domain on **any** dynamic config change; bcrypt
     basic auth costs 3.8 (cost 5) to 19 ms (cost 10) of Traefik CPU per request on the 2-vCPU VM.
-  - Next: owner reviews the spike results and DEC-38–DEC-44 (open questions in the report), then M8a Go code.
+  - Owner answers after the spikes (2026-11-27): DEC-38–DEC-44 accepted; DEC-38 extended (a domain without a
+    certificate whose order failed leaves the route; back on "Check again" or an hourly retry, the panel shows the
+    next try; domains with a certificate stay, a failed renewal is a TLS-4 warning); bcrypt cost 5 with basic-auth
+    passwords of at least 12 characters (server-side, hint, Generate button); Max request body capped at 32 MB with
+    the reason in the panel.
+  - M8a local part done (2026-11-27): migration `0006`, one router per host, `deploy.RouteSpecFor` for switch,
+    reconciler and edits, `ApplyRoute` with proof, the domain watcher (DNS gate, failed orders, hourly retry,
+    outdated routes), certificate status from `acme.json` and Traefik's log, TLS-4 on the dashboard and in
+    `doctor`, `DERMAGA_DNS_RESOLVER`, Domains tab (mockup A), hook domain certificate; unit, golden, fake-host, API
+    and browser tests, 12 negative controls; `make check` green. Evidence: `docs/evidence/M8/EVIDENCE.md`.
+  - Next: owner commits and tags `v0.8.0-rc.1`; then the VM run: `setup_pebble.sh` with real validation and two
+    `pebble-challtestsrv` instances plus the `DERMAGA_DNS_RESOLVER` drop-in (scripts written in that session),
+    correct DNS / wrong DNS / failed challenge, HTTP → HTTPS and 301, upgrade from 0.7.0 with `oha`, denied
+    logins last.
 
 **M7** (0.7.0): Zero downtime: push-to-deploy, redeploy, rollback (`completed`, confirmed by owner 2026-11-27).
 

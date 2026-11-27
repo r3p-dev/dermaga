@@ -167,13 +167,13 @@ One line per directory that exists in the repository; start here, then read the 
 | Path | Purpose |
 | --- | --- |
 | `cmd/dermaga/` | CLI entry point: daemon, recovery commands, `panel`, `doctor`, helpers (`main.go`) |
-| `internal/access/` | Laptop command `LAP-1` (marked `Host dermaga` block) from the stored address, port and key fingerprint |
+| `internal/access/` | Laptop command `LAP-1` (marked `Host dermaga` block) from the stored address, port and key fingerprint; the DNS check (`TLS-2`) and its test-only resolver override (DEC-44) |
 | `internal/auth/` | Argon2id passwords, sessions with idle and absolute limits, login rate limiting, TOTP |
 | `internal/builder/` | Bare Git mirror caching, `git archive` export, `podman build` with limits (`DEP-7`), chunk-safe `SEC-9` masking, bounded `LogHub` (`DEP-8`, `LOG-2`) |
 | `internal/config/` | XDG paths, default port and socket paths (`paths.go`) |
 | `internal/crypto/` | AES-256-GCM at rest bound to column names, master key, HMAC verification |
-| `internal/deploy/` | Single global build queue (`DEP-5`), releases started next to the live one with a verified Traefik switch, drain and retention (`DEP-1`, `DEP-2`, `DEP-4`), rollback, memory check, health probing (`APP-5`), cancel/failure cleanup (`DEP-6`), app removal (`APP-9`) |
-| `internal/doctor/` | Host health checks (`DOC-1`) and how to fix each failure |
+| `internal/deploy/` | Single global build queue (`DEP-5`), releases started next to the live one with a verified Traefik switch, drain and retention (`DEP-1`, `DEP-2`, `DEP-4`), rollback, memory check, health probing (`APP-5`), cancel/failure cleanup (`DEP-6`), app removal (`APP-9`); one route builder for switch, reconciler and panel edits, route changes proven through Traefik before they are saved (`APP-10`), the domain watcher: DNS gate, failed certificate orders, outdated routes (`route.go`, DEC-38–DEC-41) |
+| `internal/doctor/` | Host health checks (`DOC-1`) and how to fix each failure, including certificates close to expiry (`TLS-4`) and the test-only DNS resolver (DEC-44) |
 | `internal/github/` | GitHub App JWT (`crypto/rsa`), manifest flow, installations, repositories, repo-scoped tokens (`GHA-1`–`GHA-6`, `DEC-09`) |
 | `internal/host/` | The host boundary: commands with argument slices and timeouts, atomic writes; faked in tests |
 | `internal/name/` | Project name and every derived prefix (`dg-`, `app-`) |
@@ -181,7 +181,7 @@ One line per directory that exists in the repository; start here, then read the 
 | `internal/reconciler/` | Startup reconciliation (`DEP-10`) including recovery of an interrupted switch, Traefik and `hook-relay` install/start |
 | `internal/server/` | Loopback HTTP server, Unix socket server, embedded UI (`dist/` is built by `make ui`) |
 | `internal/store/` | SQLite persistence and migrations |
-| `internal/traefik/` | Traefik static and dynamic file generator, pinned image (`types.go`) |
+| `internal/traefik/` | Traefik static and dynamic file generator (one router per host, DEC-39), pinned image (`types.go`), `acme.json` reader and Traefik log parser for certificate status (`certs.go`, `TLS-3`, `TLS-4`) |
 | `internal/webhook/` | `hooks.sock` GitHub webhook intake (`GHA-7`, `GHA-8`, `SEC-11`–`SEC-14`); a verified push becomes a `webhook.Push` for `deploy.Engine.HandlePush` (`APP-8`) |
 | `install/` | `install.sh` (runs as root), its fake-host tests (`install_test.go`), fixtures in `testdata/` |
 | `ui/` | SvelteKit panel: `src/routes/` pages, `src/lib/` API client and generated types, `e2e/` Playwright tests, `scripts/` UI tooling |
@@ -399,6 +399,14 @@ ALTER TABLE apps ADD COLUMN watch_paths TEXT NOT NULL DEFAULT '';             --
 --   runtime_config TEXT NOT NULL DEFAULT '',   -- JSON without secrets: port, health, command, limits
 --   source_deployment_id TEXT,                 -- the release a rollback restores
 --   env_snapshot_encrypted keeps pre-0005 data until the daemon converts it to an env version
+
+-- Migration 0006_m8_domains.sql (APP-2, TLS-2, TLS-3, DEC-38)
+
+ALTER TABLE domains ADD COLUMN dns_verified_at TEXT;    -- DNS check passed once; NULL = not routed yet
+ALTER TABLE domains ADD COLUMN cert_requested_at TEXT;  -- last time the domain entered the route
+ALTER TABLE domains ADD COLUMN cert_failed_at TEXT;     -- order failed without a certificate: out of the route
+ALTER TABLE domains ADD COLUMN cert_error TEXT NOT NULL DEFAULT '';  -- Traefik's error text for it
+-- domains that exist at the upgrade are marked verified and requested, so they stay routed
 ```
 
 ---
@@ -496,6 +504,63 @@ sequenceDiagram
 The startup reconciler runs before the deploy engine. Its first step, `recoverSwitches`, treats the route file as the truth because it is what Traefik serves: if it sends traffic to a release the DB has in `switching`, the switch had reached the main router and the DB adopts that release (the old one becomes previous, or rolled back for a rollback); if it sends traffic elsewhere, the DB's live release wins and the route is rewritten; a leftover verify router is removed by rewriting the file in place (never deleting it, so Traefik always has a route). The existing steps then handle every unit that is not live with the cleanup the engine uses (`deploy.RemoveReleaseUnit`: stop, remove the unit and the release's env file): a release that was live before (`inactive`/`rolled_back`, i.e. it lost its traffic just before the restart, by a recovered switch or during the normal drain) keeps running for the same 10 s drain and is then stopped in the background (`dermaga reconcile` waits for it); any other release (a candidate) goes at once. Env files of releases with neither a live nor a draining unit are removed (a crash between removing a unit and its env file). The live unit is started; units are re-rendered with the same `deploy.ContainerSpecFor` the engine uses. The engine's `Start` then marks remaining in-flight deployments failed, removes the image their own build tagged (never `image_ref`, which for a rollback is the restored release's image) and converts pre-0005 release snapshots into env versions. A release's log is saved to the DB at every stage line (`==>`) and every 2 s in between, so a release adopted after a crash keeps its log up to the crash point.
 
 Then `deploy.Engine.Start` fails the releases the restart interrupted, removes the images they built, and clears the build scratch folder (`~/.cache/dermaga/builds`: source exports and Quadlet dry-run folders, which a build removes itself when it ends but a crash skips; nothing builds before the worker starts). Removing an app (`APP-9`) also removes its mirror and its folder under the build scratch.
+
+### 5.7 Domains, DNS gate and certificates (`APP-2`, `APP-10`, `TLS-1`–`TLS-5`)
+
+An app has one primary domain, aliases (served like the primary) and redirects (301 to the primary, `www` ↔ apex is
+one of them), plus an optional app-wide path prefix. `deploy.RouteSpecFor` (`internal/deploy/route.go`) turns the
+domains into the route for the switch (§5.4), the startup reconciler (§5.6) and panel edits alike (DEC-40); the
+renderer gives every host its own router and so its own certificate (DEC-39). HTTP → HTTPS is the `web` entrypoint's
+redirect in the static config (unchanged).
+
+- **DNS gate** (`TLS-2`, DEC-38): a domain enters the route only once dermaga's DNS check passed (`dns_verified_at`):
+  A = the server's address and no AAAA elsewhere (`access.DNSCheckResult.PointsHere`). New domains are checked when
+  they are saved; waiting ones every 5 minutes by the watcher and at once by "Check again". Once verified, a
+  domain never leaves the route because of DNS.
+- **Failed orders**: Traefik retries every failed order on any dynamic config change (M8 spike), so a routed domain
+  **without** a certificate whose newest ACME error in Traefik's log (`journalctl --user -u traefik.service`) is newer
+  than `cert_requested_at` gets `cert_failed_at` + `cert_error` and leaves the route; it comes back after an hour or
+  on "Check again". A domain with a certificate stays; a failed renewal is a TLS-4 warning.
+- **Status** (`TLS-3`, DEC-41, `deploy.DomainStatusOf`): active (in `acme.json`, with expiry), waiting for DNS,
+  requesting, or failed (plain reason and fix from `traefik.PlainReason`, the CA's own words, the next retry).
+  The hook domain shows active or "no certificate yet" (`TLS-5`; it has no DNS gate). Certificates with less than
+  1/6 of their lifetime left are listed on the dashboard (`certificate_warnings`) and by `doctor` (`TLS-4`).
+- **Watcher**: `deploy.Engine.RunDomainWatcher` runs `SyncApp` for every app at start and every minute: DNS gate,
+  failed orders, hourly retries, then the route is re-applied with proof when the file differs from what the domains
+  say (this is also how a route written by 0.7.0 is brought up to date after an upgrade). Apps whose release is
+  starting or switching are skipped that round; the switch renders the current domains itself.
+
+Route edits (`APP-10`, DEC-40): `PUT /api/apps/{id}/domains` validates the whole set (hostname syntax, no wildcard,
+`xn--` form for non-ASCII, at most 20, one primary, not the hook domain, not another app's), then
+`Engine.ApplyRoute` takes the app lock (409 while a release starts or switches), writes the new route plus a verify
+router to the **live** release, waits for its token through `:8099` (DEC-33), writes it without the verify router and
+only then commits the rows (`store.ReplaceDomains`). If Traefik never answers with the token, the previous file is
+written back, the rows stay and the newest Traefik configuration error is returned (502). An app without a live
+release just saves the rows. `GET /api/apps/{id}/domains` returns roles, DNS (with the record to create while not
+verified) and certificate status; `POST /api/apps/{id}/domains/check` is "Check again".
+
+```mermaid
+sequenceDiagram
+    participant UI as Domains tab
+    participant API as PUT /api/apps/{id}/domains
+    participant E as deploy.Engine.ApplyRoute
+    participant F as app-<name>.yml
+    participant T as Traefik :8099
+    participant DB as SQLite
+    UI->>API: whole domain set + path prefix
+    API->>API: validate, DNS check for new domains
+    API->>E: new rows, commit = ReplaceDomains
+    E->>F: new routers + verify router (token) → live release
+    E->>T: GET primary with X-Dermaga-Verify, until the token comes back
+    alt token seen
+        E->>F: new routers only
+        E->>DB: commit rows
+        API-->>UI: 200, statuses
+    else timeout
+        E->>F: previous bytes
+        API-->>UI: 502 with Traefik's error; rows unchanged
+    end
+```
 
 ---
 
@@ -615,10 +680,10 @@ Every architectural decision and workaround adopted during spikes and design is 
 | **DEC-35** | 2026-11-26 | Memory check, rollback refusal, retention, crash recovery | Owner decisions: refuse a deploy (before the build and before the start) when `MemAvailable` < the release's memory limit; refuse a rollback while the app builds. Retention keeps the live release plus the newest 5 earlier live releases (`DEP-4`), never removing an image a retained release shares. After a crash the route file decides which release is live (§5.6). The reconciler's re-rendered unit now matches the deployed one (it used `localhost/<name>:rN`, an image that never existed, and dropped limits and the env file). | Starting anyway when memory is short (risks OOM of the live release); cancelling the build for a rollback (the build would replace the rollback when it finishes). | `internal/deploy/switch.go`, `internal/reconciler/switch.go` |
 
 
-| **DEC-38** | 2026-11-27 | **Proposed (owner approval pending).** DNS gate before a certificate is requested (`TLS-2`) | A domain can be saved with wrong DNS (warning), but it enters the route only after dermaga's DNS check has passed once (`domains.dns_verified_at`); from then on it is never taken out again, so a short DNS outage cannot drop a live site. Pending domains are rechecked every 5 minutes and by "Check again"; a pass re-applies the route safely (DEC-40). Existing domains are marked verified by migration `0006`, so the upgrade keeps them routed. Avoids Let's Encrypt's failed-validation limit for domains whose DNS is not ready. | Routing every domain at once (rejected: Traefik requests the certificate immediately and fails while DNS propagates); "Request certificate anyway" for proxied DNS (owner: not now, possible later option). | `docs/PLAN.md` M8 |
-| **DEC-39** | 2026-11-27 | **Proposed (owner approval pending).** One router per host, one certificate per domain | A router with `Host(a) \|\| Host(b)` makes Traefik request one certificate for all its names, so one domain with wrong DNS fails the certificate of every domain of the app. One router per serving host and per redirect host gives each domain its own certificate and its own status (`TLS-3`). | One router with all hosts (current M2 rendering; rejected for the reason above). | `docs/PLAN.md` M8 |
-| **DEC-40** | 2026-11-27 | **Proposed (owner approval pending).** One route builder; route edits applied with proof (`APP-10`) | `deploy.RouteSpecFor` builds the route (domains, headers, middleware) for the switch, the reconciler and panel edits; the two M7 copies passed no headers or middleware, so a deploy would have reset them. A route edit renders from the request, writes the file with a verify router (`app-<name>-verify`) to the live service, waits for the token through `:8099` (DEC-33), then writes the final file; only then is the database committed. On failure the previous file bytes are written back, the database is unchanged and Traefik's log line is shown. A crash in between leaves the old database, which the reconciler renders (§5.6). Edits while a release of the app is starting or switching get 409 (owner decision). | Committing the database first and restoring it on failure (rejected: a crash leaves the new row with the old route). | `docs/PLAN.md` M8 |
-| **DEC-41** | 2026-11-27 | **Proposed (owner approval pending).** Certificate status from `acme.json` and Traefik's log (`TLS-3`, `TLS-4`, `TLS-5`) | Active = the domain has a certificate in `acme.json` (expiry from its NotAfter); waiting for DNS = the DNS gate has not passed; requesting = DNS passed, no certificate and no error yet; failed = the newest ACME error for the domain in Traefik's JSON log (`journalctl --user -u traefik`), mapped from its ACME error type to plain words with what to do. TLS-4 warns when less than 1/6 of the certificate's lifetime is left (Traefik renews at 1/3), so the rule stays right for shorter Let's Encrypt lifetimes. | Traefik's API (rejected: DEC-01, no API surface); a fixed day threshold (rejected: wrong for 45-day certificates). | `docs/PLAN.md` M8 |
-| **DEC-42** | 2026-11-27 | **Proposed (owner approval pending).** Header model: server defaults or the app's own list (`APP-3`, `APP-11`) | An app either uses the server defaults or has its own list (prefilled from the defaults; empty = all off), so a change to the defaults reaches only apps without overrides (M8 criterion). Every header is rendered as `customResponseHeaders` (empty value = removed from responses), which gives the same responses as today's `stsSeconds`/`contentTypeNosniff` while allowing each default to be removed or replaced. Defaults live in `settings` and are rendered in `00-global.yml`, referenced by apps as `…@file`; a defaults change is one verified write. Memory, CPU and pids defaults only prefill new apps. | Per-header diffs against the defaults (rejected: defaults would still change overridden apps); copying defaults into every app file (rejected: N writes and N verifications per change). | `docs/PLAN.md` M8 |
-| **DEC-43** | 2026-11-27 | **Proposed (owner approval pending).** Middleware set and defaults (`APP-4`) | Exposed: compression (default on), rate limit (server default 100/s burst 200 as in `vps-setup.sh`, custom, or off), basic auth (bcrypt, hashed by the server), IP allowlist (IP/CIDR per line), max request body (Buffering). Chain order: headers → allowlist → rate limit → basic auth → buffering → compress → strip prefix. Defaults apply to existing apps on upgrade, but rate limit and allowlist only if the spike proves Traefik sees the real client IP through socket activation (owner condition). | forwardAuth, circuit breaker, retry, CORS middleware (not in the PRD; CORS via custom headers). | `docs/PLAN.md` M8 |
-| **DEC-44** | 2026-11-27 | **Proposed (owner approval pending).** Test DNS and ACME on `dermaga-vm` | `DERMAGA_DNS_RESOLVER` (an address) makes the DNS check use that resolver; it is set only by a test drop-in of the user unit, and `doctor` warns while it is set. Pebble validates for real, using `pebble-challtestsrv` as its DNS, so correct DNS, wrong DNS and a failed challenge can each be shown; Pebble reaches the host's sockets through `host.containers.internal` (169.254.1.2, pasta `--map-guest-addr`); the VM's own IP is local inside the rootless netns and refuses (spike 2026-11-27), so `pebble-challtestsrv` A records for working test domains point there. The blocklist fallback was not needed; it is kept only as a third failure kind (rejected order). Tests never use Let's Encrypt. | sslip.io (rejected: a real outside service); `PEBBLE_VA_ALWAYS_VALID` alone (rejected: a failure cannot be shown). | `docs/PLAN.md` M8 |
+| **DEC-38** | 2026-11-27 | **Accepted by the owner 2026-11-27.** DNS gate before a certificate is requested (`TLS-2`) | A domain can be saved with wrong DNS (warning), but it enters the route only after dermaga's DNS check has passed once (`domains.dns_verified_at`); from then on it is never taken out again, so a short DNS outage cannot drop a live site. Pending domains are rechecked every 5 minutes and by "Check again"; a pass re-applies the route safely (DEC-40). Existing domains are marked verified by migration `0006`, so the upgrade keeps them routed. Traefik retries every failed order on any dynamic config change (spike 2026-11-27), so a domain **without a certificate** whose order failed also leaves the route; it comes back on "Check again" or automatically at most once per hour (well under Let's Encrypt's 5 failed validations per hour), and the panel shows the next retry. Domains with an active certificate stay; a failed renewal is a TLS-4 warning (owner decision). Avoids Let's Encrypt's failed-validation limit for domains whose DNS is not ready. | Routing every domain at once (rejected: Traefik requests the certificate immediately and fails while DNS propagates); "Request certificate anyway" for proxied DNS (owner: not now, possible later option). | `docs/PLAN.md` M8 |
+| **DEC-39** | 2026-11-27 | **Accepted by the owner 2026-11-27.** One router per host, one certificate per domain | A router with `Host(a) \|\| Host(b)` makes Traefik request one certificate for all its names, so one domain with wrong DNS fails the certificate of every domain of the app. One router per serving host and per redirect host gives each domain its own certificate and its own status (`TLS-3`). | One router with all hosts (current M2 rendering; rejected for the reason above). | `docs/PLAN.md` M8 |
+| **DEC-40** | 2026-11-27 | **Accepted by the owner 2026-11-27.** One route builder; route edits applied with proof (`APP-10`) | `deploy.RouteSpecFor` builds the route (domains, headers, middleware) for the switch, the reconciler and panel edits; the two M7 copies passed no headers or middleware, so a deploy would have reset them. A route edit renders from the request, writes the file with a verify router (`app-<name>-verify`) to the live service, waits for the token through `:8099` (DEC-33), then writes the final file; only then is the database committed. On failure the previous file bytes are written back, the database is unchanged and Traefik's log line is shown. A crash in between leaves the old database, which the reconciler renders (§5.6). Edits while a release of the app is starting or switching get 409 (owner decision). | Committing the database first and restoring it on failure (rejected: a crash leaves the new row with the old route). | `docs/PLAN.md` M8 |
+| **DEC-41** | 2026-11-27 | **Accepted by the owner 2026-11-27.** Certificate status from `acme.json` and Traefik's log (`TLS-3`, `TLS-4`, `TLS-5`) | Active = the domain has a certificate in `acme.json` (expiry from its NotAfter); waiting for DNS = the DNS gate has not passed; requesting = DNS passed, no certificate and no error yet; failed = the newest ACME error for the domain in Traefik's JSON log (`journalctl --user -u traefik`), mapped from its ACME error type to plain words with what to do. TLS-4 warns when less than 1/6 of the certificate's lifetime is left (Traefik renews at 1/3), so the rule stays right for shorter Let's Encrypt lifetimes. | Traefik's API (rejected: DEC-01, no API surface); a fixed day threshold (rejected: wrong for 45-day certificates). | `docs/PLAN.md` M8 |
+| **DEC-42** | 2026-11-27 | **Accepted by the owner 2026-11-27.** Header model: server defaults or the app's own list (`APP-3`, `APP-11`) | An app either uses the server defaults or has its own list (prefilled from the defaults; empty = all off), so a change to the defaults reaches only apps without overrides (M8 criterion). Every header is rendered as `customResponseHeaders` (empty value = removed from responses), which gives the same responses as today's `stsSeconds`/`contentTypeNosniff` while allowing each default to be removed or replaced. Defaults live in `settings` and are rendered in `00-global.yml`, referenced by apps as `…@file`; a defaults change is one verified write. Memory, CPU and pids defaults only prefill new apps. | Per-header diffs against the defaults (rejected: defaults would still change overridden apps); copying defaults into every app file (rejected: N writes and N verifications per change). | `docs/PLAN.md` M8 |
+| **DEC-43** | 2026-11-27 | **Accepted by the owner 2026-11-27.** Middleware set and defaults (`APP-4`) | Exposed: compression (default on), rate limit (server default 100/s burst 200 as in `vps-setup.sh`, custom, or off), basic auth (bcrypt cost 5, hashed by the server; passwords of at least 12 characters, with a Generate button; owner decision after measuring 19 ms of Traefik CPU per request at cost 10 and 3.8 ms at cost 5 on the 2-vCPU VM), IP allowlist (IP/CIDR per line), max request body (Buffering, at most 32 MB: bodies over 1 MiB spill to Traefik's tmpfs, which counts against its 256 MiB memory limit; owner decision). Chain order: headers → allowlist → rate limit → basic auth → buffering → compress → strip prefix. Defaults apply to existing apps on upgrade, but rate limit and allowlist only if the spike proves Traefik sees the real client IP through socket activation (owner condition). | forwardAuth, circuit breaker, retry, CORS middleware (not in the PRD; CORS via custom headers). | `docs/PLAN.md` M8 |
+| **DEC-44** | 2026-11-27 | **Accepted by the owner 2026-11-27.** Test DNS and ACME on `dermaga-vm` | `DERMAGA_DNS_RESOLVER` (an address) makes the DNS check use that resolver; it is set only by a test drop-in of the user unit, and `doctor` warns while it is set. Pebble validates for real, using `pebble-challtestsrv` as its DNS, so correct DNS, wrong DNS and a failed challenge can each be shown; Pebble reaches the host's sockets through `host.containers.internal` (169.254.1.2, pasta `--map-guest-addr`); the VM's own IP is local inside the rootless netns and refuses (spike 2026-11-27), so `pebble-challtestsrv` A records for working test domains point there. The blocklist fallback was not needed; it is kept only as a third failure kind (rejected order). Tests never use Let's Encrypt. | sslip.io (rejected: a real outside service); `PEBBLE_VA_ALWAYS_VALID` alone (rejected: a failure cannot be shown). | `docs/PLAN.md` M8 |
