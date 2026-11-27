@@ -14,12 +14,17 @@ All notable changes to this project are documented here. The format follows
 - Migration `0005`: env versions, `rolled_back`, per-release runtime config, watch paths; pre-0005 release snapshots are converted at start.
 - Panel: Deployments tab with Redeploy (latest or a specific commit) and Roll back, rollback confirmation listing env variable names that differ, live status of the started release.
 - App containers run with `RunInit=true` (DEC-34).
+- **Push-to-deploy (`APP-8`, `DEP-5`, `UI-7`)**: a verified GitHub push to an app's branch queues a release of that commit; pushes to other branches and tags, deleted branches, pushes with deploy on push off, pushes whose changed files match no watch path, and repeats of a commit that is already queued, building or live are ignored with the plain reason in Activity (DEC-37). A push that lists no files deploys anyway.
+- **Watch paths**: one pattern per line in Settings → Deploy on push (a trailing `/` means the whole folder, `*` stays within one folder), validated by the server.
+- **Live deployment status**: the app page refreshes every 3 s while the tab is visible, so push-started deployments appear without a reload.
+- Settings → GitHub shows the last ignored push and why; the rollback dialog says that the next push will deploy over the rollback while deploy on push is on.
 - `test/vm/smoke_ui.mjs`: UI smoke test of a freshly installed VM through an SSH tunnel (first-run setup, Dashboard at 1280/1920/375 in both themes, values compared with the API, no requirement codes).
 - `test/vm/m7_invariants.py` (the `seed.sh` M7 check) with a local negative control, `test/vm/m7_invariants_control.sh`.
 - `test/vm/seed.sh` for M7: starts Pebble when missing and checks one live release per app, no leftover verify router and containers only for live releases.
 - `oha` 1.17.0 and `gosmee` 0.32.1 pinned with checksums for the M7 VM journey (`docs/DEPENDENCIES.md`).
 
 ### Changed
+- `ui/e2e/panel.test.ts` checks URLs by path, so the browser suite also runs on another port.
 - The Dashboard's Version card truncates long development versions on one line; the full value is in the tooltip.
 - `test/vm/m3_check.sh access` schedules the fail2ban unban on the VM before the denied logins (`systemd-run` timers at +60 s and +120 s), waits for a new login, and proves the ban from `/var/log/fail2ban.log`. The earlier ControlMaster unban could not work: the nftables ban also rejects packets on the already-open connection.
 

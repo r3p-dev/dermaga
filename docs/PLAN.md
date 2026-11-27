@@ -49,7 +49,11 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
 **M7** (0.7.0): Zero downtime: push-to-deploy, redeploy, rollback (`in progress`).
 
 - **Requirement IDs:** DEP-1, DEP-2, DEP-4, DEP-10, APP-8, REL-6.
-- **Handoff** (2026-11-27, M7a done on `v0.7.0-rc.3`; waiting for the owner's go on M7b):
+- **Handoff** (2026-11-27, M7b local part done; waiting for the owner's commits and the `v0.7.0-rc.4` tag before the VM run):
+  - Done (M7b local): `webhook.Push` → `deploy.Engine.HandlePush` (branch, deleted ref, auto-deploy, watch paths, same-commit dedupe, DEP-5 queue), ignored pushes in Activity and under "Last ignored push" in Settings → GitHub, `auto_deploy`/`watch_paths` on `PATCH /api/apps/{id}` with server-side validation, Deploy on push section in the Settings form (owner choice A), 3 s polling while the tab is visible, rollback dialog push notice; unit, webhook, API and browser tests with negative controls; `make check` green. No migration. DEC-37.
+  - Owner answers (2026-11-27): DEP-5 as is; ignored pushes in Activity + Settings → GitHub; auto-deploy stays on after rollback, with the dialog notice; dedupe same SHA queued/running/live; polling 3 s; Settings layout A; gosmee `--exec` + `curl --resolve --cacert`, stop and ask if the body is not byte-exact; release as `v0.7.0-rc.4`.
+  - Next: owner commits and tags `v0.7.0-rc.4`; then the VM run: a new smee channel and the App's webhook URL (owner steps, exact commands given then), gosmee `--exec` forwarder verified byte-exact, real pushes via `r3p-dev/dermaga-test-app` (main → live with `oha` 50 req/s, failing health with `oha`, another branch ignored, unmatched watch path ignored), 0 leftovers after removing the app, denied logins last.
+- **Previous handoff** (2026-11-27, M7a done on `v0.7.0-rc.3`):
   - Done: M7a code; rc.1 finding (`sniStrict`) fixed in rc.2; rc.2 VM run; rc.3 fixes for the rc.2 findings
     (recovery cleanup shared with the engine, stray env files and interrupted images swept, log saved during
     the release, 10 s drain on recovery, DEC-36 short values not masked). rc.3 VM run: binary upgrade, `kill -9`
@@ -260,7 +264,7 @@ Checkpoints (owner-approved 2026-11-26), each reaching the panel:
   release, restart recovery, memory pre-check, image retention (live + 5), immutable encrypted env versions
   (migration `0005` with a `0004` upgrade test), Deployments tab with Redeploy and Rollback; VM: `oha` during
   redeploy, failing health, rollback, daemon killed mid-switch.
-- **M7b (~14 h, `v0.7.0-rc.2`)**: push-to-deploy (`APP-8`, `DEP-5`, `UI-7`, `REL-6`): branch and watch-path
+- **M7b (~14 h, `v0.7.0-rc.4`; rc.2 and rc.3 went to M7a fixes)**: push-to-deploy (`APP-8`, `DEP-5`, `UI-7`, `REL-6`): branch and watch-path
   filters, dedupe by delivery and commit, auto-deploy toggle, live deployment status; VM: real pushes via
   smee/gosmee with `oha`, 0 leftovers after removal.
 

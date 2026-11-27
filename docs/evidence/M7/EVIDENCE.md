@@ -401,3 +401,157 @@ Excerpt (`tmp/evidence/M7/logs/rc3-vm-kill-midswitch.log`):
 drain duration: 10.3 s
 RESULT rc3-kill-midswitch: oha non-2xx=0 connection-errors=0 /version non-200=0 release=active
 ```
+
+## M7b: push-to-deploy (local part, for `v0.7.0-rc.4`)
+
+Commit under review: `c14b84a` + the working tree of the suggested commits below (dirty: not yet committed by the
+owner). Requirement IDs: `APP-8`, `DEP-5`, `UI-7` (`REL-6` and the real-push journey are the VM part, after the tag).
+Owner answers on the plan (2026-11-27) and the GitHub documentation behind them are recorded in DEC-37.
+
+### Acceptance criteria
+
+| Criterion | Status | Log (`tmp/evidence/M7/logs/`) | Excerpt |
+|---|---|---|---|
+| APP-8: a push to the app's branch queues a `push` release of that commit; Activity says so | PASS | `m7b-go-push-tests.log` | `TestHandlePush_DeploysMatchingPush_APP8` |
+| APP-8: other branch, tag, deleted branch, deploy on push off, no matching watch path → no deployment, plain reason in Activity | PASS | `m7b-go-push-tests.log` | `TestHandlePush_IgnoredPushes_APP8` (5 subtests) |
+| APP-8 negative control: a matching file, or no file list at all, deploys | PASS | `m7b-go-push-tests.log` | `TestHandlePush_MatchingPathOrNoFileListDeploys_APP8` |
+| Same commit queued/building/live is ignored (replay under a new delivery ID); another commit, and the old one once not live, deploy | PASS | `m7b-go-push-tests.log` | `TestHandlePush_SameCommitDeduped_APP8` |
+| DEP-5 by pushes: A building, B queued, C supersedes B, A goes live, then C | PASS | `m7b-go-push-tests.log` | `TestHandlePush_QueueKeepsNewest_DEP5` |
+| Unknown repository leaves no deployment and no Activity entry | PASS | `m7b-go-push-tests.log` | `TestHandlePush_UnknownRepoRecordsNothing` |
+| Webhook: signed push → one `Push` with ref, commit, message and files; bad signature → 401 and no call; same delivery ID (GitHub Redeliver) → 202, no second call | PASS | `m7b-go-push-tests.log` | `TestWebhookPush_OnPush_APP8` |
+| Webhook: no commits, a commit without file lists, 2048 commits → files unknown (deploy anyway); 2047 commits are read (negative control) | PASS | `m7b-go-push-tests.log` | `TestWebhookPush_UnknownFilesAreNil_APP8` |
+| Watch paths: matching rules and server-side validation (leading `/`, `..`, `//`, bad pattern, > 256 chars, > 50 lines) | PASS | `m7b-go-push-tests.log` | `TestWatchPathsMatch_APP8`, `TestNormalizeWatchPaths_APP8` |
+| API: `PATCH /api/apps/{id}` 401 without a session; bad watch paths 400 with plain wording (no requirement code) and nothing saved; saved trimmed; omitted fields unchanged | PASS | `m7b-go-push-tests.log` | `TestAppsAPI_AutoDeployAndWatchPaths_APP8` |
+| API: Settings → GitHub status carries the newest ignored push | PASS | `m7b-go-push-tests.log` | `TestGitHubStatus_LastIgnoredPush_APP8` |
+| UI-7: a push-started deployment appears without reload; settings edits survive a poll; Deploy on push form, error and save; rollback dialog notice on, absent when off (negative control); last ignored push in Settings → GitHub; axe AA at 1280/375, light and dark | PASS | `m7b-test-browser.log` | `13 passed (34.9s)` (whole suite) |
+| UI-7 negative control: with polling disabled the live-status test fails | PASS | `m7b-browser-polling-negative.log` | below |
+| `make check` | PASS | `m7b-make-check.log` | below |
+| Real pushes through the GitHub App via gosmee, `oha` 50 req/s during a push-triggered redeploy and a failing one, 0 leftovers after removal | NOT RUN | — | VM part after the owner tags `v0.7.0-rc.4` (owner steps for the smee channel and the App's webhook URL are given then) |
+
+`m7b-go-push-tests.log` (`go test -race -count=1 -v -run 'Push|WatchPaths|APP8' ./internal/deploy/ ./internal/webhook/ ./internal/server/`):
+
+```text
+--- PASS: TestWatchPathsMatch_APP8 (0.00s)
+--- PASS: TestNormalizeWatchPaths_APP8 (0.00s)
+--- PASS: TestHandlePush_DeploysMatchingPush_APP8 (0.26s)
+--- PASS: TestHandlePush_IgnoredPushes_APP8 (1.26s)
+--- PASS: TestHandlePush_MatchingPathOrNoFileListDeploys_APP8 (0.49s)
+--- PASS: TestHandlePush_UnknownRepoRecordsNothing (0.23s)
+--- PASS: TestHandlePush_SameCommitDeduped_APP8 (0.28s)
+--- PASS: TestHandlePush_QueueKeepsNewest_DEP5 (0.33s)
+ok  	dermaga/internal/deploy	3.883s
+--- PASS: TestWebhookPush_OnPush_APP8 (0.15s)
+--- PASS: TestWebhookPush_UnknownFilesAreNil_APP8 (0.38s)
+ok  	dermaga/internal/webhook	1.546s
+--- PASS: TestAppsAPI_AutoDeployAndWatchPaths_APP8 (0.30s)
+--- PASS: TestGitHubStatus_LastIgnoredPush_APP8 (0.28s)
+ok  	dermaga/internal/server	1.647s
+```
+
+`m7b-browser-polling-negative.log`:
+
+```text
+    Error: expect(locator).toHaveCount(expected) failed
+    Expected: 3
+    Received: 2
+  1 failed
+NEGATIVE CONTROL OK: live status test fails without polling
+```
+
+`m7b-make-check.log`:
+
+```text
+ok   ui
+ok   lint
+ok   test
+ok   vulncheck
+ok   build-all
+ok   policy
+ok   shellcheck
+=== make check passed successfully ===
+```
+
+Browser tests ran with a temporary Playwright config on port 7071 (not committed): the owner's `ssh dermaga`
+session forwards `127.0.0.1:7070` to the VM panel, and the test daemon could not bind it. `ui/e2e/panel.test.ts`
+compared full URLs with port 7070; it now checks paths, so the suite runs on either port. `make test-browser`
+(port 7070) is unchanged.
+
+### Screens
+
+Captured by `ui/e2e/push.test.ts` with `EVIDENCE_MILESTONE=M7`; every file opened. Full-page captures show the
+sticky sidebar where it was when the page scrolled (seen in earlier milestones too).
+
+| Local file (`tmp/evidence/M7/screenshots/`) | Page | Width | Theme | Shows |
+|---|---|---|---|---|
+| `m7b-settings-push-1280-light.png` | App → Settings | 1280 | light | Deploy on push card under Build: checked toggle naming `main`, watch paths `web/` + `Containerfile`, help text with example; the red server error for `/etc/` above the form |
+| `m7b-settings-push-1280-dark.png` | App → Settings | 1280 | dark | Same in dark, readable help text and error |
+| `m7b-settings-push-375-light.png` | App → Settings | 375 | light | Cards stacked full width, help text wraps, Save settings below |
+| `m7b-settings-push-375-dark.png` | App → Settings | 375 | dark | Same in dark |
+| `m7b-rollback-push-notice-1280-light.png` | Rollback dialog | 1280 | light | "Roll back shop to r1?" with the fifth bullet "The next push to main will deploy over this rollback." |
+| `m7b-rollback-push-notice-1280-dark.png` | Rollback dialog | 1280 | dark | Same in dark |
+| `m7b-rollback-push-notice-375-light.png` | Rollback dialog | 375 | light | Dialog fits the width; behind it the push-started r3 row ("building", "push", `3333abc — change 3`) |
+| `m7b-rollback-push-notice-375-dark.png` | Rollback dialog | 375 | dark | Same in dark |
+| `m7b-github-ignored-push-1280-light.png` | Settings → GitHub | 1280 | light | App card: Last delivery, then "Last ignored push: Push to dev (abc1234) ignored for shop: the app deploys from main." with time |
+| `m7b-github-ignored-push-1280-dark.png` | Settings → GitHub | 1280 | dark | Same in dark |
+| `m7b-github-ignored-push-375-light.png` | Settings → GitHub | 375 | light | Reason wraps inside the card |
+| `m7b-github-ignored-push-375-dark.png` | Settings → GitHub | 375 | dark | Same in dark |
+
+### How it works
+
+```mermaid
+sequenceDiagram
+  participant GH as GitHub
+  participant T as Traefik + hook-relay
+  participant W as webhook (hooks.sock)
+  participant E as deploy.Engine
+  participant S as SQLite
+  participant UI as App page
+  GH->>T: POST /hooks/github-app (push)
+  T->>W: bytes, unparsed
+  W->>W: HMAC check, then parse; rate limit
+  W->>S: record delivery ID (duplicate → 202, stop)
+  W->>E: HandlePush(Push{ref, sha, message, deleted, files})
+  E->>S: apps of the repository
+  loop every app
+    E->>E: branch? deleted? auto-deploy? watch paths? same commit current?
+    alt ignored
+      E->>S: Activity push_ignored (plain reason)
+    else deploy
+      E->>S: Enqueue(push, sha) (DEP-5 supersede) + Activity push_deploy
+    end
+  end
+  W-->>GH: 202 (same for unknown repositories)
+  UI->>S: GET /api/apps/{id} every 3 s while visible
+```
+
+The queued release then follows the M7a flow (build, start next to the live release, verified switch, drain).
+
+### Code tour
+
+1. `internal/webhook/webhook.go`: `Push`, `maxPushCommits`, and the `push` case building the file list.
+2. `internal/deploy/push.go`: `HandlePush`, the per-app decision in one `switch`, Activity wording.
+3. `internal/deploy/watchpaths.go`: `NormalizeWatchPaths` (validation) and `watchPathsMatch`.
+4. `internal/store/releases.go` `HasCurrentDeploymentOfCommit`; `internal/store/apps.go` `ListAppsByRepo`; `internal/store/store.go` `AuditFilter.Event`.
+5. `cmd/dermaga/main.go`: `OnPush: depEng.HandlePush`.
+6. `internal/server/apps.go` (`handleUpdateAppSettings`, `handleGetApp`), `internal/server/github.go` (last ignored push), `internal/server/types.go`.
+7. `ui/src/routes/apps/[id]/+page.svelte`: `pollApp`, the Deploy on push card; `ui/src/lib/components/RollbackDialog.svelte` (`pushBranch`); `ui/src/lib/components/GitHubSettings.svelte`.
+8. Tests: `internal/deploy/push_test.go`, `internal/webhook/webhook_test.go`, `internal/server/apps_test.go`, `ui/e2e/push.test.ts`.
+
+### Decisions & deviations
+
+- DEC-37 (owner decisions and the GitHub documentation quotes).
+- No migration: `apps.auto_deploy` and `apps.watch_paths` already existed; the ignored-push reason lives in Activity.
+- `HandlePush` holds a mutex across the duplicate check and the enqueue, so two deliveries of one commit cannot both pass.
+- An Activity entry is written for every ignored push of a repository an app uses, also for other branches; this
+  can be frequent on busy repositories (owner asked for every ignored push with its reason).
+
+### Suggested commits (`tmp/evidence/M7/logs/m7b-check-commits.log`)
+
+```text
+PASS static checks: 5 commits, 24 paths
+PASS commit 1: feat(deploy): deploy GitHub pushes to the app's branch (log: .check-logs/commits/commit1.log)
+PASS commit 2: feat(api): save deploy on push settings and the last ignored push (log: .check-logs/commits/commit2.log)
+PASS commit 3: feat(ui): add deploy on push settings and live deployment status (log: .check-logs/commits/commit3.log)
+PASS commit 4: test(ui): check panel journey URLs by path (log: .check-logs/commits/commit4.log)
+PASS commit 5: docs: record the M7b push-to-deploy design and local evidence (log: .check-logs/commits/commit5.log)
+```
