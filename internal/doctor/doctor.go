@@ -9,9 +9,11 @@ import (
 	"strings"
 	"time"
 
+	"dermaga/internal/access"
 	"dermaga/internal/auth"
 	"dermaga/internal/host"
 	"dermaga/internal/store"
+	"dermaga/internal/traefik"
 )
 
 // MinPodmanVersion is the oldest Podman dermaga supports: Debian 13's, the only one tested.
@@ -55,9 +57,10 @@ func (c Checker) Run(ctx context.Context) []Result {
 		c.networkOnline(ctx),
 		c.clockSynced(ctx),
 		c.diskUsage(ctx),
+		c.dnsResolverOverride(ctx),
 	}
 	if c.Store != nil {
-		results = append(results, c.totpStatus(ctx), c.githubStatus(ctx))
+		results = append(results, c.totpStatus(ctx), c.githubStatus(ctx), c.certificates(ctx))
 	}
 	return results
 }
@@ -219,6 +222,39 @@ func (c Checker) githubStatus(ctx context.Context) Result {
 		Status: OK,
 		Detail: fmt.Sprintf("connected (%s, app_id=%s)", slug, appID),
 	}
+}
+
+// dnsResolverOverride warns while the test-only DNS resolver is set for the daemon (DEC-44).
+func (c Checker) dnsResolverOverride(ctx context.Context) Result {
+	env := c.run(ctx, "systemctl", "--user", "show", "dermaga.service", "-p", "Environment", "--value")
+	for _, kv := range strings.Fields(env) {
+		if v, ok := strings.CutPrefix(kv, access.ResolverEnv+"="); ok {
+			return Result{Name: "dns resolver", Status: Warn, Detail: "DNS checks use the test resolver " + v,
+				Fix: "This is for testing only. Remove the drop-in that sets " + access.ResolverEnv + " from dermaga.service, then run: systemctl --user daemon-reload && systemctl --user restart dermaga"}
+		}
+	}
+	return Result{Name: "dns resolver", Status: OK, Detail: "DNS checks use the system resolver"}
+}
+
+// certificates warns about certificates close to expiry that did not renew (TLS-4, DEC-41).
+func (c Checker) certificates(ctx context.Context) Result {
+	hosts, err := c.Store.ListDomainHosts(ctx)
+	if err != nil {
+		return Result{Name: "certificates", Status: Warn, Detail: "could not list the domains: " + err.Error()}
+	}
+	if hook, _ := c.Store.GetSetting(ctx, auth.SettingHookDomain); hook != "" {
+		hosts = append(hosts, hook)
+	}
+	acme, _ := c.Host.ReadFile(c.Home + "/.local/share/dermaga/traefik/acme.json")
+	certs, err := traefik.ReadCertificates(acme)
+	if err != nil {
+		return Result{Name: "certificates", Status: Warn, Detail: err.Error(), Fix: "Traefik writes acme.json itself; check that Traefik runs: systemctl --user status traefik.service"}
+	}
+	if expiring := traefik.ExpiringCertificates(certs, hosts, time.Now()); len(expiring) > 0 {
+		return Result{Name: "certificates", Status: Warn, Detail: strings.Join(expiring, " "),
+			Fix: "Traefik renews certificates by itself; when it cannot, check the domain's DNS and that port 80 is reachable. Run: journalctl --user -u traefik.service | grep -i acme"}
+	}
+	return Result{Name: "certificates", Status: OK, Detail: fmt.Sprintf("no certificate close to expiry (%d domains)", len(hosts))}
 }
 
 // olderThan compares dotted numeric versions such as 5.4.2.

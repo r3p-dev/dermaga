@@ -2,9 +2,18 @@ package doctor
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/pem"
+	"fmt"
+	"math/big"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"dermaga/internal/auth"
 	"dermaga/internal/host"
@@ -132,4 +141,55 @@ func TestDoctorTOTPWarning_DOC2(t *testing.T) {
 	if got := statusByName(c.Run(ctx))["totp"]; got != OK {
 		t.Fatalf("enabled totp status = %s, want ok", got)
 	}
+}
+
+// DEC-44: the test-only DNS resolver is reported while dermaga.service sets it.
+func TestDoctorDNSResolverOverride_DEC44(t *testing.T) {
+	results := Checker{Host: healthyHost(map[string]string{
+		"systemctl --user show dermaga.service -p Environment --value": "HOME=/home/server DERMAGA_DNS_RESOLVER=127.0.0.1:8053\n",
+	}), User: "server", Home: "/home/server"}.Run(context.Background())
+	if got := statusByName(results)["dns resolver"]; got != Warn {
+		t.Fatalf("dns resolver = %s, want warn", got)
+	}
+	if got := statusByName(Checker{Host: healthyHost(nil), User: "server", Home: "/home/server"}.Run(context.Background()))["dns resolver"]; got != OK {
+		t.Fatalf("negative control: without the variable it is ok, got %s", got)
+	}
+}
+
+// TLS-4: a certificate with less than 1/6 of its lifetime left is a warning; a fresh one is not.
+func TestDoctorCertificates_TLS4(t *testing.T) {
+	ctx := context.Background()
+	st, err := store.Open(filepath.Join(t.TempDir(), "doc.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.Close()
+	_ = st.CreateApp(ctx, &store.App{ID: "app_1", Name: "web", RepoOwner: "o", RepoName: "r", Port: 80, HealthType: "none"})
+	_ = st.CreateDomain(ctx, &store.Domain{ID: "dom_1", AppID: "app_1", Domain: "web.example.com", IsPrimary: true})
+	now := time.Now()
+	for _, tc := range []struct {
+		notBefore time.Time
+		want      Status
+	}{
+		{now.Add(-85 * 24 * time.Hour), Warn}, // 5 of 90 days left
+		{now.Add(-10 * 24 * time.Hour), OK},
+	} {
+		fh := healthyHost(nil)
+		_ = fh.WriteFileAtomic("/home/server/.local/share/dermaga/traefik/acme.json", acmeWithCert(t, "web.example.com", tc.notBefore, tc.notBefore.Add(90*24*time.Hour)), 0600)
+		if got := statusByName(Checker{Host: fh, Store: st, User: "server", Home: "/home/server"}.Run(ctx))["certificates"]; got != tc.want {
+			t.Errorf("certificate issued %s: status %s, want %s", tc.notBefore.Format(time.DateOnly), got, tc.want)
+		}
+	}
+}
+
+func acmeWithCert(t *testing.T, host string, notBefore, notAfter time.Time) []byte {
+	t.Helper()
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1), DNSNames: []string{host}, NotBefore: notBefore, NotAfter: notAfter}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert := base64.StdEncoding.EncodeToString(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+	return []byte(fmt.Sprintf(`{"le":{"Certificates":[{"domain":{"main":%q},"certificate":%q}]}}`, host, cert))
 }
