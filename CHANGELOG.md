@@ -23,6 +23,13 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 - A path prefix shared by several domains appeared once per domain in the strip-prefix middleware.
+- A domain change Traefik did not load left the panel without any answer: the proof waited the 30 s switch timeout while the panel's HTTP write timeout is 15 s, so the reply was cut ("Empty reply from server"; the route and the domains were correctly kept). Route changes now wait at most 10 s and the panel shows Traefik's error (found on `dermaga-vm` with v0.8.0-rc.1).
+- Certificates with less than a day left read "expires in 0 days"; they now say "expires in less than a day" or "expired on", with the time.
+- The dashboard's `certificate_warnings` was `null` instead of an empty list when nothing is close to expiry.
+- A certificate order refused with `accountDoesNotExist` showed the generic reason; it now says that the certificate authority no longer knows the server's ACME account and how to make Traefik register again.
+
+### Changed (test environment)
+- `test/vm/setup_pebble.sh` runs Pebble with real validation plus two `pebble-challtestsrv` instances and the `DERMAGA_DNS_RESOLVER` drop-in, resets Traefik's ACME account when Pebble is recreated, restarts nothing when nothing changed, and has `down`; `test/vm/test_dns.sh` sets a test domain's DNS case (good, wrong, failing). `test/vm/seed.sh` brings the M8 demo state (domains in each certificate state) and `m7_invariants.py` checks that route files match the domains (negative controls added).
 
 ## [0.7.0] - 2026-11-27
 

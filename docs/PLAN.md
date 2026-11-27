@@ -84,10 +84,24 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
     outdated routes), certificate status from `acme.json` and Traefik's log, TLS-4 on the dashboard and in
     `doctor`, `DERMAGA_DNS_RESOLVER`, Domains tab (mockup A), hook domain certificate; unit, golden, fake-host, API
     and browser tests, 12 negative controls; `make check` green. Evidence: `docs/evidence/M8/EVIDENCE.md`.
-  - Next: owner commits and tags `v0.8.0-rc.1`; then the VM run: `setup_pebble.sh` with real validation and two
-    `pebble-challtestsrv` instances plus the `DERMAGA_DNS_RESOLVER` drop-in (scripts written in that session),
-    correct DNS / wrong DNS / failed challenge, HTTP → HTTPS and 301, upgrade from 0.7.0 with `oha`, denied
-    logins last.
+  - rc.1 VM run done (2026-11-27, owner approved the real-validation Pebble, both `pebble-challtestsrv`
+    instances and the `DERMAGA_DNS_RESOLVER` drop-in): new `test/vm/setup_pebble.sh` and `test/vm/test_dns.sh`
+    (idempotent), upgrade 0.7.0-rc.5 → 0.8.0-rc.1 under `oha` (6001 × 200, 0 errors, testapp's route rewritten
+    per host with proof, no Traefik restart), certificate cases (good → active; wrong → waiting with the record;
+    fail → real challenge timeout, out of the route, next try shown; "Check again" brings failed domains back),
+    HTTP → HTTPS 301 and www → primary 301, doctor resolver warning and a real 5-minute certificate warned by doctor
+    and the dashboard, M8 demo state via `seed.sh` (invariants extended with negative controls), denied logins
+    last with the VM-side unban, new `ssh dermaga` after 89 s.
+  - Findings: (1) a route change Traefik does not load left the panel without an answer (proof 30 s > HTTP write
+    timeout 15 s; route and rows were kept correctly) → fixed locally with a 10 s `RouteTimeout`, needs
+    `v0.8.0-rc.2`; (2) a new Pebble forgets Traefik's ACME account (`accountDoesNotExist`) → `setup_pebble.sh`
+    resets it; the reason now has plain words; (3) small: "expires in 0 days" wording, `certificate_warnings` null;
+    (4) **a Traefik restart cut 51 of ~2000 requests** (46 `tls handshake eof`, 5 `UnknownIssuer`), contrary to
+    SETUP §6.3's earlier claim (corrected) → open item for M10 (updates that change Traefik's static config or
+    image).
+  - Next: owner reviews and commits; tags `v0.8.0-rc.2` (M8a fixes; M8b moves to `rc.3`); then a short VM run:
+    the Traefik-rejected route edit shows the error in the panel, `setup_pebble.sh down` + `seed.sh` (teardown and
+    rebuild), denied logins last; then M8b.
 
 **M7** (0.7.0): Zero downtime: push-to-deploy, redeploy, rollback (`completed`, confirmed by owner 2026-11-27).
 

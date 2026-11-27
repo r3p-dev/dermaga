@@ -235,7 +235,9 @@ ssh dermaga-vm "chmod +x ~/.local/bin/dermaga.new && mv ~/.local/bin/dermaga.new
 ```
 The atomic `rename(2)` syscall updates the directory entry without mutating the open inode that the running daemon holds, and `systemctl --user restart` cleanly re-execs the new binary.
 
-No installer re-run is needed for a new release: on start, the reconciler rewrites any dermaga-owned Traefik file that differs from what the new binary renders and restarts Traefik once (for example 0.7.0-rc.2 adds the internal `verify` entrypoint to `traefik.yml`). The listening sockets stay with systemd, so requests wait in the backlog during that restart instead of failing. The next start finds the files current and does not restart Traefik.
+No installer re-run is needed for a new release: on start, the reconciler rewrites any dermaga-owned Traefik file that differs from what the new binary renders and restarts Traefik once (for example 0.7.0-rc.2 adds the internal `verify` entrypoint to `traefik.yml`). The next start finds the files current and does not restart Traefik. App route files written by an older version are rewritten by the domain watcher right after start, proven through Traefik, without a restart (0.7.0-rc.5 → 0.8.0-rc.1: 6001 requests at 50 req/s, 0 errors).
+
+A Traefik restart is **not** free of errors: the listening sockets stay with systemd, but in the M8a run a restart under `oha` at 50 req/s cut 46 TLS handshakes (`tls handshake eof`) and served 5 requests with Traefik's default certificate before `acme.json` was loaded (`UnknownIssuer`), out of ~2000 (`tmp/evidence/M8/logs/vm-check-again.log`). Releases that change Traefik's static config or image therefore cost a short burst of failed requests until this is solved (open item for M10, `docs/PLAN.md`).
 
 Traefik's log shows one warning per start, `Unable to use socket activation for entrypoint` with `"entryPointName":"verify"`. This is expected: `verify` (`:8099`, DEC-33) is internal and has no systemd socket, so Traefik binds it inside its container itself. Ports 80 and 443 stay socket-activated.
 
@@ -313,7 +315,36 @@ From M3 on, the VM is set up by the installer itself, from the `fresh` snapshot.
    `dermaga-vm-init` (port 22, user `debian`) is refused.
 4. Checks from the workstation: `test/vm/port_scan.sh` (during the install), `test/vm/m3_check.sh
    access|state|running|control 192.168.122.217 4222 ~/.ssh/dermaga-vm`.
-5. **Local ACME (Pebble) for TLS tests:** run `./test/vm/setup_pebble.sh dermaga-vm` to start Pebble on network `web`, export `pebble-minica.pem` and `pebble-api-ca.pem`, point Traefik's `le` resolver to `https://pebble:14000/dir`, and restart `traefik.service` It also removes dermaga's marker from `traefik.yml`, so a daemon restart cannot re-render the file back to Let's Encrypt; until the VM is reverted, the reconciler reports `traefik.yml` as foreign and no longer starts Traefik itself (systemd keeps it running).
+5. **Local ACME (Pebble) and test DNS for TLS tests** (DEC-44; tests never use Let's Encrypt):
+   ```bash
+   test/vm/setup_pebble.sh dermaga-vm up                     # idempotent; also run by test/vm/seed.sh
+   test/vm/test_dns.sh dermaga-vm good app.dermaga.test      # or: wrong | failing | forget DOMAIN, replay, list
+   ```
+   `setup_pebble.sh up` runs three containers on network `web`: `pebble` (Pebble 2.10.3 with **real**
+   HTTP-01 validation on port 80), `pebble-dns` (`pebble-challtestsrv`, Pebble's DNS) and `dermaga-test-dns`
+   (`pebble-challtestsrv` published on the VM's loopback only, `127.0.0.1:8053`). The user drop-in
+   `~/.config/systemd/user/dermaga.service.d/90-test-dns.conf` sets `DERMAGA_DNS_RESOLVER=127.0.0.1:8053`, so
+   dermaga's DNS check asks `dermaga-test-dns`; the daemon logs it at start and `dermaga doctor` warns while it is
+   set. `test_dns.sh` sets each test domain's case in both DNS servers: `good` (dermaga sees the VM's address,
+   Pebble sees `169.254.1.2` = `host.containers.internal`, the only address that reaches the host's sockets from
+   the rootless netns), `wrong` (no record: waiting for DNS) or `failing` (the DNS gate passes, Pebble gets the
+   unreachable `192.0.2.1`: the challenge times out). The list is kept in `~/.config/dermaga-test/dns-records`
+   and replayed by `setup_pebble.sh`.
+   - Traefik's `le` resolver points to `https://pebble:14000/dir`; `traefik.yml` loses dermaga's marker, so a
+     daemon restart cannot render it back to Let's Encrypt (the reconciler reports it as foreign until the VM is
+     reverted).
+   - A new Pebble container forgets every ACME account and Traefik does not register again by itself (orders
+     fail with `accountDoesNotExist`). For each new Pebble container the script drops Traefik's `le` account
+     from `acme.json` (certificates stay) and restarts Traefik once; that restart cut 51 of ~2000 requests in
+     the M8a run (see §6.3). Containers are recreated only when missing or their config changed.
+   - Each Pebble run has its own root; the roots are collected in
+     `~/.local/share/dermaga/traefik/pebble-minica.pem` for `curl --cacert` (copy it with `scp`).
+   - `PEBBLE_VALIDITY_SECONDS=300 test/vm/setup_pebble.sh` issues 5-minute certificates to see the TLS-4
+     warning; run it again without the variable afterwards.
+
+   **Teardown:** `test/vm/setup_pebble.sh dermaga-vm down` removes the three containers, the drop-in and the
+   record list and restarts dermaga; `traefik.yml` stays pointed at Pebble until the VM is reverted to a
+   snapshot (owner's approval).
 
 **Recovery if SSH is lost:** the old login stays open until the new one is proven (`LOCK-1`–`LOCK-5`).
 If the VM still cannot be reached, use the libvirt console (`virsh --connect qemu:///system console
