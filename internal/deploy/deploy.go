@@ -123,6 +123,11 @@ func (e *Engine) Start(ctx context.Context) error {
 			_, _ = e.host.RunCommand(ctx, "podman", "rmi", "--ignore", builder.ImageRef(app.Name, d.ReleaseNumber))
 		}
 	}
+	// BuildsDir holds only scratch (source exports, Quadlet dry-runs) that a build removes when it
+	// ends; a crash skips that, and nothing builds before the worker starts.
+	if e.cfg.BuildsDir != "" {
+		_ = e.host.RemoveAll(e.cfg.BuildsDir)
+	}
 	go e.workerLoop(ctx)
 	return nil
 }
@@ -759,6 +764,7 @@ func (e *Engine) RemoveApp(ctx context.Context, appID string) error {
 	}
 	_ = e.host.Remove(filepath.Join(e.cfg.TraefikDynamicDir, name.AppDynamicFilename(app.Name)))
 	_ = e.host.RemoveAll(filepath.Join(e.cfg.MirrorsDir, app.Name+".git"))
+	_ = e.host.RemoveAll(filepath.Join(e.cfg.BuildsDir, app.Name)) // the builder leaves the empty per-app folder
 
 	return e.store.DeleteApp(ctx, appID)
 }

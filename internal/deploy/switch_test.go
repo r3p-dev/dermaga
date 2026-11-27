@@ -513,3 +513,46 @@ func TestStart_RemovesImagesOfInterruptedReleases(t *testing.T) {
 		}
 	}
 }
+
+// APP-9 / DEP-10: a crash skips the build's own cleanup; Start clears the scratch folder, and removing
+// an app leaves nothing of it under BuildsDir or MirrorsDir.
+func TestStartAndRemoveApp_LeaveNoBuildScratch_APP9(t *testing.T) {
+	s, fh, eng, key := setupTestEngine(t)
+	app := newTestApp(t, s, key, "shop", nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	other := filepath.Join(eng.cfg.MirrorsDir, "other.git", "HEAD")
+	for _, p := range []string{
+		filepath.Join(eng.cfg.BuildsDir, ".dryrun-dep_x", "app-shop-r7.container"),
+		filepath.Join(eng.cfg.BuildsDir, "shop", "dep_y", "Containerfile"),
+		other,
+	} {
+		fh.Files[p] = []byte("x")
+	}
+	if err := eng.Start(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for p := range fh.Files {
+		if strings.HasPrefix(p, eng.cfg.BuildsDir+"/") {
+			t.Fatalf("scratch left after Start: %s", p)
+		}
+	}
+	if _, ok := fh.Files[other]; !ok {
+		t.Fatal("Start must not touch the mirrors") // negative control
+	}
+
+	_ = deployAndWait(t, s, eng, app.ID, "c1", "active")
+	fh.Files[filepath.Join(eng.cfg.BuildsDir, "shop", ".keep")] = []byte("x") // the folder the builder leaves
+	fh.Files[filepath.Join(eng.cfg.MirrorsDir, "shop.git", "HEAD")] = []byte("x")
+	if err := eng.RemoveApp(ctx, app.ID); err != nil {
+		t.Fatal(err)
+	}
+	for p := range fh.Files {
+		if strings.Contains(p, "shop") {
+			t.Fatalf("left after RemoveApp: %s", p)
+		}
+	}
+	if _, ok := fh.Files[other]; !ok {
+		t.Fatal("RemoveApp must not touch another app's mirror") // negative control
+	}
+}
