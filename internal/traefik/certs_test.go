@@ -87,6 +87,15 @@ func TestExpiringSoon_TLS4(t *testing.T) {
 	if len(got) != 1 || !strings.Contains(got[0], "old.example.com expires in 5 days") {
 		t.Fatalf("expiring list: %v", got)
 	}
+	// Short certificates (seen on dermaga-vm with 300 s Pebble certificates): no "0 days".
+	short := map[string]Certificate{
+		"soon.example.com": {NotBefore: now.Add(-260 * time.Second), NotAfter: now.Add(40 * time.Second)},
+		"gone.example.com": {NotBefore: now.Add(-400 * time.Second), NotAfter: now.Add(-100 * time.Second)},
+	}
+	got = ExpiringCertificates(short, []string{"soon.example.com", "gone.example.com"}, now)
+	if len(got) != 2 || !strings.Contains(got[0], "expires in less than a day") || !strings.Contains(got[1], "expired on") {
+		t.Fatalf("short certificates: %v", got)
+	}
 }
 
 // TestACMEErrors_TLS3 reads Traefik's real error lines captured in the M8 spike (the time field was
@@ -113,6 +122,10 @@ func TestACMEErrors_TLS3(t *testing.T) {
 	}
 	if b := errs["blocked.spike.test"]; b.Time.Format(time.RFC3339) != "2026-11-27T04:31:45Z" {
 		t.Errorf("newest blocked error must win, got %v", b.Time)
+	}
+	// Seen on dermaga-vm after Pebble was recreated (v0.8.0-rc.1 run).
+	if reason, fix := PlainReason("acme: error: 400 :: POST :: https://pebble:14000/order-plz :: urn:ietf:params:acme:error:accountDoesNotExist :: Account https://pebble:14000/my-account/384c916fa4f8f3b7 not found."); !strings.Contains(reason, "no longer knows") || !strings.Contains(fix, "restart traefik.service") {
+		t.Errorf("accountDoesNotExist: %q / %q", reason, fix)
 	}
 	reason, _ := PlainReason("acme: error: 400 :: urn:ietf:params:acme:error:connection :: dial tcp 1.2.3.4:80: connect: connection refused")
 	if !strings.Contains(reason, "could not connect") {

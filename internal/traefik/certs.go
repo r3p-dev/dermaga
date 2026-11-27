@@ -74,9 +74,15 @@ func ReadCertificates(data []byte) (map[string]Certificate, error) {
 func ExpiringCertificates(certs map[string]Certificate, hosts []string, now time.Time) []string {
 	var out []string
 	for _, h := range hosts {
-		if c, ok := certs[strings.ToLower(h)]; ok && c.ExpiringSoon(now) {
-			days := int(c.NotAfter.Sub(now).Hours() / 24)
-			out = append(out, fmt.Sprintf("The certificate for %s expires in %d days (%s) and has not been renewed.", h, days, c.NotAfter.UTC().Format("2 Jan 2006")))
+		c, ok := certs[strings.ToLower(h)]
+		switch left := c.NotAfter.Sub(now); {
+		case !ok || !c.ExpiringSoon(now):
+		case left <= 0:
+			out = append(out, fmt.Sprintf("The certificate for %s expired on %s and has not been renewed.", h, c.NotAfter.UTC().Format("2 Jan 2006 15:04 UTC")))
+		case left < 24*time.Hour:
+			out = append(out, fmt.Sprintf("The certificate for %s expires in less than a day (%s) and has not been renewed.", h, c.NotAfter.UTC().Format("2 Jan 2006 15:04 UTC")))
+		default:
+			out = append(out, fmt.Sprintf("The certificate for %s expires in %d days (%s) and has not been renewed.", h, int(left.Hours()/24), c.NotAfter.UTC().Format("2 Jan 2006")))
 		}
 	}
 	return out
@@ -123,6 +129,9 @@ func PlainReason(detail string) (reason, fix string) {
 	case strings.Contains(d, "error:ratelimited"):
 		return "Let's Encrypt refused because too many certificates or failed attempts were requested for this domain recently.",
 			"Wait for the time Let's Encrypt names in the details, then press Check again."
+	case strings.Contains(d, "error:accountdoesnotexist"):
+		return "The certificate authority no longer knows this server's ACME account.",
+			"Restart Traefik so it registers a new account: systemctl --user restart traefik.service, then press Check again."
 	case strings.Contains(d, "error:rejectedidentifier"):
 		return "The certificate authority does not issue certificates for this domain.",
 			"Use another domain, or check the spelling."
