@@ -297,5 +297,49 @@ changes nothing.
 | `TestVerifyThroughTraefik_NetnsProbe_DEP1`, `TestCheckVerifyResponse_DEP1`, `TestACMEOnEveryRouter` (verify router only on `verify`, no TLS), `TestReconcile_UpgradeAddsVerifyEntrypoint_DEP1` (rc.1 config rewritten, one Traefik restart, second pass none) | PASS | `rc2-verify-negative-controls.log` |
 | Negative controls: probe on 443, 502 accepted, verify router on `websecure`, reconciler keeps an existing `traefik.yml`: each makes its test FAIL; restored and green | PASS | `rc2-verify-negative-controls.log` |
 | `make check` | PASS | run locally before the suggested commits |
-| Upgrade rc.1 → rc.2 per SETUP §6.3 on the VM, entrypoint appears without the installer | NOT RUN | after the `v0.7.0-rc.2` tag |
-| `oha` 50 req/s: normal and broken-`/health` redeploys, rollback < 10 s, `kill -9` mid-switch, seed.sh | NOT RUN | after the upgrade |
+
+### After the tag (`v0.7.0-rc.2` = `main` = `a45d968`, CI and Release green)
+
+| Check | Status | Log (`tmp/evidence/M7/logs/`) |
+|---|---|---|
+| Release checksums match; the binary with 1 byte appended fails (negative control) | PASS | `rc2-release-checksums.log`, `rc2-release-checksums-negative.log` |
+| Upgrade rc.1 → rc.2 per SETUP §6.3 (checksum-checked binary, atomic rename, daemon restart; no installer). `traefik.yml` diff adds only `verify :8099`; reconciler "1 file(s) re-rendered"; exactly one Traefik restart (new InvocationID, one "Started traefik"); `:8099` LISTEN inside the container (`/proc/net/tcp6`), netns probe HTTP 404; nothing on host port 8099 (loopback refused, LAN timeout); 80/443 still socket-activated; GitHub `connected` before and after | PASS | `rc2-vm-upgrade.log` |
+| Second daemon start: Traefik InvocationID unchanged, 0 Traefik starts | PASS | `rc2-vm-upgrade.log` |
+| Pebble (`setup_pebble.sh`, now also removes dermaga's marker from `traefik.yml`, owner choice) | PASS | `rc2-vm-pebble.log` |
+| Normal redeploy r1 → r2 under `oha -q 50 -c 10 -z 150s`: 7501 × 200, 0 errors; r1 drained and stopped | PASS | `m7a-vm-redeploy-normal.log` |
+| Redeploy of the broken-`/health` commit `a9e46d8` ("A specific commit"): r3 failed "HTTP health check /health timed out after 30s", r2 stays live, candidate container, unit and image removed; 7501 × 200, 0 errors | PASS | `m7a-vm-redeploy-broken-health.log` |
+| Redeploy after an env change (`GREETING=v2`, build-time `BUILD_VAR`): `/version` changes at 08:02:50.856 with 0 non-200; 6001 × 200, 0 errors | PASS | `m7a-vm-redeploy-new-env.log` |
+| Rollback r4 → r2 (new release r5): POST 08:04:48.502 → r2's image serving at 08:04:55.345 (6.8 s; API started→finished 7 s); r5 runs image `testapp:r2` with `GREETING=v1`, r4 `rolled_back`; 4501 × 200, 0 errors | PASS | `m7a-vm-rollback.log` |
+| `kill -9` of the daemon at switch write 2 (main → r6, verify router present): restart after 3 s, "switches recovered: [testapp: r6 live (switch completed)]", 1 verify router cleaned, 1 live release, only `app-testapp-r6` running; 7501 × 200, 0 errors | PASS | `m7a-vm-kill-midswitch.log` |
+| `seed.sh` (M7): daemon, Traefik, Pebble, panel; one live release per app, no verify router, containers only for live releases | PASS | `m7a-vm-seed.log` |
+| `m3_check.sh access` last (VM-side unban), bans 0 → 1, new login after unban | PASS | `m7a-vm-m3-access.log` |
+| New `ssh dermaga` (owner config) 30 s after the access check | PASS | `m7a-vm-new-ssh-dermaga.log` |
+
+oha runs from the workstation: `oha -q 50 -c 10 -z <d> -w --cacert <Pebble root> --connect-to
+testapp.dermaga.test:443:192.168.122.217:443 https://testapp.dermaga.test/`; a parallel `/version` curl loop (2/s)
+shows when traffic moves. Script: `tmp/evidence/M7/m7a-oha-run.sh`; the kill watcher is
+`tmp/evidence/M7/m7a-kill-midswitch.sh` (VM-side, reads the route file every 10 ms).
+
+### Findings on the VM (rc.2), not fixed
+
+1. After the crash recovery the stopped release's env file (`testapp-r5.env`, mode 0600, holds runtime
+   secrets) stays on disk: the reconciler's orphan removal does not delete it, unlike the engine's
+   `stopRelease`. Proposed fix: remove `deploy.EnvFilePath(...)` with the orphan unit, plus a test.
+2. A release adopted after a crash has no build log: logs are written to the DB only when the release ends.
+3. On recovery the reconciler stops the previous release without the 10 s drain. No errors at 50 req/s;
+   long requests would be cut.
+4. A 2-character secret (`BUILD_VAR=b2`) is masked inside unrelated text: the commit SHA in the build log
+   showed `…b9ff[MASKED]`.
+5. Traefik logs a warning on each start: "Unable to use socket activation for entrypoint verify"; it then
+   binds `:8099` itself (shown above). Harmless.
+6. In M6 the daemon restart test ran after `setup_pebble.sh` had edited the dermaga-owned `traefik.yml`; that
+   restart re-rendered it back to Let's Encrypt. Whether Traefik then contacted Let's Encrypt cannot be
+   checked from the M6 logs. From rc.2 on `setup_pebble.sh` unmarks the file.
+
+### Notes
+
+- The panel password on the VM did not match the stored one (changed while connecting GitHub); after 4
+  failed logins it was reset from `tmp/evidence/M7/vm-panel-pass.txt` with `dermaga admin set-password` (owner
+  choice), which revoked all sessions.
+- The first redeploy's `/version` did not change: the build cache reused the layer with the build date.
+  The env-change redeploy busts that cache and shows the moment of the switch.
