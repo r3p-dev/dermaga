@@ -166,6 +166,11 @@ func runDaemon(args []string) error {
 		MirrorsDir: paths.MirrorsDir,
 		BuildsDir:  paths.BuildsDir,
 	}, nil)
+	// DEC-44: a test drop-in may point DNS checks at a test resolver; doctor warns while it is set.
+	dnsLookup := access.LookupFor(os.Getenv(access.ResolverEnv))
+	if dnsLookup != nil {
+		fmt.Printf("Warning: DNS checks use the test resolver %s (%s)\n", os.Getenv(access.ResolverEnv), access.ResolverEnv)
+	}
 	depEng := deploy.NewEngine(st, realHost, ghClient, bld, deploy.Config{
 		QuadletDir:        paths.QuadletDir,
 		TraefikDynamicDir: paths.TraefikDynamicDir,
@@ -174,10 +179,16 @@ func runDaemon(args []string) error {
 		BuildsDir:         paths.BuildsDir,
 		BinaryPath:        execPath,
 		MasterKey:         masterKey,
+		ACMEPath:          filepath.Join(paths.TraefikDir, "acme.json"),
+		DNSMatches: func(ctx context.Context, domain string) bool {
+			serverIP, _ := st.GetSetting(ctx, access.SettingAddress)
+			return access.CheckDomainDNS(ctx, domain, serverIP, dnsLookup).PointsHere()
+		},
 	})
 	if err := depEng.Start(daemonCtx); err != nil {
 		return fmt.Errorf("starting deployment engine: %w", err)
 	}
+	go depEng.RunDomainWatcher(daemonCtx) // DNS gate, failed orders, outdated routes (DEC-38)
 
 	srv, err := server.NewServer(server.Config{
 		ListenAddr: *addr,
@@ -186,6 +197,7 @@ func runDaemon(args []string) error {
 		Reconciler: rec,
 		Deploy:     depEng,
 		Host:       realHost,
+		DNSLookup:  dnsLookup,
 		GitHub:     ghClient,
 		MasterKey:  masterKey,
 		Version:    Version,

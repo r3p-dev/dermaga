@@ -15,6 +15,7 @@ import (
 	"dermaga/internal/deploy"
 	"dermaga/internal/name"
 	"dermaga/internal/store"
+	"dermaga/internal/traefik"
 )
 
 func writeError(w http.ResponseWriter, status int, msg string) {
@@ -199,6 +200,8 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 	domain := strings.ToLower(strings.TrimSpace(req.Domain))
 	if domain == "" {
 		fields["domain"] = "primary domain is required"
+	} else if traefik.ValidateDomain(domain) != nil || !strings.Contains(domain, ".") {
+		fields["domain"] = "This is not a valid domain name, for example app.example.com."
 	} else {
 		if hookDomain, _ := s.cfg.Store.GetSetting(r.Context(), "hook_domain"); hookDomain != "" && strings.EqualFold(domain, hookDomain) {
 			fields["domain"] = "domain cannot equal the reserved hook domain"
@@ -291,6 +294,11 @@ func (s *Server) handleCreateApp(w http.ResponseWriter, r *http.Request) {
 		AppID:     appID,
 		Domain:    domain,
 		IsPrimary: true,
+	}
+	// DNS gate (DEC-38): routed at the first deploy only if its DNS already points here.
+	if info, _ := s.checkHookDomainDNS(r.Context(), domain); info.AMatches && !info.AAAAMismatch {
+		now := time.Now().UTC().Format(time.RFC3339)
+		dom.DNSVerifiedAt, dom.CertRequestedAt = &now, &now
 	}
 	if err := s.cfg.Store.CreateDomain(r.Context(), dom); err != nil {
 		_ = s.cfg.Store.DeleteApp(r.Context(), appID)

@@ -5,13 +5,16 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"dermaga/internal/access"
 	"dermaga/internal/auth"
 	"dermaga/internal/builder"
 	"dermaga/internal/deploy"
@@ -63,20 +66,35 @@ func setupAppsTestServer(t *testing.T) (*Server, *store.Store, *host.FakeHost, s
 		StabilityWindow:   5 * time.Millisecond,
 		ProbeInterval:     5 * time.Millisecond,
 		DrainGrace:        5 * time.Millisecond,
-		VerifyRoute:       func(context.Context, string, string, string) (bool, error) { return true, nil },
+		SwitchTimeout:     100 * time.Millisecond,
+		VerifyRoute:       func(context.Context, string, string, string) (bool, error) { return !failVerify.Load(), nil },
 	})
 	fh.Files["/proc/meminfo"] = []byte("MemTotal: 4000000 kB\nMemAvailable: 2097152 kB\n")
 
+	_ = s.SetSetting(ctx, access.SettingAddress, "203.0.113.10")
 	srv, err := NewServer(Config{
 		Store:     s,
 		Deploy:    eng,
 		Host:      fh,
 		MasterKey: masterKey,
+		DNSLookup: fakeDNS,
 	})
 	if err != nil {
 		t.Fatalf("NewServer: %v", err)
 	}
 	return srv, s, fh, token
+}
+
+// failVerify makes the fake Traefik never load a route (APP-10 failure path).
+var failVerify atomic.Bool
+
+// fakeDNS: names starting with "ok." point to this server (203.0.113.10); others have no records.
+// Tests never query real DNS.
+func fakeDNS(_ context.Context, network, host string) ([]net.IP, error) {
+	if network == "ip4" && strings.HasPrefix(host, "ok.") {
+		return []net.IP{net.ParseIP("203.0.113.10")}, nil
+	}
+	return nil, &net.DNSError{Err: "no such host", Name: host, IsNotFound: true}
 }
 
 func doAPIReq(srv *Server, method, path, token string, body any) *httptest.ResponseRecorder {

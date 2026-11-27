@@ -389,6 +389,7 @@ func (s *Server) handleGetHookDomain(w http.ResponseWriter, r *http.Request) {
 	}
 	if hookDomain != "" {
 		resp.DNSCheck, _ = s.checkHookDomainDNS(ctx, hookDomain)
+		resp.Certificate = s.hookDomainCertificate(hookDomain)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -440,9 +441,10 @@ func (s *Server) handleSaveHookDomain(w http.ResponseWriter, r *http.Request) {
 	info, serverIP := s.checkHookDomainDNS(r.Context(), domain)
 	state, _ := auth.GetSetupState(r.Context(), s.cfg.Store)
 	writeJSON(w, http.StatusOK, HookDomainResponse{
-		HookDomain: domain,
-		ServerIP:   serverIP,
-		SetupState: string(state),
-		DNSCheck:   info,
+		HookDomain:  domain,
+		ServerIP:    serverIP,
+		SetupState:  string(state),
+		DNSCheck:    info,
+		Certificate: s.hookDomainCertificate(domain),
 	})
 }

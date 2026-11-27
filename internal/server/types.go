@@ -69,6 +69,8 @@ type ServerStatus struct {
 	TotalMemory uint64    `json:"total_memory,omitempty"`
 	UsedMemory  uint64    `json:"used_memory,omitempty"`
 	DaemonRSS   uint64    `json:"daemon_rss,omitempty"`
+	// CertificateWarnings lists certificates close to expiry that did not renew (TLS-4).
+	CertificateWarnings []string `json:"certificate_warnings"`
 }
 
 // AuditLogEntry is the API representation of an audit event (AUD-2).
@@ -170,6 +172,8 @@ type HookDomainResponse struct {
 	ServerIP   string             `json:"server_ip"`
 	SetupState string             `json:"setup_state"`
 	DNSCheck   *HookDomainDNSInfo `json:"dns_check,omitempty"`
+	// Certificate of the hook domain (TLS-5): active, or requesting until Traefik has one.
+	Certificate *CertificateInfo `json:"certificate,omitempty"`
 }
 
 // HookDomainSaveRequest persists the reserved hook domain and renders its Traefik router (SETUP-2, TLS-5).
@@ -451,4 +455,46 @@ type AppDetailResponse struct {
 type CreateAppResponse struct {
 	App        AppSummary     `json:"app"`
 	Deployment DeploymentInfo `json:"deployment"`
+}
+
+// CertificateInfo is a host's certificate status (TLS-3, TLS-5).
+type CertificateInfo struct {
+	Status       string `json:"status"` // active, waiting_dns, requesting, failed
+	ExpiresAt    string `json:"expires_at,omitempty"`
+	ExpiringSoon bool   `json:"expiring_soon"`
+	Reason       string `json:"reason,omitempty"`        // failed: what happened, in plain words
+	Fix          string `json:"fix,omitempty"`           // failed: what to do
+	Detail       string `json:"detail,omitempty"`        // failed: the certificate authority's own words
+	NextRetryAt  string `json:"next_retry_at,omitempty"` // failed: when it is requested again by itself
+}
+
+// DomainView is one domain of an app with its DNS and certificate status (APP-2, TLS-2, TLS-3).
+type DomainView struct {
+	Domain      string             `json:"domain"`
+	Role        string             `json:"role"` // primary, alias, redirect
+	DNSVerified bool               `json:"dns_verified"`
+	DNS         *HookDomainDNSInfo `json:"dns,omitempty"` // live check while DNS is not verified
+	Certificate CertificateInfo    `json:"certificate"`
+}
+
+// DomainsResponse lists an app's domains and its path prefix (APP-2).
+type DomainsResponse struct {
+	Domains     []DomainView `json:"domains"`
+	PathPrefix  string       `json:"path_prefix"`
+	StripPrefix bool         `json:"strip_prefix"`
+	ServerIP    string       `json:"server_ip"`
+	Live        bool         `json:"live"` // false: nothing is served yet, changes apply at the first deploy
+}
+
+// DomainInput is one domain in an UpdateDomainsRequest.
+type DomainInput struct {
+	Domain string `json:"domain"`
+	Role   string `json:"role"` // primary, alias, redirect
+}
+
+// UpdateDomainsRequest replaces an app's whole domain set (APP-2, APP-10).
+type UpdateDomainsRequest struct {
+	Domains     []DomainInput `json:"domains"`
+	PathPrefix  string        `json:"path_prefix"`
+	StripPrefix bool          `json:"strip_prefix"`
 }

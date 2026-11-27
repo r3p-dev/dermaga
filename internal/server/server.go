@@ -192,6 +192,9 @@ func (s *Server) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/apps/{id}/rollback", s.requireAuth(s.handleRollback))
 	mux.HandleFunc("GET /api/apps/{id}/rollback-preview", s.requireAuth(s.handleRollbackPreview))
 	mux.HandleFunc("GET /api/apps/{id}/memory-check", s.requireAuth(s.handleMemoryCheck))
+	mux.HandleFunc("GET /api/apps/{id}/domains", s.requireAuth(s.handleListDomains))
+	mux.HandleFunc("PUT /api/apps/{id}/domains", s.requireAuth(s.handleUpdateDomains))
+	mux.HandleFunc("POST /api/apps/{id}/domains/check", s.requireAuth(s.handleCheckDomainsAgain))
 	mux.HandleFunc("GET /api/apps/{id}/logs/stream", s.requireAuth(s.handleStreamRuntimeLogs))
 	mux.HandleFunc("POST /api/deployments/{id}/cancel", s.requireAuth(s.handleCancelDeployment))
 	mux.HandleFunc("GET /api/deployments/{id}/logs/stream", s.requireAuth(s.handleStreamBuildLogs))
@@ -572,6 +575,8 @@ func (s *Server) handleServerStatus(w http.ResponseWriter, r *http.Request) {
 		TotalMemory: mem.Sys,
 		UsedMemory:  mem.Alloc,
 		DaemonRSS:   readProcRSS(),
+
+		CertificateWarnings: s.certificateWarnings(r.Context()),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
