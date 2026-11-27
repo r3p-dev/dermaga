@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# test/vm/seed.sh - Brings dermaga-vm to a usable demo state for M7 (daemon, Traefik, Pebble, apps
-# with releases to redeploy and roll back) and checks the M7 invariants. Idempotent.
-# Apps are created in the panel (they need the GitHub App); this script never creates or deletes one.
+# test/vm/seed.sh - Brings dermaga-vm to a usable demo state for M8 (daemon, Traefik, Pebble with real
+# validation and the test DNS, apps with releases to redeploy and roll back, domains in each
+# certificate state) and checks the M7/M8 invariants. Idempotent.
+# Apps and their domains are set in the panel (they need the GitHub App); this script never creates or
+# deletes an app. DNS cases of the demo domains (test/vm/test_dns.sh) are kept on the VM and replayed.
 
-echo "=== Seeding dermaga-vm for Milestone M7 ==="
+echo "=== Seeding dermaga-vm for Milestone M8 ==="
 echo "Timestamp: $(date -Is)"
 echo "Host: $(hostname)"
 echo "Commit: $(git rev-parse --short HEAD)"
@@ -17,10 +19,14 @@ if ! ssh -q "$VM_HOST" true; then
   exit 1
 fi
 
-# Pebble (local ACME CA) is needed for HTTPS to the apps; never the real Let's Encrypt.
-if ! ssh "$VM_HOST" 'podman container exists pebble && [ "$(podman inspect pebble --format "{{.State.Running}}")" = true ]'; then
-  "$(dirname "$0")/setup_pebble.sh" "$VM_HOST"
-fi
+# Pebble (local ACME CA) with real validation and the test DNS; never the real Let's Encrypt. Idempotent:
+# running containers with the same config are kept.
+here=$(dirname "$0")
+"$here/setup_pebble.sh" "$VM_HOST" up
+# Demo domains and their DNS case (DEMO_DNS="domain:case ..."; cases: good, wrong, failing).
+for entry in ${DEMO_DNS:-testapp.dermaga.test:good hooks.dermaga.test:good www.testapp.dermaga.test:good good.dermaga.test:good wrong.dermaga.test:wrong fail.dermaga.test:failing}; do
+  "$here/test_dns.sh" "$VM_HOST" "${entry##*:}" "${entry%%:*}"
+done
 
 ssh "$VM_HOST" 'bash -s' << 'EOF'
 set -euo pipefail
@@ -44,14 +50,18 @@ grep -q '"verify"' ~/.local/share/dermaga/traefik/traefik.yml || { echo "ERROR: 
 
 EOF
 
-# M7 invariants (negative control: test/vm/m7_invariants_control.sh).
-ssh "$VM_HOST" python3 - < "$(dirname "$0")/m7_invariants.py"
-echo "PASS: dermaga daemon, Traefik, Pebble and panel ready"
+# M7 and M8 invariants (negative control: test/vm/m7_invariants_control.sh).
+ssh "$VM_HOST" python3 - < "$here/m7_invariants.py"
+echo "PASS: dermaga daemon, Traefik, Pebble, test DNS and panel ready"
 
 echo ""
-echo "=== Dermaga M7 Demo State Ready ==="
+echo "=== Dermaga M8 Demo State Ready ==="
 echo "Access the web panel:"
 echo "  1. Start SSH tunnel: ssh -N -L 7070:127.0.0.1:7070 $VM_HOST"
 echo "  2. If uninitialized, open the http://localhost:7070/setup?token=... link printed above"
-echo "  3. Otherwise open http://localhost:7070 -> app -> Deployments: Redeploy, or Roll back on a previous release"
-echo "  4. HTTPS from the workstation: curl --cacert <Pebble root> --connect-to <domain>:443:<VM IP>:443 https://<domain>/"
+echo "  3. Otherwise open http://localhost:7070 -> app -> Deployments (Redeploy, Roll back) or Domains"
+echo "     (testapp: good.dermaga.test active, wrong.dermaga.test waiting for DNS, fail.dermaga.test failed"
+echo "     with the next try, www.testapp.dermaga.test redirecting; change a case with test/vm/test_dns.sh,"
+echo "     then press Check again)"
+echo "  4. HTTPS from the workstation: scp $VM_HOST:.local/share/dermaga/traefik/pebble-minica.pem /tmp/roots.pem; then"
+echo "     curl --cacert /tmp/roots.pem --connect-to <domain>:443:<VM IP>:443 https://<domain>/"
