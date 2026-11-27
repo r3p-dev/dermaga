@@ -23,11 +23,11 @@ backups come in v1.1.
 | M5  | 0.5.0   | Connect GitHub                                    | completed         | M5a yes: confirmed by owner, 2026-11-25; M5b yes: confirmed by owner, 2026-11-25 (v0.5.0-rc.1, v0.5.0)                                                                       | 28      |
 | M6  | 0.6.0   | First deploy: wizard, build, env, logs            | completed         | yes: confirmed by owner, 2026-11-26 (v0.6.0-rc.1–v0.6.0-rc.3, v0.6.0)                                                                                                          | 36      |
 | M7  | 0.7.0   | Zero downtime: push-to-deploy, redeploy, rollback | completed         | yes: confirmed by owner, 2026-11-27 (v0.7.0-rc.1–v0.7.0-rc.5, v0.7.0) | 32      |
-| M8  | 0.8.0   | Domains, HTTPS, headers, middleware               | not started       | –                                                                                                                                                                               | 28      |
+| M8  | 0.8.0   | Domains, HTTPS, headers, middleware               | in progress       | –                                                                                                                                                                               | 30      |
 | M9  | 0.9.0   | Server care: app status, disk, dashboard, doctor  | not started       | –                                                                                                                                                                               | 24      |
 | M10 | 0.10.0  | Updating dermaga, migration guide                 | not started       | –                                                                                                                                                                               | 24      |
 | M11 | 1.0.0   | Hardening and release                             | not started       | –                                                                                                                                                                               | 32      |
-|     |         | **Total**                                         |                   |                                                                                                                                                                                 | **330** |
+|     |         | **Total**                                         |                   |                                                                                                                                                                                 | **332** |
 
 Hours are the implementer's estimate for building, testing and writing the evidence of each
 milestone; review time is not included. **Confirmed** is filled only from a written record of the
@@ -46,7 +46,37 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
 
 ## Active milestone
 
-**M7** (0.7.0): Zero downtime: push-to-deploy, redeploy, rollback (`completed`, confirmed by owner 2026-11-27; M8 starts in a new session).
+**M8** (0.8.0): Domains, HTTPS, headers, middleware (`in progress`, plan approved by owner 2026-11-27).
+
+- **Requirement IDs:** APP-2–APP-4, APP-10, APP-11, TLS-1–TLS-5, REL-7, REL-8.
+- **Handoff** (2026-11-27, M8 plan approved; spikes next):
+  - Owner answers (2026-11-27): M8a domains/HTTPS = `v0.8.0-rc.1`, M8b headers/middleware = `rc.2`, then
+    `v0.8.0`; DNS gate as planned, no "Request certificate anyway" (possible later option); header model
+    "server defaults or own list"; compression and rate limit 100/s burst 200 on by default, also for
+    existing apps on upgrade, **only if the spike proves Traefik sees the real client IP through socket
+    activation** (otherwise stop and report before enabling rate limit or allowlist anywhere); Pebble with
+    real validation + `pebble-challtestsrv` (fallback: Pebble domain blocklist); `DERMAGA_DNS_RESOLVER`
+    test-only drop-in with a `doctor` warning; `dermaga-test-app` only (never `portfolio`); REL-8 by
+    comparing `curl -sI` against a temporary Traefik with `vps-setup.sh`'s dynamic config on another port
+    (without Date/Content-Length); route edits during starting/switching refused with 409; mockups Domains A
+    (rows) and Headers & Middleware A (Save per section); the wizard stays single-domain; measure bcrypt
+    basic-auth CPU cost under `oha` on the VM and document it (lower cost if heavy).
+  - Decisions DEC-38–DEC-44 recorded as proposed, waiting for the owner's approval.
+  - Spikes done (2026-11-27, logs `tmp/evidence/M8/logs/spike-*.log`, scripts `tmp/evidence/M8/spike-*.sh`,
+    zero residue): Traefik sees the real client IP (live `traefik-https.socket` socket held by `traefik` with
+    the workstation as peer; throwaway socket-activated Traefik logs the real host address and allowlist
+    200/403); `redirectRegex` permanent = 301 for GET, 308 for POST/HEAD; `noop@internal` works as a verify
+    target (418 + token, wrong token 404); Buffering works with the read-only root (spills to the container's
+    tmpfs, so it counts against Traefik's 256 MiB), over the limit 413; `customResponseHeaders` responses are
+    identical to `stsSeconds`/`contentTypeNosniff`; Pebble with real validation + `pebble-challtestsrv`
+    issues 90-day certificates when the A record is `host.containers.internal` (169.254.1.2; the VM's own IP
+    is local inside the rootless netns, connection refused) and fails with the reason for no DNS, a dead IP
+    and the blocklist; `acme.json` = `le.Certificates[].domain.main` + base64 PEM; Traefik never retries a
+    failed order by itself but retries **every** failed domain on **any** dynamic config change; bcrypt
+    basic auth costs 3.8 (cost 5) to 19 ms (cost 10) of Traefik CPU per request on the 2-vCPU VM.
+  - Next: owner reviews the spike results and DEC-38–DEC-44 (open questions in the report), then M8a Go code.
+
+**M7** (0.7.0): Zero downtime: push-to-deploy, redeploy, rollback (`completed`, confirmed by owner 2026-11-27).
 
 - **Requirement IDs:** DEP-1, DEP-2, DEP-4, DEP-10, APP-8, REL-6.
 - **Handoff** (2026-11-27, M7 completed: owner tagged `v0.7.0` (`4b37ae2`, CI and Release green) and confirmed M7; the gosmee forwarder now lives in `test/vm/gosmee-forward.sh`; next session: M8 plan first):
@@ -288,6 +318,32 @@ Acceptance criteria:
   the old file and DB row and shows the error; global defaults affect only apps without overrides.
 - Certificate status shown for a domain with correct DNS (Pebble certificate active), wrong DNS
   (waiting, with the record to create) and a failed challenge (reason shown).
+- Owner decision (2026-11-27): `dermaga-test-app` replaces `portfolio` in every M8 check.
+
+Spikes first (`dermaga-vm`, throwaway Traefik and Pebble on non-colliding ports, transient units, temp
+directories, zero residue), each with a negative control: Traefik sees the real client IP through socket
+activation (gate for rate limit and allowlist); `redirectRegex` permanent status code; ACME retry after a
+failed order and on later config changes; Traefik's ACME error log line; `acme.json` layout; `noop@internal`
+as a verify target in a file; Buffering with a read-only Traefik root; header rendering as
+`customResponseHeaders` equals the current `stsSeconds`/`contentTypeNosniff` output; Pebble real validation
+with `pebble-challtestsrv` reaching the VM's HTTP port (fallback: domain blocklist); Pebble certificate
+lifetime; bcrypt basic-auth CPU cost under `oha`.
+
+Checkpoints (owner-approved 2026-11-27):
+
+- **M8a (~15 h, `v0.8.0-rc.1`)**: domains and HTTPS (`APP-2`, `APP-10` for domains, `TLS-1`–`TLS-5`,
+  `REL-7`): one route builder for switch, reconciler and edits (DEC-40); one router per host (DEC-39); DNS
+  gate with a 5-minute recheck and "Check again" (DEC-38); certificate status from `acme.json` and
+  Traefik's log, also for the hook domain; TLS-4 warning on the dashboard and in `doctor` (DEC-41);
+  migration `0006` (append-only) with a `0005` upgrade test; Domains tab (mockup A). VM: correct DNS →
+  active, wrong DNS → waiting with the record, failed challenge → reason; HTTP → HTTPS and 301 redirects;
+  upgrade from `v0.7.0` keeps testapp serving.
+- **M8b (~15 h, `v0.8.0-rc.2`)**: headers and middleware (`APP-3`, `APP-4`, `APP-10`, `APP-11`, `REL-8`):
+  header model and global defaults in `00-global.yml` (DEC-42), middleware with defaults (DEC-43), Headers &
+  Middleware tab (mockup A, Save per section), Settings → Defaults. VM: `curl -sI` change within seconds,
+  REL-8 comparison, a route Traefik cannot load restored with the error, global defaults only on apps
+  without overrides, bcrypt cost measured; demo state with a domain, a www redirect, a custom header and
+  basic auth.
 
 ## M9 (0.9.0): Server care: app status, disk, dashboard, doctor
 
