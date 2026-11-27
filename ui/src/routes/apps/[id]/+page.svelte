@@ -80,6 +80,8 @@
 	let sPids = $state(128)
 	let sReadOnly = $state(false)
 	let sCaps = $state('')
+	let sAutoDeploy = $state(true)
+	let sWatchPaths = $state('')
 	let savingSettings = $state(false)
 
 	// Danger zone
@@ -100,6 +102,7 @@
 				return
 			}
 			await loadApp()
+			pollTimer = setInterval(pollApp, 3000)
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to load app'
 		} finally {
@@ -107,7 +110,24 @@
 		}
 	})
 
+	// Live deployment status (UI-7): a push can start a deployment at any time, so refresh the app
+	// every 3 s while the tab is visible. Only `app` is replaced; the settings form keeps its edits.
+	let pollTimer: ReturnType<typeof setInterval> | undefined
+	let polling = false
+	async function pollApp() {
+		if (polling || document.visibilityState !== 'visible') return
+		polling = true
+		try {
+			app = await getApp(appId)
+		} catch {
+			// the next tick tries again
+		} finally {
+			polling = false
+		}
+	}
+
 	onDestroy(() => {
+		clearInterval(pollTimer)
 		stopBuildStream?.()
 		stopRuntimeStream?.()
 	})
@@ -129,6 +149,8 @@
 		sPids = res.pids_limit
 		sReadOnly = res.read_only_root
 		sCaps = (res.add_capabilities || []).join(', ')
+		sAutoDeploy = res.auto_deploy
+		sWatchPaths = res.watch_paths
 	}
 
 	function selectTab(id: TabId) {
@@ -306,7 +328,9 @@
 				cpu_limit: sCPUs.trim(),
 				pids_limit: Number(sPids),
 				read_only_root: sReadOnly,
-				add_capabilities: caps
+				add_capabilities: caps,
+				auto_deploy: sAutoDeploy,
+				watch_paths: sWatchPaths
 			})
 			await loadApp()
 			actionMsg = 'Settings saved. Deploy to apply changes.'
@@ -936,6 +960,48 @@
 							</div>
 						</div>
 
+						<div
+							class="space-y-4 rounded-xl border border-stone-200 bg-white p-5 text-xs dark:border-stone-800 dark:bg-stone-900"
+						>
+							<h2 class="text-sm font-semibold">Deploy on push</h2>
+							<label class="flex items-center gap-2">
+								<input type="checkbox" bind:checked={sAutoDeploy} />
+								<span>
+									Deploy automatically when <code class="font-mono">
+										{app.branch}
+									</code> receives a push
+								</span>
+							</label>
+							<div>
+								<label for="set-watch" class="mb-1 block font-medium">
+									Watch paths
+								</label>
+								<textarea
+									id="set-watch"
+									rows="4"
+									bind:value={sWatchPaths}
+									disabled={!sAutoDeploy}
+									aria-describedby="set-watch-help"
+									placeholder={'web/\nContainerfile'}
+									class="w-full rounded-md border border-stone-300 bg-white px-3 py-2 font-mono disabled:opacity-50 dark:border-stone-700 dark:bg-stone-950"
+								></textarea>
+								<p
+									id="set-watch-help"
+									class="mt-1 text-stone-600 dark:text-stone-400"
+								>
+									One pattern per line. A trailing <code class="font-mono">
+										/
+									</code>
+									means the whole folder;
+									<code class="font-mono">*</code> matches within one folder
+									only. Leave empty to deploy on every push. Example:
+									<code class="font-mono">web/</code> ·
+									<code class="font-mono">Containerfile</code> ·
+									<code class="font-mono">go.*</code>
+								</p>
+							</div>
+						</div>
+
 						<div class="flex justify-end">
 							<button
 								type="submit"
@@ -999,6 +1065,7 @@
 		<RollbackDialog
 			appId={app.id}
 			appName={app.name}
+			pushBranch={app.auto_deploy ? app.branch : null}
 			bind:target={rollbackTarget}
 			onstarted={onReleaseStarted}
 		/>

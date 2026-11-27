@@ -8,11 +8,14 @@
 	let {
 		appId,
 		appName,
+		pushBranch,
 		target = $bindable(null),
 		onstarted
 	}: {
 		appId: string
 		appName: string
+		pushBranch: string | null // set while deploy on push is on (APP-8)
+
 		target: DeploymentInfo | null
 		onstarted: (dep: DeploymentInfo) => void
 	} = $props()
@@ -103,6 +106,9 @@
 				</li>
 				<li>Domains, headers and middleware stay current.</li>
 				<li>Build-time variables are baked into {rel}.</li>
+				{#if pushBranch}
+					<li>The next push to {pushBranch} will deploy over this rollback.</li>
+				{/if}
 			</ul>
 
 			{#if loadErr}

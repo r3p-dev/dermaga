@@ -283,6 +283,17 @@
 								{/if}
 							</dd>
 						</div>
+						{#if status.last_ignored_push}
+							<div class="flex flex-wrap justify-between gap-2">
+								<dt class="text-stone-600 dark:text-stone-400">
+									Last ignored push
+								</dt>
+								<dd class="text-stone-900 dark:text-stone-100">
+									{status.last_ignored_push.description} &bull; {status
+										.last_ignored_push.created_at}
+								</dd>
+							</div>
+						{/if}
 					</dl>
 
 					<div class="flex flex-wrap gap-2 pt-1">
