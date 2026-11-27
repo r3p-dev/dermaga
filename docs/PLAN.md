@@ -49,15 +49,16 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
 **M7** (0.7.0): Zero downtime: push-to-deploy, redeploy, rollback (`in progress`).
 
 - **Requirement IDs:** DEP-1, DEP-2, DEP-4, DEP-10, APP-8, REL-6.
-- **Handoff** (2026-11-27, M7a VM run done on `v0.7.0-rc.2`; waiting for the owner's review before M7b):
-  - Done: `v0.6.2`; M7a code (env versions, verified switch, rollback, retention, memory check, recovery,
-    panel); rc.1 VM finding (`sniStrict`) fixed in rc.2 with the internal `verify` entrypoint; rc.1 → rc.2 by
-    binary upgrade (one Traefik restart, none on the next start, GitHub kept); oha 50 req/s with 0 non-2xx and
-    0 errors on normal, broken-`/health` and env-change redeploys, rollback 6.8 s, `kill -9` mid-switch;
-    `seed.sh` for M7; denied logins last and a new `ssh dermaga` 30 s later. Evidence: `docs/evidence/M7/EVIDENCE.md`.
-  - Open findings (EVIDENCE "Findings on the VM"): env file left after crash recovery; no build log for an
-    adopted release; no drain on recovery; short secrets over-masked; Traefik socket-activation warning.
-  - Next: owner review; then M7b (push-to-deploy, APP-8 watch paths, live status, gosmee journey).
+- **Handoff** (2026-11-27, M7a rc.3 fixes done locally; waiting for the `v0.7.0-rc.3` tag):
+  - Done: `v0.6.2`; M7a code; rc.1 VM finding (`sniStrict`) fixed in rc.2; rc.2 VM run (binary upgrade,
+    oha 50 req/s with 0 non-2xx/0 errors on redeploys, rollback 6.8 s, `kill -9` mid-switch, seed, denied
+    logins). rc.3 (owner decisions on the rc.2 findings): orphan cleanup shared with the engine (env file),
+    stray env files and interrupted images swept, release log saved during the release, 10 s drain on
+    recovery, values under 4 characters not masked (DEC-36) with an env-editor hint, Traefik `verify`
+    socket-activation warning documented, M6 Pebble gap recorded, negative control for the seed invariants.
+  - Remaining for M7a: owner commits and tags `v0.7.0-rc.3`; VM: upgrade rc.2 → rc.3 (SETUP §6.3), `kill -9`
+    mid-switch (env file gone, log present, drain observed), one rollback under oha, denied logins last with
+    the VM-side unban, new `ssh dermaga` ≥ 30 s later. Then stop for the owner's go on M7b.
   - Owner choices (2026-11-26, later): Deployments tab = rows layout (mockup A); rollback dialog = compact
     (mockup A, no typed confirmation); apps run with Quadlet `RunInit=true` (verified by dry-run on Debian 13
     before use); `m3_check.sh` unbans via VM-side `systemd-run` timers and proves the ban from fail2ban's log.

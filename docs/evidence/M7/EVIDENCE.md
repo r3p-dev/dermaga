@@ -320,21 +320,20 @@ testapp.dermaga.test:443:192.168.122.217:443 https://testapp.dermaga.test/`; a p
 shows when traffic moves. Script: `tmp/evidence/M7/m7a-oha-run.sh`; the kill watcher is
 `tmp/evidence/M7/m7a-kill-midswitch.sh` (VM-side, reads the route file every 10 ms).
 
-### Findings on the VM (rc.2), not fixed
+### Findings on the VM (rc.2) and owner decisions
 
 1. After the crash recovery the stopped release's env file (`testapp-r5.env`, mode 0600, holds runtime
-   secrets) stays on disk: the reconciler's orphan removal does not delete it, unlike the engine's
-   `stopRelease`. Proposed fix: remove `deploy.EnvFilePath(...)` with the orphan unit, plus a test.
-2. A release adopted after a crash has no build log: logs are written to the DB only when the release ends.
-3. On recovery the reconciler stops the previous release without the 10 s drain. No errors at 50 req/s;
-   long requests would be cut.
-4. A 2-character secret (`BUILD_VAR=b2`) is masked inside unrelated text: the commit SHA in the build log
-   showed `…b9ff[MASKED]`.
+   secrets) stayed on disk: the reconciler's orphan removal did not delete it, unlike the engine's
+   `stopRelease`. **Fixed in rc.3.**
+2. A release adopted after a crash had no build log: logs were written to the DB only when the release ended.
+   **Fixed in rc.3.**
+3. On recovery the reconciler stopped the previous release without the 10 s drain. **Fixed in rc.3.**
+4. A 2-character secret (`BUILD_VAR=b2`) was masked inside unrelated text: the commit SHA in the build log
+   showed `…b9ff[MASKED]`. **Fixed in rc.3 (DEC-36).**
 5. Traefik logs a warning on each start: "Unable to use socket activation for entrypoint verify"; it then
-   binds `:8099` itself (shown above). Harmless.
+   binds `:8099` itself. **Accepted; documented in ARCHITECTURE DEC-33 and SETUP §6.3.**
 6. In M6 the daemon restart test ran after `setup_pebble.sh` had edited the dermaga-owned `traefik.yml`; that
-   restart re-rendered it back to Let's Encrypt. Whether Traefik then contacted Let's Encrypt cannot be
-   checked from the M6 logs. From rc.2 on `setup_pebble.sh` unmarks the file.
+   restart re-rendered it back to Let's Encrypt. **Recorded as an unverified gap in M6 EVIDENCE; not re-run.**
 
 ### Notes
 
@@ -343,3 +342,32 @@ shows when traffic moves. Script: `tmp/evidence/M7/m7a-oha-run.sh`; the kill wat
   choice), which revoked all sessions.
 - The first redeploy's `/version` did not change: the build cache reused the layer with the build date.
   The env-change redeploy busts that cache and shows the moment of the switch.
+
+## M7a fixes for rc.3 (local part)
+
+Owner decisions on the rc.2 findings, all before M7b.
+
+| Criterion | Status | Evidence (`tmp/evidence/M7/logs/`) |
+|---|---|---|
+| Orphan units go with the engine's cleanup (`deploy.RemoveReleaseUnit`: stop, unit, env file); a candidate's env file goes at once (`TestReconcile_CrashBeforeMainSwitched_DEP10`) | PASS | `rc3-make-check.log` |
+| Sweep of other per-release files: stray env files without a live or draining unit removed (`TestReconcile_StrayEnvFilesRemoved_DEP10`); image of a release interrupted by the restart removed at engine start, never `image_ref` (a rollback's is the restored image) (`TestStart_RemovesImagesOfInterruptedReleases`); route file and verify routers were already covered (orphan route removal, `recoverSwitches`, `-verify.yml` cleanup) | PASS | `rc3-make-check.log` |
+| Log saved at every stage line and every 2 s, so the DB holds it at the crash point (`TestReleaseLog_SavedUpToSwitch_DEP10`: at each verify step the DB log has "Starting release r2", then "Traefik reaches r2") | PASS | `rc3-make-check.log` |
+| Recovery drains a release that lost its traffic for 10 s, then stops it and removes its unit and env file; the live release keeps its env file (`TestReconcile_CrashAfterMainSwitched_DEP10`, push and rollback) | PASS | `rc3-make-check.log` |
+| Values under 4 characters (runes) not masked; 4+ still masked, also split across stream chunks (`TestMasker_ShortValuesNotMasked_SEC9`, the `b2` SHA line) | PASS | `rc3-make-check.log` |
+| Env editor hint under a 1–3 character value, linked with `aria-describedby`; gone at 4 characters and when empty; desktop + narrow, light + dark, axe AA (`ui/e2e/env-mask.test.ts`) | PASS | `rc3-test-browser.log` (11 passed) |
+| Negative controls: env sweep off; orphan path keeps the env file with the sweep off; no drain; stage lines not saved; short values masked again; `d.ImageRef` removed at start; interrupted image kept; hint never shown: each makes its test FAIL; files restored byte for byte and green | PASS | `rc3-negative-controls.log` |
+| `seed.sh` invariant check (`test/vm/m7_invariants.py`) against a correct state and four broken ones (two live releases, verify router left, previous release running, live image missing) | PASS | `rc3-seed-invariants-control.log` |
+| `make check` | PASS | `rc3-make-check.log` |
+| VM: upgrade rc.2 → rc.3, `kill -9` mid-switch (env file gone, log present, drain observed), rollback under oha, denied logins last | NOT RUN | after the `v0.7.0-rc.3` tag |
+
+Screens (`tmp/evidence/M7/screenshots/`):
+
+- `m7a-env-short-value-1280-light.png`, `-1280-dark.png`: app Environment tab in edit mode, desktop; under the
+  value of `BUILD_VAR` (two dots) the amber line "Shorter than 4 characters: this value is not masked in build
+  and runtime logs."
+- `m7a-env-short-value-375-light.png`, `-375-dark.png`: the same at 375 px; the hint wraps to two lines under
+  the field, the Runtime/Build time row below it.
+
+Deviation: the rollback exception first written in the engine's start-up image cleanup was dead code (a
+rollback never builds, so the tag removed for it never exists); the negative control showed it and it was
+removed. The control now targets the real risk (removing `image_ref`).

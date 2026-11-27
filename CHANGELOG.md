@@ -15,6 +15,7 @@ All notable changes to this project are documented here. The format follows
 - Panel: Deployments tab with Redeploy (latest or a specific commit) and Roll back, rollback confirmation listing env variable names that differ, live status of the started release.
 - App containers run with `RunInit=true` (DEC-34).
 - `test/vm/smoke_ui.mjs`: UI smoke test of a freshly installed VM through an SSH tunnel (first-run setup, Dashboard at 1280/1920/375 in both themes, values compared with the API, no requirement codes).
+- `test/vm/m7_invariants.py` (the `seed.sh` M7 check) with a local negative control, `test/vm/m7_invariants_control.sh`.
 - `test/vm/seed.sh` for M7: starts Pebble when missing and checks one live release per app, no leftover verify router and containers only for live releases.
 - `oha` 1.17.0 and `gosmee` 0.32.1 pinned with checksums for the M7 VM journey (`docs/DEPENDENCIES.md`).
 
@@ -23,6 +24,10 @@ All notable changes to this project are documented here. The format follows
 - `test/vm/m3_check.sh access` schedules the fail2ban unban on the VM before the denied logins (`systemd-run` timers at +60 s and +120 s), waits for a new login, and proves the ban from `/var/log/fail2ban.log`. The earlier ControlMaster unban could not work: the nftables ban also rejects packets on the already-open connection.
 
 ### Fixed
+- After a crash the startup reconciler left the stopped release's env file (runtime secrets) on disk; orphan units now go with the same cleanup as after a normal switch (`deploy.RemoveReleaseUnit`), stray env files are removed, and the image of a release interrupted by the restart is removed.
+- A release adopted after a crash had no log: the log is now saved at every stage line and every 2 s while the release builds, starts and switches.
+- A release that lost its traffic just before a restart was stopped at once; it now drains for the same 10 s as after a normal switch.
+- Secret values shorter than 4 characters were masked inside unrelated log text (a commit SHA showed `[MASKED]`); they are no longer masked, and the env editor says so under such a value (DEC-36).
 - The startup reconciler re-rendered missing app units with an image that never existed and without limits or env file; it now renders exactly what the deploy engine deployed.
 - Switch verification failed for every domain whose certificate was still pending (rc.1): Traefik's `sniStrict` refuses the TLS handshake on 443. The verify router now listens on an internal plain-HTTP entrypoint (`:8099` inside the Traefik container, never published) that dermaga reaches through the rootless netns (DEC-33). A binary upgrade applies the new `traefik.yml` itself and restarts Traefik once.
 - `test/vm/smoke_ui.mjs` expects the version the VM's binary reports instead of a fixed one.

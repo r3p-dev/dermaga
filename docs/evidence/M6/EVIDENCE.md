@@ -91,4 +91,5 @@ AssertionError: testapp residue: ps=0 img=1 unit=0 tr=0 env=0 mir=0
 
 ## Decisions & deviations
 
+- **Unverified gap (found in M7a, 2026-11-27):** the daemon restart test (`PASS [6]` in `vm-m6a-podman-rc2.log`) ran after `test/vm/setup_pebble.sh` had pointed the dermaga-owned `traefik.yml` at Pebble. That restart's reconciler re-renders an outdated owned `traefik.yml`, so Traefik may have run with Let's Encrypt as its CA afterwards; whether it contacted Let's Encrypt cannot be checked from the M6 logs. Not re-run (owner decision). Prevented since M7a: `setup_pebble.sh` removes dermaga's marker, so the reconciler no longer rewrites the file.
 - Kept `0001_init.sql` deployment status enum unchanged and mapped `probing -> healthy` and `active -> live` in `store.DeploymentStatusLabel` (`DEP-9`), leaving `superseded`, `switching`, and `inactive` internal until M7.

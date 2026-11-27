@@ -225,6 +225,8 @@ The atomic `rename(2)` syscall updates the directory entry without mutating the 
 
 No installer re-run is needed for a new release: on start, the reconciler rewrites any dermaga-owned Traefik file that differs from what the new binary renders and restarts Traefik once (for example 0.7.0-rc.2 adds the internal `verify` entrypoint to `traefik.yml`). The listening sockets stay with systemd, so requests wait in the backlog during that restart instead of failing. The next start finds the files current and does not restart Traefik.
 
+Traefik's log shows one warning per start, `Unable to use socket activation for entrypoint` with `"entryPointName":"verify"`. This is expected: `verify` (`:8099`, DEC-33) is internal and has no systemd socket, so Traefik binds it inside its container itself. Ports 80 and 443 stay socket-activated.
+
 ### 6.4 Operator Access & SSH Tunneling
 The web panel listens exclusively on `127.0.0.1:7070` on the server (`SEC-2`). Access it securely from the workstation:
 ```bash
@@ -299,7 +301,7 @@ From M3 on, the VM is set up by the installer itself, from the `fresh` snapshot.
    `dermaga-vm-init` (port 22, user `debian`) is refused.
 4. Checks from the workstation: `test/vm/port_scan.sh` (during the install), `test/vm/m3_check.sh
    access|state|running|control 192.168.122.217 4222 ~/.ssh/dermaga-vm`.
-5. **Local ACME (Pebble) for TLS tests:** run `./test/vm/setup_pebble.sh dermaga-vm` to start Pebble on network `web`, export `pebble-minica.pem` and `pebble-api-ca.pem`, point Traefik's `le` resolver to `https://pebble:14000/dir`, and restart `traefik.service`.
+5. **Local ACME (Pebble) for TLS tests:** run `./test/vm/setup_pebble.sh dermaga-vm` to start Pebble on network `web`, export `pebble-minica.pem` and `pebble-api-ca.pem`, point Traefik's `le` resolver to `https://pebble:14000/dir`, and restart `traefik.service` It also removes dermaga's marker from `traefik.yml`, so a daemon restart cannot re-render the file back to Let's Encrypt; until the VM is reverted, the reconciler reports `traefik.yml` as foreign and no longer starts Traefik itself (systemd keeps it running).
 
 **Recovery if SSH is lost:** the old login stays open until the new one is proven (`LOCK-1`–`LOCK-5`).
 If the VM still cannot be reached, use the libvirt console (`virsh --connect qemu:///system console
