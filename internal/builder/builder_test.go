@@ -12,7 +12,7 @@ import (
 )
 
 func TestMasker_ChunkBoundaryAndLongestFirst_SEC9(t *testing.T) {
-	m := NewMasker([]string{"sec", "secret-token-123"})
+	m := NewMasker([]string{"secr", "secret-token-123"})
 	var got strings.Builder
 	sm := NewStreamMasker(m, func(s string) {
 		got.WriteString(s)
@@ -21,7 +21,7 @@ func TestMasker_ChunkBoundaryAndLongestFirst_SEC9(t *testing.T) {
 	chunks := []string{
 		"step 1: using sec",
 		"ret-token-123 in build\n",
-		"also sec here\n",
+		"also secr here\n",
 	}
 	for _, c := range chunks {
 		if _, err := sm.Write([]byte(c)); err != nil {
@@ -31,11 +31,30 @@ func TestMasker_ChunkBoundaryAndLongestFirst_SEC9(t *testing.T) {
 	sm.Flush()
 
 	out := got.String()
-	if strings.Contains(out, "secret-token-123") || strings.Contains(out, "sec") {
+	if strings.Contains(out, "secret-token-123") || strings.Contains(out, "secr") {
 		t.Fatalf("secret leaked across chunk boundary: %q", out)
 	}
 	if !strings.Contains(out, "using [MASKED] in build") {
 		t.Fatalf("expected longest-first masking, got %q", out)
+	}
+}
+
+// Values shorter than MinMaskedLength are not masked: "b2" turned the commit SHA in a real build
+// log into "...b9ff[MASKED]" (M7a VM run). Four characters and more are still masked.
+func TestMasker_ShortValuesNotMasked_SEC9(t *testing.T) {
+	m := NewMasker([]string{"b2", "abc", "wxyz", "töp"})
+	line := "==> Fetching r3p-dev/dermaga-test-app (f3810c7cbeeecf2662b4a4d176f1761475b9ffb2) abc wxyz töp"
+	want := "==> Fetching r3p-dev/dermaga-test-app (f3810c7cbeeecf2662b4a4d176f1761475b9ffb2) abc [MASKED] töp"
+	if got := m.MaskString(line); got != want {
+		t.Fatalf("MaskString:\n got %q\nwant %q", got, want)
+	}
+	var streamed strings.Builder
+	sm := NewStreamMasker(m, func(s string) { streamed.WriteString(s) })
+	_, _ = sm.Write([]byte(line[:40]))
+	_, _ = sm.Write([]byte(line[40:]))
+	sm.Flush()
+	if streamed.String() != want {
+		t.Fatalf("stream:\n got %q\nwant %q", streamed.String(), want)
 	}
 }
 

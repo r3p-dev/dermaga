@@ -11,6 +11,11 @@
 
 	let hasBuildTime = $derived(items.some((item) => item.build_time))
 
+	// Same limit as builder.MinMaskedLength: shorter values are not masked in logs.
+	const minMasked = 4
+	const tooShortToMask = (value: string) =>
+		value.length > 0 && [...value].length < minMasked
+
 	function addRow() {
 		items = [...items, { key: '', value: '', runtime: true, build_time: false }]
 	}
@@ -74,8 +79,20 @@
 								bind:value={item.value}
 								{disabled}
 								placeholder="Enter value"
+								aria-describedby={tooShortToMask(item.value)
+									? `env-val-short-${i}`
+									: undefined}
 								class="w-full rounded-md border border-stone-300 bg-white px-2.5 py-1.5 font-mono text-xs text-stone-900 focus:ring-2 focus:ring-brand-ring focus:outline-none dark:border-stone-700 dark:bg-stone-950 dark:text-stone-100"
 							/>
+							{#if tooShortToMask(item.value)}
+								<p
+									id="env-val-short-{i}"
+									class="mt-1 text-[11px] text-amber-800 dark:text-amber-300"
+								>
+									Shorter than {minMasked} characters: this value is not masked in
+									build and runtime logs.
+								</p>
+							{/if}
 						</div>
 					</div>
 					<div class="flex flex-wrap items-center justify-between gap-2 pt-1">

@@ -6,9 +6,15 @@ import (
 	"bytes"
 	"sort"
 	"strings"
+	"unicode/utf8"
 )
 
 const maskToken = "[MASKED]"
+
+// MinMaskedLength is the shortest secret value that is masked. Shorter values (e.g. "b2") occur
+// inside unrelated text such as commit SHAs, so masking them garbles logs without hiding anything
+// worth hiding; the env editor warns that such values are not masked.
+const MinMaskedLength = 4
 
 // Masker redacts secret values from build logs and error messages (SEC-9, DEP-8).
 // It handles secrets split across streaming chunk boundaries.
@@ -17,14 +23,14 @@ type Masker struct {
 	maxLen  int
 }
 
-// NewMasker constructs a Masker from a list of secret values, ignoring empty strings
-// and sorting longest-first so overlapping secrets are masked completely.
+// NewMasker constructs a Masker from a list of secret values, ignoring values shorter than
+// MinMaskedLength characters and sorting longest-first so overlapping secrets are masked completely.
 func NewMasker(values []string) *Masker {
 	seen := make(map[string]struct{}, len(values))
 	var list [][]byte
 	maxLen := 0
 	for _, v := range values {
-		if v == "" {
+		if utf8.RuneCountInString(v) < MinMaskedLength {
 			continue
 		}
 		if _, ok := seen[v]; ok {
