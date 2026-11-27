@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"dermaga/internal/deploy"
 	"dermaga/internal/store"
 )
 
@@ -137,5 +139,24 @@ func TestDomainsAPI_TraefikRejects_APP10(t *testing.T) {
 	}
 	if ds, _ := s.ListDomainsByApp(context.Background(), "app_shop"); len(ds) != 1 {
 		t.Fatalf("domains changed after a failed route: %+v", ds)
+	}
+}
+
+// TestRouteProofFitsWriteTimeout_APP10: the Traefik proof of a route change (plus rendering and
+// reading Traefik's log) must end before the panel's write timeout, or the error never reaches it.
+func TestRouteProofFitsWriteTimeout_APP10(t *testing.T) {
+	srv, _, _, _ := setupAppsTestServer(t)
+	if deploy.DefaultRouteTimeout+3*time.Second >= srv.httpServer.WriteTimeout {
+		t.Fatalf("route timeout %s leaves no room under the write timeout %s", deploy.DefaultRouteTimeout, srv.httpServer.WriteTimeout)
+	}
+}
+
+// TestServerStatusCertificateWarningsArray_TLS4: with nothing close to expiry the dashboard gets an
+// empty array, not null (seen on dermaga-vm with v0.8.0-rc.1).
+func TestServerStatusCertificateWarningsArray_TLS4(t *testing.T) {
+	srv, _, _, token := setupAppsTestServer(t)
+	rr := doAPIReq(srv, "GET", "/api/server/status", token, nil)
+	if rr.Code != http.StatusOK || !strings.Contains(rr.Body.String(), `"certificate_warnings":[]`) {
+		t.Fatalf("status: %d %s", rr.Code, rr.Body.String())
 	}
 }

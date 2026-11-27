@@ -202,7 +202,7 @@ func TestRedeploy_VerifyFails_RestoresRoute_DEP2(t *testing.T) {
 				return inner(ctx, h, p, tok)
 			}
 			r2 := deployAndWait(t, s, eng, app.ID, "c2", "failed")
-			if !strings.Contains(r2.ErrorMessage, "Traefik did not route") {
+			if !strings.Contains(r2.ErrorMessage, "Traefik did not answer through the verify router") {
 				t.Fatalf("failure reason: %q", r2.ErrorMessage)
 			}
 			if live, verify := routeOf(t, fh, eng, "shop"); live != 1 || verify {

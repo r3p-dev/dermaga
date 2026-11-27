@@ -79,6 +79,7 @@ func setupTestEngine(t *testing.T) (*store.Store, *host.FakeHost, *Engine, []byt
 		ProbeInterval:     5 * time.Millisecond,
 		DrainGrace:        10 * time.Millisecond,
 		SwitchTimeout:     200 * time.Millisecond,
+		RouteTimeout:      200 * time.Millisecond,
 		// Fake Traefik: the token comes back once the route file on disk contains it.
 		VerifyRoute: func(_ context.Context, _, _, token string) (bool, error) {
 			entries, _ := fh.ReadDir(traefikDir)

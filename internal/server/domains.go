@@ -242,15 +242,16 @@ func certificateInfo(st deploy.DomainStatus, detail string) CertificateInfo {
 }
 
 // certificateWarnings lists app and hook domain certificates close to expiry (TLS-4).
+// The list is never null in JSON, so the panel can treat it as an array.
 func (s *Server) certificateWarnings(ctx context.Context) []string {
 	if s.cfg.Deploy == nil {
-		return nil
+		return []string{}
 	}
 	hosts, _ := s.cfg.Store.ListDomainHosts(ctx)
 	if hook, _ := s.cfg.Store.GetSetting(ctx, auth.SettingHookDomain); hook != "" {
 		hosts = append(hosts, hook)
 	}
-	return traefik.ExpiringCertificates(s.cfg.Deploy.Certificates(), hosts, time.Now())
+	return append([]string{}, traefik.ExpiringCertificates(s.cfg.Deploy.Certificates(), hosts, time.Now())...)
 }
 
 // hookDomainCertificate is the hook domain's certificate status (TLS-5); it has no DNS gate.

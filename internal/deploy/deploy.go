@@ -36,6 +36,7 @@ type Config struct {
 	MeminfoPath       string        // default /proc/meminfo (memory check)
 	DrainGrace        time.Duration // default 10s: old release keeps finishing requests (DEP-1)
 	SwitchTimeout     time.Duration // default 30s per Traefik verification step
+	RouteTimeout      time.Duration // default DefaultRouteTimeout: proof of a route change (APP-10)
 	// VerifyRoute asks Traefik for host+path with the verify token (default: the netns probe to Traefik's verify entrypoint).
 	VerifyRoute func(ctx context.Context, host, path, token string) (bool, error)
 	// ACMEPath is Traefik's acme.json, read for certificate status (TLS-3, DEC-41).
@@ -86,6 +87,9 @@ func NewEngine(s *store.Store, h host.Host, gh *github.Client, b *builder.Builde
 	}
 	if cfg.SwitchTimeout <= 0 {
 		cfg.SwitchTimeout = 30 * time.Second
+	}
+	if cfg.RouteTimeout <= 0 {
+		cfg.RouteTimeout = DefaultRouteTimeout
 	}
 	e := &Engine{
 		store:       s,

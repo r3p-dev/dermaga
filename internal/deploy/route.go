@@ -17,6 +17,10 @@ import (
 // DNSRecheckInterval is how often a domain whose DNS check has not passed yet is checked again (DEC-38).
 const DNSRecheckInterval = 5 * time.Minute
 
+// DefaultRouteTimeout bounds the Traefik proof of a route change. It stays below the panel's HTTP write
+// timeout (15 s, SEC-15) so the panel always receives the result; a reload normally takes ~0.3 s (M0).
+const DefaultRouteTimeout = 10 * time.Second
+
 // CertRetryInterval is how long a domain without a certificate stays out of the route after its
 // order failed (DEC-38): Traefik retries every failed order on any config change, and Let's
 // Encrypt allows 5 failed validations per hour per hostname.
@@ -119,7 +123,7 @@ func (e *Engine) applyRouteLocked(ctx context.Context, appID string, domains []s
 	sw := &traefik.SwitchSpec{CandidateReleaseNumber: live.ReleaseNumber, CandidatePort: rc.Port, VerifyToken: tok}
 	primary, prefix, err := e.writeRouteWith(ctx, app, domains, live.ReleaseNumber, rc.Port, sw)
 	if err == nil {
-		err = e.waitVerified(ctx, primary, prefix, tok)
+		err = e.waitVerified(ctx, primary, prefix, tok, e.cfg.RouteTimeout)
 	}
 	if err != nil {
 		if readErr == nil {

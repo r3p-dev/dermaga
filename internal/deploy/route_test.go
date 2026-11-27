@@ -320,3 +320,23 @@ func TestSyncDomains_FailureLoggedOnce(t *testing.T) {
 		t.Fatalf("a failure after a success must be logged again, got %d", n)
 	}
 }
+
+// TestApplyRoute_UsesRouteTimeout_APP10: a route change Traefik does not load gives up after
+// RouteTimeout, not the 30 s switch timeout, so the panel gets the answer (found on dermaga-vm with
+// v0.8.0-rc.1: the panel's 15 s write timeout cut the reply).
+func TestApplyRoute_UsesRouteTimeout_APP10(t *testing.T) {
+	s, _, eng, key := setupTestEngine(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	_ = eng.Start(ctx)
+	app := liveApp(t, s, eng, key, "shop")
+	eng.cfg.SwitchTimeout, eng.cfg.RouteTimeout = 5*time.Second, 100*time.Millisecond
+	eng.cfg.VerifyRoute = func(context.Context, string, string, string) (bool, error) { return false, nil }
+	start := time.Now()
+	if err := eng.ApplyRoute(ctx, app.ID, withDomain(t, s, app.ID, store.Domain{ID: "dom_x", Domain: "x.example.com"}), nil); err == nil {
+		t.Fatal("want an error")
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Fatalf("ApplyRoute waited %s; it must use RouteTimeout", d)
+	}
+}

@@ -120,13 +120,13 @@ func (e *Engine) appLock(appID string) chan struct{} {
 // ---- routes (route.go builds and writes them) ----
 
 // waitVerified polls Traefik until a request carrying token gets it back (the verify router of the
-// file just written is loaded) from a reachable candidate, or the switch timeout passes.
-func (e *Engine) waitVerified(ctx context.Context, primary, prefix, token string) error {
+// file just written is loaded) from a reachable release, or timeout passes.
+func (e *Engine) waitVerified(ctx context.Context, primary, prefix, token string, timeout time.Duration) error {
 	path := prefix
 	if path == "" {
 		path = "/"
 	}
-	deadline := time.Now().Add(e.cfg.SwitchTimeout)
+	deadline := time.Now().Add(timeout)
 	var last error
 	for {
 		ok, err := e.cfg.VerifyRoute(ctx, primary, path, token)
@@ -137,10 +137,10 @@ func (e *Engine) waitVerified(ctx context.Context, primary, prefix, token string
 		if time.Now().After(deadline) {
 			if last != nil {
 				//lint:ignore ST1005 Traefik is a proper noun; this text is the deployment's failure reason
-				return fmt.Errorf("Traefik did not route to the new release within %s: %w", e.cfg.SwitchTimeout, last)
+				return fmt.Errorf("Traefik did not answer through the verify router within %s: %w", timeout, last)
 			}
 			//lint:ignore ST1005 Traefik is a proper noun; this text is the deployment's failure reason
-			return fmt.Errorf("Traefik did not route to the new release within %s", e.cfg.SwitchTimeout)
+			return fmt.Errorf("Traefik did not answer through the verify router within %s", timeout)
 		}
 		select {
 		case <-ctx.Done():
@@ -202,14 +202,14 @@ func (e *Engine) switchTraffic(ctx context.Context, app *store.App, live, livePo
 	if err != nil {
 		return restore(err)
 	}
-	if err := e.waitVerified(ctx, primary, prefix, tokA); err != nil {
+	if err := e.waitVerified(ctx, primary, prefix, tokA, e.cfg.SwitchTimeout); err != nil {
 		return restore(err)
 	}
 	logf(fmt.Sprintf("==> Traefik reaches r%d through the verify router", cand))
 	if _, _, err := e.writeRoute(ctx, app, cand, candPort, &traefik.SwitchSpec{CandidateReleaseNumber: cand, CandidatePort: candPort, VerifyToken: tokB}); err != nil {
 		return restore(err)
 	}
-	if err := e.waitVerified(ctx, primary, prefix, tokB); err != nil {
+	if err := e.waitVerified(ctx, primary, prefix, tokB, e.cfg.SwitchTimeout); err != nil {
 		return restore(err)
 	}
 	logf(fmt.Sprintf("==> Traffic switched from r%d to r%d", live, cand))
