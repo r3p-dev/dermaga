@@ -136,9 +136,20 @@ For local development or testing behind NAT where GitHub cannot deliver webhooks
    command that used to stand here (`gosmee client … http://localhost:7070/hooks/github-app`) could
    never deliver. The hook domain does not resolve on the workstation and the certificate comes
    from Pebble, so the forwarder must pin the name to the VM's IP and trust the Pebble root, as
-   `curl --resolve <hook-domain>:443:192.168.122.217 --cacert <pebble root>` does. The exact
-   `gosmee` invocation is verified end to end in M7b and recorded here then; until then, use
-   signed replays (`tmp/evidence/M5`, `verify_m6a_vm.py`).
+   `curl --resolve <hook-domain>:443:192.168.122.217 --cacert <pebble root>` does. gosmee has no
+   such options, so its `--exec` hook runs a forwarder that does exactly that (verified in M7b on
+   `v0.7.0-rc.4`: real deliveries accepted, the same body with one byte changed refused with 401):
+   ```fish
+   tmp/tools/bin/gosmee client --nocolor --noReplay --exec $PWD/tmp/evidence/M7/gosmee-forward.sh (cat tmp/smee-url) http://127.0.0.1:9
+   ```
+   `gosmee-forward.sh` (gitignored, under `tmp/evidence/M7/`) posts `$GOSMEE_PAYLOAD_FILE` with
+   `curl --data-binary` (byte for byte) and the GitHub headers from `$GOSMEE_HEADERS_FILE`
+   (`Content-Type`, `User-Agent`, `X-GitHub-Event`, `X-GitHub-Delivery`, `X-GitHub-Hook-ID`,
+   `X-Hub-Signature-256`) to `https://<hook-domain>/hooks/github-app`, and logs only the event,
+   delivery ID, body size and hash, and the HTTP status. `--noReplay` keeps gosmee itself from
+   posting anywhere; `http://127.0.0.1:9` is only a required placeholder. For the run the owner sets
+   the GitHub App's webhook URL to the smee channel (secret unchanged) and afterwards back to
+   `https://<hook-domain>/hooks/github-app`.
 4. **Security Warning:** Smee channels are public and unauthenticated. **Never** point production webhooks or sensitive repositories at a public smee channel. Use smee strictly with throwaway test repositories.
 
 ---

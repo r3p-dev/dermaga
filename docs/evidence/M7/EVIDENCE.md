@@ -579,7 +579,7 @@ public path: Traefik 443 → hook-relay → `hooks.sock`. The smee URL is in no 
 | Push E to `dev` → "Push to dev (4b00e59) ignored for testapp: the app deploys from main.", no release | PASS | `rc4-vm-push-journey.log` |
 | GitHub Redeliver of push B: same delivery ID and body hash, 202, still 1 Activity entry for it, no release | PASS | `rc4-vm-redeliver.log` (the journey script's own step failed on a wrong guess of the audit API shape and was stopped; fixed in the script, checked separately) |
 | Remove the app (typed name; wrong name → 400): unit, env file, route, container, 5 images, mirror, API entry gone, route 404 | PASS | `rc4-vm-delete-app.log` |
-| 0 leftovers after removal | **FAIL** | `rc4-vm-delete-app.log`: `~/.cache/dermaga/builds/testapp` (empty folder the builder leaves) and 2 `.dryrun-dep_*` folders from the M7a `kill -9` runs (a crash skips the dry-run's deferred cleanup). Fixed for rc.5 (below); VM proof NOT RUN until then |
+| 0 leftovers after removal (rc.4) | **FAIL** (fixed in rc.5, PASS there) | `rc4-vm-delete-app.log`: `~/.cache/dermaga/builds/testapp` (empty folder the builder leaves) and 2 `.dryrun-dep_*` folders from the M7a `kill -9` runs (a crash skips the dry-run's deferred cleanup). Fixed for rc.5 (below); VM proof NOT RUN until then |
 | Demo state restored: testapp recreated (documented demo env `GREETING=v1`, `BUILD_VAR=b2`; watch paths `Containerfile`), r1 live, `seed.sh` M7 invariants hold | PASS | `rc4-vm-restore-demo.log`, `rc4-vm-demo-recheck.log` |
 | `m3_check.sh access` last (VM-side unban): bans 2 → 4, new login after unban | PASS | `rc4-vm-m3-access.log` |
 | New `ssh dermaga` (owner config) 30 s after the access check | PASS | `rc4-vm-new-ssh-dermaga.log` |
@@ -621,7 +621,7 @@ RESULT R: forwards=2 (2 expected, both 202), Activity entries=1 (1 expected), re
 | `TestStartAndRemoveApp_LeaveNoBuildScratch_APP9`: scratch gone after Start, nothing of the app after RemoveApp; mirrors of another app untouched (negative controls inside) | PASS | `rc5-make-check.log` |
 | Negative control: without either fix line the test fails | PASS | `rc5-scratch-negative.log` |
 | `make check` | PASS | `rc5-make-check.log` |
-| VM: upgrade to rc.5, crash residue swept on start, remove + recreate the app with 0 leftovers | NOT RUN | after the owner tags `v0.7.0-rc.5` |
+| VM: upgrade to rc.5, crash residue swept on start, remove + recreate the app with 0 leftovers | PASS | see § rc.5 on the VM |
 
 ### Notes
 
@@ -630,4 +630,31 @@ RESULT R: forwards=2 (2 expected, both 202), Activity entries=1 (1 expected), re
   new file; nothing was served before. Not a zero-downtime case.
 - Of two sudo password files in `tmp/evidence/M5/`, `vm-sudo-pw` is wrong (one failed sudo attempt on the VM,
   not an SSH failure); `vm-sudo-pass.txt` is the one `m3_check.sh` needs.
-- Still on the owner: the `dev` branch and the smee webhook URL (cleanup commands in the report).
+- Owner cleanup done (2026-11-27): `dev` deleted, App webhook URL back to `https://hooks.dermaga.test/hooks/github-app`, `tmp/smee-url` removed.
+
+## M7b fix on the VM, rc.5 (`v0.7.0-rc.5` = `main` = `d2f24e6`, annotated tag, CI and Release green)
+
+| Check | Status | Log (`tmp/evidence/M7/logs/`) |
+|---|---|---|
+| Release: checksums match, binary reports `v0.7.0-rc.5 (commit d2f24e6)`; 1 byte appended fails (negative control) | PASS | `rc5-release-checksums.log`, `rc5-release-checksums-negative.log` |
+| Upgrade rc.4 → rc.5 per SETUP §6.3: Traefik not restarted, GitHub connected, app 200; build scratch before: 5 entries (`builds/testapp`, the two M7a `.dryrun-dep_*` folders), after the rc.5 start: 0 | PASS | `rc5-vm-upgrade-sweep.log` |
+| Remove the app (typed name; wrong name → 400): 0 leftovers | PASS | `rc5-vm-delete-app.log` |
+| Remove again after a release built on rc.5 (`builds/testapp` and the mirror present before): 0 leftovers, so `RemoveApp` itself removes the folder | PASS | `rc5-vm-delete-app-after-build.log` |
+| Demo state restored: testapp r1 live (`GREETING=v1`, `BUILD_VAR=b2`, watch paths `Containerfile`), `seed.sh` M7 invariants hold | PASS | `rc5-vm-restore-demo-final.log` |
+| Denied-login checks | NOT RUN | not needed: no access code changed since the rc.4 run (owner decision) |
+
+Excerpt (`tmp/evidence/M7/logs/rc5-vm-upgrade-sweep.log`):
+
+```text
+=== scratch before
+~/.cache/dermaga/builds/testapp
+~/.cache/dermaga/builds/.dryrun-dep_25bc1bbd1e2c9ab435fdfb62
+~/.cache/dermaga/builds/.dryrun-dep_91c882b1148e7bb7d9e89610
+(entries: 5)
+dermaga version v0.7.0-rc.5 (commit d2f24e6)
+InvocationID=292dc407990e4117a180ea06f3e93faa
+=== scratch after the rc.5 start
+(entries: 0)
+```
+
+The wrong `tmp/evidence/M5/vm-sudo-pw` was deleted (owner request); `vm-sudo-pass.txt` stays.

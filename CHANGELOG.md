@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-11-27
+
 ### Added
 - **Zero-downtime redeploy (`DEP-1`, `DEP-2`)**: a new release starts next to the live one, is health-checked, and the route moves through three atomic writes, each proven through Traefik with a token the verify router echoes (DEC-33); the old release drains 10 s and stops. Any failure before the switch completes restores the live-only route and removes the candidate.
 - **Rollback (`DEP-4`)** to the last 5 releases that were live: no rebuild, the release's own image and immutable encrypted env version (DEC-32); refused while the app builds ("Cancel the running build first").

@@ -49,7 +49,10 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
 **M7** (0.7.0): Zero downtime: push-to-deploy, redeploy, rollback (`in progress`).
 
 - **Requirement IDs:** DEP-1, DEP-2, DEP-4, DEP-10, APP-8, REL-6.
-- **Handoff** (2026-11-27, M7b VM run on `v0.7.0-rc.4` done; waiting for the owner's review):
+- **Handoff** (2026-11-27, M7 done; `v0.7.0-rc.5` proven on the VM; waiting for the owner's `v0.7.0` tag and confirmation):
+  - Done: rc.5 VM run (scratch swept on start, app removed twice with 0 leftovers, demo state restored); CHANGELOG `[0.7.0]`; owner cleanup of the smee run done.
+  - Next: owner tags `v0.7.0` and confirms M7; then M8 (domains, HTTPS, headers, middleware).
+- **rc.4 handoff** (2026-11-27, M7b VM run on `v0.7.0-rc.4` done):
   - Done: real pushes via smee/gosmee `--exec` (byte-exact proven, 1-byte negative control 401), push → live and failing health under `oha` 50 req/s (0 non-2xx, 0 errors each), other branch and unmatched watch path ignored, GitHub Redeliver deduped, app removed, demo state restored (testapp r1, watch paths `Containerfile`), denied logins last, new `ssh dermaga`; `make test-browser` on 7070.
   - Finding: removal left `builds/<app>` and crash-left `.dryrun-*` folders; fixed locally (RemoveApp + sweep on Start) with tests; needs `v0.7.0-rc.5` and a short VM proof (sweep on start, remove + recreate with 0 leftovers) before the final `v0.7.0`.
   - Owner cleanup: delete the `dev` branch, set the App's webhook URL back to `https://hooks.dermaga.test/hooks/github-app`.
