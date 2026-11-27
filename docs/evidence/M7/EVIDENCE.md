@@ -246,8 +246,8 @@ Sequence and states: `docs/ARCHITECTURE.md` §5.4–§5.6, §6.1.
   retention, crash recovery, reconciler unit fix) are in `docs/ARCHITECTURE.md` §7.
 - Negative controls were temporary source edits from backup copies; each was reverted and the tests re-run
   green (`grep -c 'NEGATIVE CONTROL'` = 0 afterwards).
-- The verify request skips certificate checks on the loopback to our own Traefik (DEC-33): the certificate
-  may still be pending, and only the random token matters.
+- rc.1 sent the verify request to `127.0.0.1:443`; that failed on the VM while a certificate was pending
+  (see "M7a on the VM" below). rc.2 uses the internal `verify` entrypoint (DEC-33).
 - The redeploy dialog had no mockup; its copy and layout follow the rollback dialog (open question in the report).
 - Requests longer than the 10 s drain on the old release are cut (PRD `DEP-1` grace).
 
@@ -264,3 +264,38 @@ PASS commit 6: feat(server): add rollback, preview, memory check and commit rede
 PASS commit 7: feat(ui): add redeploy and rollback to the Deployments tab
 PASS commit 8: docs: record M7a design, decisions and local evidence
 ```
+
+## M7a on the VM
+
+### rc.1 checks before the run (`v0.7.0-rc.1` = `main` = `8efd4ce`)
+
+| Check | Status | Log (`tmp/evidence/M7/logs/`) |
+|---|---|---|
+| Release checksums match; a 1-byte-changed copy fails (negative control) | PASS | `rc1-release-checksums.log`, `rc1-release-checksums-negative.log` |
+| Revert to `fresh` (announced), cold start, `on_reboot=restart` | PASS | `rc1-vm-revert.log` |
+| Installer from the release, first-run setup | PASS | `rc1-vm-install.log`, `rc1-vm-drive.log` |
+| UI smoke: 29 checks, schema version 5, no requirement codes | PASS | `rc1-vm-smoke-ui.log` |
+| Traefik reachable on `127.0.0.1:443` from the daemon for a domain without a certificate | FAIL | `rc1-traefik-loopback.log`, `rc1-snistrict-proof.log` |
+
+**Finding (rc.1).** Traefik listens on `*:443`, but its default TLS options set `sniStrict: true`. For a
+router whose domain has no certificate yet (DNS not propagated, ACME pending), the handshake ends with
+`tlsv1 unrecognized name` (curl exit 35, HTTP 000). The switch proof used that path, so every redeploy of
+such an app would fail with "Traefik did not route to the new release" (the old release keeps serving).
+
+### rc.2 fix (owner-approved): internal verify entrypoint
+
+Traefik's static config gains a plain-HTTP entrypoint `verify` on `:8099`. Traefik binds it inside its
+container; it is not socket-activated and not published on the host or in the firewall. The verify router
+listens only there (no TLS). The deploy engine runs `dermaga probe -host <primary> -verify-token <t>
+http://traefik:8099<path>` in the rootless netns, like the health probe. A binary upgrade applies it: the
+startup reconciler rewrites the outdated dermaga-owned `traefik.yml` and restarts Traefik once; the next start
+changes nothing.
+
+| Check | Status | Log (`tmp/evidence/M7/logs/`) |
+|---|---|---|
+| Before writing code, on the VM: an entrypoint on `:8099` in a throwaway Traefik container on `web` (same image digest) answers `dermaga probe` from the rootless netns (HTTP 200); port 8098 refused (negative control); nothing listens on host port 8099; `traefik` resolves by name in the netns, and its socket-activated `:80` is refused there, which is why the verify entrypoint must be bound by Traefik itself | PASS | `rc2-netns-verify-precheck.log` (exit 1 comes from the final leftover count `grep -c` = 0) |
+| `TestVerifyThroughTraefik_NetnsProbe_DEP1`, `TestCheckVerifyResponse_DEP1`, `TestACMEOnEveryRouter` (verify router only on `verify`, no TLS), `TestReconcile_UpgradeAddsVerifyEntrypoint_DEP1` (rc.1 config rewritten, one Traefik restart, second pass none) | PASS | `rc2-verify-negative-controls.log` |
+| Negative controls: probe on 443, 502 accepted, verify router on `websecure`, reconciler keeps an existing `traefik.yml`: each makes its test FAIL; restored and green | PASS | `rc2-verify-negative-controls.log` |
+| `make check` | PASS | run locally before the suggested commits |
+| Upgrade rc.1 → rc.2 per SETUP §6.3 on the VM, entrypoint appears without the installer | NOT RUN | after the `v0.7.0-rc.2` tag |
+| `oha` 50 req/s: normal and broken-`/health` redeploys, rollback < 10 s, `kill -9` mid-switch, seed.sh | NOT RUN | after the upgrade |

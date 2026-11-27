@@ -49,17 +49,22 @@ Earlier milestones, so their evidence never needs to be opened to start a sessio
 **M7** (0.7.0): Zero downtime: push-to-deploy, redeploy, rollback (`in progress`).
 
 - **Requirement IDs:** DEP-1, DEP-2, DEP-4, DEP-10, APP-8, REL-6.
-- **Handoff** (2026-11-26, M7a code and local tests done; VM part waits for `v0.7.0-rc.1`):
+- **Handoff** (2026-11-26, M7a VM run paused for `v0.7.0-rc.2`):
   - Done: `v0.6.2` (tagged, verified on the VM); shellcheck 0.10.0 local; test-app replacement pushed by the
     owner. M7a: migration `0005` (env versions, `rolled_back`, runtime config, watch paths) with the `0004`
     upgrade test; verified blue-green switch (DEC-33), drain, retention, memory check, rollback, restart
     recovery in the reconciler, `RunInit=true` (DEC-34), real unit re-render; API (rollback, preview, memory
-    check, commit redeploy); panel (Deployments rows, rollback and redeploy dialogs). `make check` and
-    Playwright 10/10 green; negative controls recorded in `docs/evidence/M7/EVIDENCE.md`.
-  - Remaining for M7a: owner commits and tags `v0.7.0-rc.1`; GitHub App connected on the VM (owner);
-    owner pushes the broken-`/health` commit and its revert to `r3p-dev/dermaga-test-app`; VM run with `oha`
-    (redeploy, failing health via "A specific commit", rollback < 10 s, daemon killed mid-switch), seed.sh
-    for M7, then stop for review. M7b (push-to-deploy) after that.
+    check, commit redeploy); panel (Deployments rows, rollback and redeploy dialogs). `v0.7.0-rc.1` tagged and
+    installed on the VM from `fresh`; UI smoke 29/29; GitHub App connected on the VM (owner, only
+    `r3p-dev/dermaga-test-app`); broken-`/health` commit and its revert pushed by the owner.
+  - Found on the VM with rc.1: `sniStrict` blocks the loopback-443 switch proof while a certificate is
+    pending. Fixed for rc.2 (owner-approved): internal plain-HTTP `verify` entrypoint `:8099` inside the
+    Traefik container, reached through the rootless netns; a binary upgrade rewrites `traefik.yml` and
+    restarts Traefik once (DEC-33, SETUP §6.3).
+  - Remaining for M7a: owner commits and tags `v0.7.0-rc.2`; upgrade the VM rc.1 → rc.2 per SETUP §6.3 (no
+    installer re-run) and show the entrypoint appears; Pebble; VM run with `oha` (redeploy, failing health
+    via "A specific commit", rollback < 10 s, daemon killed mid-switch), seed.sh for M7, denied logins last,
+    then stop for review. M7b (push-to-deploy) after that.
   - Owner choices (2026-11-26, later): Deployments tab = rows layout (mockup A); rollback dialog = compact
     (mockup A, no typed confirmation); apps run with Quadlet `RunInit=true` (verified by dry-run on Debian 13
     before use); `m3_check.sh` unbans via VM-side `systemd-run` timers and proves the ban from fail2ban's log.

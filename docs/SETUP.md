@@ -223,6 +223,8 @@ ssh dermaga-vm "chmod +x ~/.local/bin/dermaga.new && mv ~/.local/bin/dermaga.new
 ```
 The atomic `rename(2)` syscall updates the directory entry without mutating the open inode that the running daemon holds, and `systemctl --user restart` cleanly re-execs the new binary.
 
+No installer re-run is needed for a new release: on start, the reconciler rewrites any dermaga-owned Traefik file that differs from what the new binary renders and restarts Traefik once (for example 0.7.0-rc.2 adds the internal `verify` entrypoint to `traefik.yml`). The listening sockets stay with systemd, so requests wait in the backlog during that restart instead of failing. The next start finds the files current and does not restart Traefik.
+
 ### 6.4 Operator Access & SSH Tunneling
 The web panel listens exclusively on `127.0.0.1:7070` on the server (`SEC-2`). Access it securely from the workstation:
 ```bash

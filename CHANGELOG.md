@@ -23,6 +23,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 - The startup reconciler re-rendered missing app units with an image that never existed and without limits or env file; it now renders exactly what the deploy engine deployed.
+- Switch verification failed for every domain whose certificate was still pending (rc.1): Traefik's `sniStrict` refuses the TLS handshake on 443. The verify router now listens on an internal plain-HTTP entrypoint (`:8099` inside the Traefik container, never published) that dermaga reaches through the rootless netns (DEC-33). A binary upgrade applies the new `traefik.yml` itself and restarts Traefik once.
+- `test/vm/smoke_ui.mjs` expects the version the VM's binary reports instead of a fixed one.
 - `docs/SETUP.md` §4.2 pointed gosmee at the panel, which never serves `/hooks/github-app`; §7 explains why `on_reboot=restart` needs a cold start after reverting a running snapshot.
 
 ## [0.6.2] - 2026-11-26
