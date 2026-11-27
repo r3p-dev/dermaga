@@ -36,7 +36,7 @@ type Config struct {
 	MeminfoPath       string        // default /proc/meminfo (memory check)
 	DrainGrace        time.Duration // default 10s: old release keeps finishing requests (DEP-1)
 	SwitchTimeout     time.Duration // default 30s per Traefik verification step
-	// VerifyRoute asks Traefik for host+path with the verify token (default VerifyThroughTraefik).
+	// VerifyRoute asks Traefik for host+path with the verify token (default: the netns probe to Traefik's verify entrypoint).
 	VerifyRoute func(ctx context.Context, host, path, token string) (bool, error)
 }
 
@@ -78,10 +78,7 @@ func NewEngine(s *store.Store, h host.Host, gh *github.Client, b *builder.Builde
 	if cfg.SwitchTimeout <= 0 {
 		cfg.SwitchTimeout = 30 * time.Second
 	}
-	if cfg.VerifyRoute == nil {
-		cfg.VerifyRoute = VerifyThroughTraefik
-	}
-	return &Engine{
+	e := &Engine{
 		store:     s,
 		host:      h,
 		gh:        gh,
@@ -94,6 +91,10 @@ func NewEngine(s *store.Store, h host.Host, gh *github.Client, b *builder.Builde
 		wake:      make(chan struct{}, 1),
 		stopCh:    make(chan struct{}),
 	}
+	if e.cfg.VerifyRoute == nil {
+		e.cfg.VerifyRoute = e.verifyThroughTraefik
+	}
+	return e
 }
 
 // Logs returns the Builder's LogHub for live SSE streaming.

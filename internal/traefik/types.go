@@ -12,6 +12,14 @@ const Image = "docker.io/library/traefik:v3.7.19@sha256:aa942a00bce033c909bf1f7e
 // VerifyHeader is the HTTP header inspected by the temporary switch router.
 const VerifyHeader = "X-Dermaga-Verify"
 
+// VerifyEntryPoint is the plain-HTTP entrypoint of the switch's verify router, bound by Traefik
+// inside its container on VerifyPort and never published on the host. dermaga reaches it through
+// the rootless netns, so verification does not wait for a certificate (sniStrict, DEC-33).
+const VerifyEntryPoint = "verify"
+
+// VerifyPort is VerifyEntryPoint's port inside the Traefik container.
+const VerifyPort = 8099
+
 // DefaultPermissionsPolicy matches vps-setup.sh's REL-8 per-app baseline.
 const DefaultPermissionsPolicy = "camera=(), microphone=(), geolocation=(), payment=()"
 

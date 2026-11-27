@@ -2,6 +2,7 @@ package reconciler_test
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"dermaga/internal/host"
 	"dermaga/internal/reconciler"
 	"dermaga/internal/store"
+	"dermaga/internal/traefik"
 )
 
 func setupTestEnvironment(t *testing.T) (*store.Store, *host.FakeHost, reconciler.Config) {
@@ -619,6 +621,48 @@ func TestReconcile_TraefikOutdatedUnitReplaced(t *testing.T) {
 	}
 	if got := systemctlCalls(fh); len(got) != 3 || got[2] != "--user restart --no-block traefik.service" {
 		t.Errorf("systemctl calls = %q", got)
+	}
+}
+
+// DEP-1/DEC-33 upgrade path: a plain binary upgrade from v0.6.x/rc.1 (static config without the
+// internal verify entrypoint) rewrites traefik.yml and restarts Traefik once; the next start of the
+// daemon finds it current and only makes sure Traefik runs (idempotent, no installer re-run).
+func TestReconcile_UpgradeAddsVerifyEntrypoint_DEP1(t *testing.T) {
+	st, fh, cfg := traefikTestConfig(t)
+	if _, err := reconciler.New(fh, st, cfg).Reconcile(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(cfg.TraefikDir, "traefik.yml")
+	current, _ := fh.ReadFile(path)
+	marker, body, _ := strings.Cut(string(current), "\n")
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(body), &doc); err != nil {
+		t.Fatal(err)
+	}
+	delete(doc["entryPoints"].(map[string]any), traefik.VerifyEntryPoint)
+	old, _ := json.MarshalIndent(doc, "", "  ")
+	_ = fh.WriteFileAtomic(path, []byte(marker+"\n"+string(old)+"\n"), 0644)
+	fh.Commands = nil
+
+	report, err := reconciler.New(fh, st, cfg).Reconcile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	upgraded, _ := fh.ReadFile(path)
+	if strings.Join(report.FilesReRendered, ",") != "traefik.yml" || !strings.Contains(string(upgraded), `"verify": {`) || !strings.Contains(string(upgraded), `"address": ":8099"`) {
+		t.Fatalf("FilesReRendered = %v, traefik.yml:\n%s", report.FilesReRendered, upgraded)
+	}
+	if got := systemctlCalls(fh); len(got) != 3 || got[2] != "--user restart --no-block traefik.service" {
+		t.Errorf("upgrade pass systemctl calls = %q, want one restart of traefik.service", got)
+	}
+
+	fh.Commands = nil
+	report, err = reconciler.New(fh, st, cfg).Reconcile(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := systemctlCalls(fh); len(report.FilesReRendered) != 0 || strings.Join(got, "|") != "--user enable --now traefik-http.socket traefik-https.socket|--user start --no-block traefik.service" {
+		t.Errorf("second pass: re-rendered %v, systemctl %q; want nothing and no restart", report.FilesReRendered, got)
 	}
 }
 

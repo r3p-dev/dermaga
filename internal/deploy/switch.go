@@ -4,11 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"path/filepath"
 	"strconv"
@@ -17,6 +15,7 @@ import (
 
 	"dermaga/internal/crypto"
 	"dermaga/internal/name"
+	"dermaga/internal/quadlet"
 	"dermaga/internal/store"
 	"dermaga/internal/traefik"
 )
@@ -177,40 +176,36 @@ func (e *Engine) waitVerified(ctx context.Context, primary, prefix, token string
 	}
 }
 
-// VerifyThroughTraefik is the real VerifyRoute: an HTTPS request to the local Traefik (443) for
-// host+path with the verify header. It succeeds when the token comes back in the response header
-// and the status is not a gateway error (Traefik reached the candidate).
-func VerifyThroughTraefik(ctx context.Context, host, path, token string) (bool, error) {
-	tr := &http.Transport{
-		DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
-			return (&net.Dialer{Timeout: 2 * time.Second}).DialContext(ctx, network, "127.0.0.1:443")
-		},
-		// Loopback to our own Traefik; the certificate may still be pending (DNS, ACME). Only the
-		// random token in the response matters here, not the certificate.
-		TLSClientConfig:   &tls.Config{ServerName: host, InsecureSkipVerify: true},
-		DisableKeepAlives: true,
-	}
-	defer tr.CloseIdleConnections()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+host+path, nil)
+// verifyThroughTraefik is the real VerifyRoute: `dermaga probe` in the rootless netns (like the
+// health probe, DEC-03) sends host+path with the token to Traefik's internal plain-HTTP verify
+// entrypoint. Not 443: with sniStrict, Traefik refuses the TLS handshake for a domain whose
+// certificate is still pending (DEC-33).
+func (e *Engine) verifyThroughTraefik(ctx context.Context, host, path, token string) (bool, error) {
+	u := fmt.Sprintf("http://%s:%d%s", quadlet.TraefikContainerName, traefik.VerifyPort, path)
+	out, err := e.host.RunCommand(ctx, "podman", "unshare", "--rootless-netns", e.cfg.BinaryPath, "probe", "-host", host, "-verify-token", token, u)
 	if err != nil {
+		// The probe's last line is its reason ("Error: ..."); the rest is the command wrapper.
+		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+		if reason := strings.TrimPrefix(lines[len(lines)-1], "Error: "); reason != "" {
+			return false, errors.New(reason)
+		}
 		return false, err
 	}
-	req.Header.Set(traefik.VerifyHeader, token)
-	resp, err := (&http.Client{Transport: tr, Timeout: 3 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}).Do(req)
-	if err != nil {
-		return false, err
-	}
-	_ = resp.Body.Close()
+	return true, nil
+}
+
+// CheckVerifyResponse decides a verify request (used by `dermaga probe -verify-token`): the token
+// must come back, which only the verify router of the file just written adds, and Traefik must
+// have reached the candidate (any status but 502/503/504; the app may answer 401/404 itself).
+func CheckVerifyResponse(resp *http.Response, token string) error {
 	if resp.Header.Get(traefik.VerifyHeader) != token {
-		return false, errors.New("verify router not loaded yet")
+		return errors.New("verify router not loaded yet")
 	}
 	if resp.StatusCode == http.StatusBadGateway || resp.StatusCode == http.StatusServiceUnavailable || resp.StatusCode == http.StatusGatewayTimeout {
 		//lint:ignore ST1005 Traefik is a proper noun; this text is the deployment's failure reason
-		return false, fmt.Errorf("Traefik could not reach the new release (HTTP %d)", resp.StatusCode)
+		return fmt.Errorf("Traefik could not reach the new release (HTTP %d)", resp.StatusCode)
 	}
-	return true, nil
+	return nil
 }
 
 // switchTraffic moves the app's route from release `live` (livePort) to the candidate, proving

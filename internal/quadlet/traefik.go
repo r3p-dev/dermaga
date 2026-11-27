@@ -15,6 +15,9 @@ const (
 	TraefikServiceName     = "traefik.service"
 )
 
+// TraefikContainerName is also its DNS name on the web network (the verify probe dials it).
+const TraefikContainerName = "traefik"
+
 // TraefikSpec defines the Traefik reverse proxy container (HOST-6).
 type TraefikSpec struct {
 	Image      string
@@ -82,7 +85,7 @@ func RenderTraefik(spec TraefikSpec) ([]byte, error) {
 	unit.add("After", sockets)
 
 	c := doc.addSection("Container")
-	c.add("ContainerName", "traefik")
+	c.add("ContainerName", TraefikContainerName)
 	c.add("Image", spec.Image)
 	c.add("Network", NetworkFileName("web"))
 	c.add("Notify", "true")

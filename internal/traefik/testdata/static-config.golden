@@ -13,6 +13,16 @@
     "bufferingSize": 64
   },
   "entryPoints": {
+    "verify": {
+      "address": ":8099",
+      "http": {
+        "aliasHeadersStrategy": "delete",
+        "encodedCharacters": {
+          "allowEncodedBackSlash": false,
+          "allowEncodedNullCharacter": false
+        }
+      }
+    },
     "web": {
       "address": ":80",
       "http": {

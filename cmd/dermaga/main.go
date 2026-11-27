@@ -34,6 +34,7 @@ import (
 	"dermaga/internal/reconciler"
 	"dermaga/internal/server"
 	"dermaga/internal/store"
+	"dermaga/internal/traefik"
 	"dermaga/internal/webhook"
 )
 
@@ -545,10 +546,12 @@ func runProbe(args []string) error {
 	fs := flag.NewFlagSet("probe", flag.ExitOnError)
 	dnsServer := fs.String("dns", "10.89.0.1:53", "DNS server to resolve container names (aardvark-dns)")
 	timeout := fs.Duration("timeout", 5*time.Second, "probe timeout")
+	hostHeader := fs.String("host", "", "Host header to send (default: the URL's host)")
+	verifyToken := fs.String("verify-token", "", "switch verification: send this token and require it back from Traefik's verify router")
 	_ = fs.Parse(args)
 
 	if fs.NArg() < 1 {
-		return fmt.Errorf("usage: dermaga probe [-dns ip:53] <url>")
+		return fmt.Errorf("usage: dermaga probe [-dns ip:53] [-host name] [-verify-token t] <url>")
 	}
 	targetURL := fs.Arg(0)
 
@@ -576,8 +579,17 @@ func runProbe(args []string) error {
 		Timeout:   *timeout,
 	}
 
+	req, err := http.NewRequest(http.MethodGet, targetURL, nil)
+	if err != nil {
+		return err
+	}
+	req.Host = *hostHeader
+	if *verifyToken != "" {
+		req.Header.Set(traefik.VerifyHeader, *verifyToken)
+		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
 	start := time.Now()
-	resp, err := client.Get(targetURL)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("probe request failed: %w", err)
 	}
@@ -591,6 +603,9 @@ func runProbe(args []string) error {
 
 	fmt.Printf("HTTP %d (%s) in %v\n", resp.StatusCode, resp.Status, duration)
 	fmt.Printf("Body: %s\n", string(body))
+	if *verifyToken != "" {
+		return deploy.CheckVerifyResponse(resp, *verifyToken)
+	}
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		return nil
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -402,4 +403,55 @@ func sealJSONForTest(key []byte, v any) (string, error) {
 		return "", err
 	}
 	return crypto.Encrypt(key, "env_snapshot_encrypted", raw)
+}
+
+// The default VerifyRoute probes Traefik's internal plain-HTTP verify entrypoint through the
+// rootless netns (not 443: sniStrict refuses the handshake while a certificate is pending), and
+// reports the probe's own reason on failure (DEP-1, DEC-33).
+func TestVerifyThroughTraefik_NetnsProbe_DEP1(t *testing.T) {
+	h := host.NewFakeHost()
+	e := NewEngine(nil, h, nil, nil, Config{BinaryPath: "/home/server/.local/bin/dermaga"})
+	ok, err := e.cfg.VerifyRoute(context.Background(), "shop.example.com", "/api", "tok123")
+	if !ok || err != nil {
+		t.Fatalf("verify = %v, %v; want true, nil", ok, err)
+	}
+	want := "podman unshare --rootless-netns /home/server/.local/bin/dermaga probe -host shop.example.com -verify-token tok123 http://traefik:8099/api"
+	if got := h.Commands[0].Name + " " + strings.Join(h.Commands[0].Args, " "); got != want {
+		t.Fatalf("command:\n got %s\nwant %s", got, want)
+	}
+
+	h.CommandMock = func(string, ...string) ([]byte, error) {
+		return []byte("HTTP 404 (404 Not Found) in 1ms\nBody: 404 page not found\nError: verify router not loaded yet\n"), errors.New("exit status 1")
+	}
+	ok, err = e.cfg.VerifyRoute(context.Background(), "shop.example.com", "/", "tok123")
+	if ok || err == nil || err.Error() != "verify router not loaded yet" {
+		t.Fatalf("failed probe = %v, %v; want false, \"verify router not loaded yet\"", ok, err)
+	}
+}
+
+func TestCheckVerifyResponse_DEP1(t *testing.T) {
+	resp := func(status int, echoed string) *http.Response {
+		r := &http.Response{StatusCode: status, Header: http.Header{}}
+		if echoed != "" {
+			r.Header.Set(traefik.VerifyHeader, echoed)
+		}
+		return r
+	}
+	for _, tc := range []struct {
+		name string
+		resp *http.Response
+		want string
+	}{
+		{"echoed, app answered", resp(200, "tok"), ""},
+		{"echoed, app answered 401", resp(401, "tok"), ""},
+		{"no echo: old file still loaded", resp(404, ""), "verify router not loaded yet"},
+		{"other token: earlier file", resp(200, "old"), "verify router not loaded yet"},
+		{"echoed, candidate unreachable", resp(502, "tok"), "Traefik could not reach the new release (HTTP 502)"},
+		{"echoed, timeout", resp(504, "tok"), "Traefik could not reach the new release (HTTP 504)"},
+	} {
+		err := CheckVerifyResponse(tc.resp, "tok")
+		if got := fmt.Sprint(err); (tc.want == "" && err != nil) || (tc.want != "" && got != tc.want) {
+			t.Errorf("%s: got %v, want %q", tc.name, err, tc.want)
+		}
+	}
 }

@@ -161,8 +161,15 @@ func TestACMEOnEveryRouter(t *testing.T) {
 		t.Fatalf("expected routers, got none")
 	}
 
-	// Verify that every single router has TLS configured with certResolver: "le"
+	// Every public router has TLS with certResolver "le"; the verify router lives only on the
+	// internal plain-HTTP entrypoint (DEC-33) and must never be on a public one.
 	for routerName, r := range doc.HTTP.Routers {
+		if routerName == "app-acme-check-verify" {
+			if len(r.EntryPoints) != 1 || r.EntryPoints[0] != VerifyEntryPoint || r.TLS != nil {
+				t.Errorf("verify router: entryPoints %v tls %v, want only [%s] without TLS", r.EntryPoints, r.TLS, VerifyEntryPoint)
+			}
+			continue
+		}
 		if r.TLS == nil {
 			t.Errorf("router %q missing TLS configuration", routerName)
 			continue

@@ -63,6 +63,17 @@ func RenderStatic(spec StaticSpec) ([]byte, error) {
 					},
 				},
 			},
+			// Internal only: not socket-activated, not published; the verify probe's target (DEC-33).
+			VerifyEntryPoint: {
+				Address: fmt.Sprintf(":%d", VerifyPort),
+				HTTP: EntryPointHTTP{
+					AliasHeadersStrategy: "delete",
+					EncodedCharacters: EncodedCharacters{
+						AllowEncodedBackSlash:     false,
+						AllowEncodedNullCharacter: false,
+					},
+				},
+			},
 		},
 		Providers: ProvidersConfig{
 			File: FileProvider{
@@ -431,11 +442,10 @@ func RenderApp(spec AppSpec) ([]byte, error) {
 			CustomResponseHeaders: map[string]string{VerifyHeader: spec.Switch.VerifyToken},
 		}}
 		routers[verifyRouterName] = Router{
-			EntryPoints: []string{"websecure"},
+			EntryPoints: []string{VerifyEntryPoint},
 			Rule:        verifyRule,
 			Service:     candidateServiceName,
 			Middlewares: append([]string{ackMiddlewareName}, appMiddlewareChain...),
-			TLS:         &RouterTLS{CertResolver: CertResolverName},
 			Priority:    10000,
 		}
 	}
