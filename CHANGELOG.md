@@ -29,6 +29,7 @@ All notable changes to this project are documented here. The format follows
 - `test/vm/m3_check.sh access` schedules the fail2ban unban on the VM before the denied logins (`systemd-run` timers at +60 s and +120 s), waits for a new login, and proves the ban from `/var/log/fail2ban.log`. The earlier ControlMaster unban could not work: the nftables ban also rejects packets on the already-open connection.
 
 ### Fixed
+- Removing an app left its empty folder under `~/.cache/dermaga/builds`, and a daemon killed during a deploy left that deploy's Quadlet dry-run folder there; app removal now deletes the folder and the daemon clears the build scratch folder on start (found on `dermaga-vm` with v0.7.0-rc.4).
 - After a crash the startup reconciler left the stopped release's env file (runtime secrets) on disk; orphan units now go with the same cleanup as after a normal switch (`deploy.RemoveReleaseUnit`), stray env files are removed, and the image of a release interrupted by the restart is removed.
 - A release adopted after a crash had no log: the log is now saved at every stage line and every 2 s while the release builds, starts and switches.
 - A release that lost its traffic just before a restart was stopped at once; it now drains for the same 10 s as after a normal switch.

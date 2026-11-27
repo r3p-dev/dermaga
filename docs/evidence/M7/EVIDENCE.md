@@ -555,3 +555,79 @@ PASS commit 3: feat(ui): add deploy on push settings and live deployment status 
 PASS commit 4: test(ui): check panel journey URLs by path (log: .check-logs/commits/commit4.log)
 PASS commit 5: docs: record the M7b push-to-deploy design and local evidence (log: .check-logs/commits/commit5.log)
 ```
+
+## M7b on the VM (`v0.7.0-rc.4` = `main` = `2bbb6ee`, annotated tag, CI and Release green)
+
+Binary: the published release, upgraded per SETUP §6.3. Real deliveries: the owner pointed the GitHub App's webhook
+URL at a fresh smee channel (secret unchanged); `gosmee` 0.32.1 ran on the workstation with
+`--noReplay --exec tmp/evidence/M7/gosmee-forward.sh`, which sends each body byte for byte to
+`https://hooks.dermaga.test/hooks/github-app` (`curl --resolve … --cacert <Pebble root>`), so deliveries take the
+public path: Traefik 443 → hook-relay → `hooks.sock`. The smee URL is in no log (`gosmee-client.log` has only
+`<smee-url>`; its one `smee.io` line is gosmee's `/version` probe). The owner did every push to
+`r3p-dev/dermaga-test-app`.
+
+| Check | Status | Log (`tmp/evidence/M7/logs/`) |
+|---|---|---|
+| Release: checksums match, binary reports `v0.7.0-rc.4 (commit 2bbb6ee)`; 1 byte appended fails (negative control) | PASS | `rc4-release-checksums.log`, `rc4-release-checksums-negative.log` |
+| Upgrade rc.3 → rc.4 (no installer): rc.4 active, Traefik not restarted (same InvocationID), GitHub connected, app 200 | PASS | `rc4-vm-upgrade.log` |
+| `make test-browser` on port 7070 (owner's tunnel closed): 13 passed | PASS | `rc4-make-test-browser-7070.log` |
+| Forwarder reaches the daemon: an unsigned delivery gets 401 and "signature mismatch" | PASS | `rc4-vm-forwarder-preflight.log` |
+| Byte-exact: the README-only push (`6ad9e9b`) → 202, no warning, "Push to main (6ad9e9b) ignored for testapp: no changed file matches the watch paths.", no release; the same body with 1 byte changed → 401 (negative control) | PASS | `rc4-vm-byte-exact.log` |
+| Push B (`Containerfile` change) → r9 live 9.3 s after it appeared, verified switch, 10 s drain; `oha` 50 req/s 150 s: 7501 × 200, 0 errors; `/version` 0 non-200 | PASS | `rc4-vm-push-journey.log`, `oha-rc4-B.*` |
+| Push C (no `/health`) → r10 failed ("HTTP health check /health timed out after 30s"), r9 stays live; `oha`: 7501 × 200, 0 errors | PASS | `rc4-vm-push-journey.log`, `oha-rc4-C.*` |
+| Push D (revert C) → r11 live; `oha`: 7501 × 200, 0 errors | PASS | `rc4-vm-push-journey.log`, `oha-rc4-D.*` |
+| Push E to `dev` → "Push to dev (4b00e59) ignored for testapp: the app deploys from main.", no release | PASS | `rc4-vm-push-journey.log` |
+| GitHub Redeliver of push B: same delivery ID and body hash, 202, still 1 Activity entry for it, no release | PASS | `rc4-vm-redeliver.log` (the journey script's own step failed on a wrong guess of the audit API shape and was stopped; fixed in the script, checked separately) |
+| Remove the app (typed name; wrong name → 400): unit, env file, route, container, 5 images, mirror, API entry gone, route 404 | PASS | `rc4-vm-delete-app.log` |
+| 0 leftovers after removal | **FAIL** | `rc4-vm-delete-app.log`: `~/.cache/dermaga/builds/testapp` (empty folder the builder leaves) and 2 `.dryrun-dep_*` folders from the M7a `kill -9` runs (a crash skips the dry-run's deferred cleanup). Fixed for rc.5 (below); VM proof NOT RUN until then |
+| Demo state restored: testapp recreated (documented demo env `GREETING=v1`, `BUILD_VAR=b2`; watch paths `Containerfile`), r1 live, `seed.sh` M7 invariants hold | PASS | `rc4-vm-restore-demo.log`, `rc4-vm-demo-recheck.log` |
+| `m3_check.sh access` last (VM-side unban): bans 2 → 4, new login after unban | PASS | `rc4-vm-m3-access.log` |
+| New `ssh dermaga` (owner config) 30 s after the access check | PASS | `rc4-vm-new-ssh-dermaga.log` |
+
+Excerpt (`tmp/evidence/M7/logs/rc4-vm-push-journey.log`, push B):
+
+```text
+10:14:00.082 B: release r9 (dep_b98d0b071ad83193c58c562b) appeared; oha -q 50 -c 10 -z 150s starts now
+10:14:09.341 B: r9 status active (appeared -> terminal: 9.3 s)
+==> Traefik reaches r9 through the verify router
+==> Traffic switched from r8 to r9
+==> Draining r8 for 10s before stopping it
+==> Deployment is live
+2026-11-27T00:55:49Z 200  first=10:14:00.111  last=10:14:08.534
+2026-11-27T03:14:01Z 200  first=10:14:09.059  last=10:16:29.689
+oha: 150.003504076 s, 50.00549851288528 req/s, requests 7501, codes {"200":7501}, errors {}
+RESULT B: oha non-2xx=0 connection-errors=0 /version non-200=0 release=active (expected active)
+RESULT C: oha non-2xx=0 connection-errors=0 /version non-200=0 release=failed (expected failed)
+RESULT D: oha non-2xx=0 connection-errors=0 /version non-200=0 release=active (expected active)
+RESULT E: newest release r11 (expected r11, no deployment for dev)
+```
+
+Excerpt (`tmp/evidence/M7/logs/rc4-vm-redeliver.log`):
+
+```text
+2026-11-27T10:13:58+07:00 event=push delivery=95f3ce28-ea10-11f1-9a2d-9a6caad114ce bytes=7832 sha256=8b5964a308f0 status=202
+2026-11-27T10:28:21+07:00 event=push delivery=95f3ce28-ea10-11f1-9a2d-9a6caad114ce bytes=7832 sha256=8b5964a308f0 status=202
+2026-11-27T03:13:58Z push_deploy Push to main (e797640) queued release r9 for testapp.
+RESULT R: forwards=2 (2 expected, both 202), Activity entries=1 (1 expected), releases of B=r9:inactive
+```
+
+### Finding and fix for rc.5 (local part)
+
+`deploy.Engine.RemoveApp` now also removes `<builds>/<app>`, and `Engine.Start` clears the build scratch folder
+(only source exports and Quadlet dry-runs live there; nothing builds before the worker starts). ARCHITECTURE §5.6.
+
+| Check | Status | Log (`tmp/evidence/M7/logs/`) |
+|---|---|---|
+| `TestStartAndRemoveApp_LeaveNoBuildScratch_APP9`: scratch gone after Start, nothing of the app after RemoveApp; mirrors of another app untouched (negative controls inside) | PASS | `rc5-make-check.log` |
+| Negative control: without either fix line the test fails | PASS | `rc5-scratch-negative.log` |
+| `make check` | PASS | `rc5-make-check.log` |
+| VM: upgrade to rc.5, crash residue swept on start, remove + recreate the app with 0 leftovers | NOT RUN | after the owner tags `v0.7.0-rc.5` |
+
+### Notes
+
+- Right after the recreated app's first release went live, one HTTPS `/health` request got 404; a second later it
+  was 200. A first deploy has no previous route and no switch proof (DEP-3 path), so this is Traefik loading the
+  new file; nothing was served before. Not a zero-downtime case.
+- Of two sudo password files in `tmp/evidence/M5/`, `vm-sudo-pw` is wrong (one failed sudo attempt on the VM,
+  not an SSH failure); `vm-sudo-pass.txt` is the one `m3_check.sh` needs.
+- Still on the owner: the `dev` branch and the smee webhook URL (cleanup commands in the report).
