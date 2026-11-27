@@ -15,7 +15,9 @@ mkdirSync(shots, { recursive: true })
 const vm = (cmd) =>
 	execFileSync('ssh', ['dermaga-vm', cmd], { encoding: 'utf8', timeout: 60000 }).trim()
 
-console.log(`date: ${new Date().toISOString()} vm: ${vm('hostname')} binary: ${vm('~/.local/bin/dermaga version')}`)
+const binary = vm('~/.local/bin/dermaga version')
+const expectedVersion = binary.match(/dermaga version (\S+)/)?.[1]
+console.log(`date: ${new Date().toISOString()} vm: ${vm('hostname')} binary: ${binary}`)
 
 const code =
 	/\b(NFR|UI|DEP|GHA|SEC|AUD|WIZ|APP|LOG|SETUP|ADM|TLS|RUN|DASH|DISK|DOC|HOST|INST|LAP|LOCK|REL|SRV|UPD|MIG)-\d+\b/
@@ -84,11 +86,11 @@ try {
 			}))
 			const body = await page.locator('body').innerText()
 			const ctx = `${width} ${theme}`
-			check(text.includes(status.version) && status.version === 'v0.6.2', `[overview ${ctx}]: version ${status.version} from the API`)
+			check(text.includes(status.version) && status.version === expectedVersion, `[overview ${ctx}]: version ${status.version} from the API`)
 			check(title === `Database schema version ${status.schema_version}`, `[overview ${ctx}]: tooltip "${title}"`)
 			check(main.maxWidth === 'none' && main.right === main.viewport, `[layout ${ctx}]: main max-width ${main.maxWidth}, right ${main.right} of ${main.viewport}`)
 			check(!code.test(body) && (await page.locator('footer').count()) === 0, `[text ${ctx}]: no requirement codes, no footer`)
-			await page.screenshot({ path: `${shots}/vm-v062-dashboard-${width}-${theme}.png`, fullPage: true })
+			await page.screenshot({ path: `${shots}/vm-${expectedVersion}-dashboard-${width}-${theme}.png`, fullPage: true })
 		}
 	}
 	for (const path of ['/apps', '/activity', '/settings']) {
