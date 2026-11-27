@@ -143,6 +143,15 @@ func (s *Store) FinishSwitch(ctx context.Context, appID, newDepID, oldDepID, old
 }
 
 // FindDeploymentByRelease returns an app's deployment with the given release number.
+// HasCurrentDeploymentOfCommit reports whether appID has a release of commit that is queued, in
+// progress or live, so a repeated push of the same commit is not deployed twice (APP-8).
+func (s *Store) HasCurrentDeploymentOfCommit(ctx context.Context, appID, commit string) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM deployments WHERE app_id = ? AND commit_hash = ?
+		AND status IN ('queued', 'building', 'starting', 'probing', 'switching', 'active')`, appID, commit).Scan(&n)
+	return n > 0, err
+}
+
 func (s *Store) FindDeploymentByRelease(ctx context.Context, appID string, release int) (*Deployment, error) {
 	deps, err := s.queryDeployments(ctx, `WHERE app_id = ? AND release_number = ?`, appID, release)
 	if err != nil {

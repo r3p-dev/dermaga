@@ -49,6 +49,7 @@ type AuditLog struct {
 // AuditFilter defines query parameters for filtering audit logs (AUD-2).
 type AuditFilter struct {
 	Origin string
+	Event  string
 	AppID  *string
 	Since  *time.Time
 	Until  *time.Time
@@ -419,6 +420,10 @@ func (s *Store) ListAuditLogs(ctx context.Context, filter AuditFilter) ([]AuditL
 	if filter.Origin != "" {
 		conditions = append(conditions, "origin = ?")
 		args = append(args, filter.Origin)
+	}
+	if filter.Event != "" {
+		conditions = append(conditions, "event = ?")
+		args = append(args, filter.Event)
 	}
 	if filter.AppID != nil {
 		conditions = append(conditions, "app_id = ?")

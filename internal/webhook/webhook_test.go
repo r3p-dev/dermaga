@@ -24,7 +24,7 @@ func signPayload(secret, body []byte) string {
 	return "sha256=" + hex.EncodeToString(m.Sum(nil))
 }
 
-func setupWebhookTest(t *testing.T) (*webhook.Handler, *store.Store, []byte, *bytes.Buffer) {
+func setupWebhookTest(t *testing.T, onPush ...func(context.Context, webhook.Push)) (*webhook.Handler, *store.Store, []byte, *bytes.Buffer) {
 	t.Helper()
 	s, err := store.Open(filepath.Join(t.TempDir(), "wh.db"))
 	if err != nil {
@@ -47,6 +47,9 @@ func setupWebhookTest(t *testing.T) (*webhook.Handler, *store.Store, []byte, *by
 		MasterKey: masterKey,
 		Logger:    logger,
 	})
+	if len(onPush) > 0 {
+		h = webhook.New(webhook.Config{Store: s, MasterKey: masterKey, Logger: logger, OnPush: onPush[0]})
+	}
 	return h, s, whSecret, &logBuf
 }
 
@@ -206,5 +209,83 @@ func TestWebhookInstallationEvents_GHA7(t *testing.T) {
 	repos, _ = s.ListGitHubRepositories(ctx)
 	if len(insts) != 0 || len(repos) != 0 {
 		t.Fatalf("expected 0 installations and 0 repos after uninstall, got %d/%d", len(insts), len(repos))
+	}
+}
+
+func postSigned(t *testing.T, h *webhook.Handler, secret []byte, sig, delivery, event, body string) int {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost, "/hooks/github-app", strings.NewReader(body))
+	req.Header.Set("X-GitHub-Delivery", delivery)
+	req.Header.Set("X-GitHub-Event", event)
+	if sig == "" {
+		sig = signPayload(secret, []byte(body))
+	}
+	req.Header.Set("X-Hub-Signature-256", sig)
+	rr := httptest.NewRecorder()
+	h.Handler().ServeHTTP(rr, req)
+	return rr.Code
+}
+
+// APP-8: a signed push reaches OnPush once with its ref, commit and changed files; a bad signature
+// or a repeated delivery ID never does (SEC-11, SEC-13).
+func TestWebhookPush_OnPush_APP8(t *testing.T) {
+	var got []webhook.Push
+	h, _, secret, _ := setupWebhookTest(t, func(_ context.Context, p webhook.Push) { got = append(got, p) })
+	body := `{"ref":"refs/heads/main","after":"abc123","deleted":false,
+		"head_commit":{"message":"fix: thing"},"repository":{"full_name":"octo/web"},
+		"commits":[{"added":["web/new.ts"],"modified":["README.md"],"removed":[]},{"added":[],"modified":[],"removed":["old.txt"]}]}`
+
+	if code := postSigned(t, h, secret, "sha256="+strings.Repeat("0", 64), "p-1", "push", body); code != http.StatusUnauthorized || len(got) != 0 {
+		t.Fatalf("bad signature: code %d, calls %d", code, len(got))
+	}
+	if code := postSigned(t, h, secret, "", "p-1", "push", body); code != http.StatusAccepted || len(got) != 1 {
+		t.Fatalf("signed push: code %d, calls %d", code, len(got))
+	}
+	// GitHub's Redeliver keeps the delivery ID ("the X-GitHub-Delivery header will be the same as in
+	// the original delivery"): accepted, not processed again.
+	if code := postSigned(t, h, secret, "", "p-1", "push", body); code != http.StatusAccepted || len(got) != 1 {
+		t.Fatalf("repeated delivery: code %d, calls %d", code, len(got))
+	}
+	p := got[0]
+	if p.DeliveryID != "p-1" || p.Repo != "octo/web" || p.Ref != "refs/heads/main" || p.SHA != "abc123" || p.Message != "fix: thing" || p.Deleted {
+		t.Fatalf("push fields: %+v", p)
+	}
+	if strings.Join(p.Files, ",") != "web/new.ts,README.md,old.txt" {
+		t.Fatalf("files: %v", p.Files)
+	}
+}
+
+// APP-8: when the payload cannot say which files changed, Files is nil ("deploy anyway").
+func TestWebhookPush_UnknownFilesAreNil_APP8(t *testing.T) {
+	var got []webhook.Push
+	h, _, secret, _ := setupWebhookTest(t, func(_ context.Context, p webhook.Push) { got = append(got, p) })
+	many := strings.TrimSuffix(strings.Repeat(`{"added":["a"],"modified":[],"removed":[]},`, 2048), ",")
+	for i, body := range []string{
+		`{"ref":"refs/heads/main","after":"a1","repository":{"full_name":"octo/web"},"commits":[]}`,
+		`{"ref":"refs/heads/main","after":"a2","repository":{"full_name":"octo/web"},"commits":[{"added":["x"],"modified":[],"removed":[]},{"id":"no-lists"}]}`,
+		`{"ref":"refs/heads/main","after":"a3","repository":{"full_name":"octo/web"},"commits":[` + many + `]}`,
+		`{"ref":"refs/heads/main","after":"0000000","deleted":true,"head_commit":null,"repository":{"full_name":"octo/web"},"commits":[]}`,
+	} {
+		if code := postSigned(t, h, secret, "", "u-"+string(rune('a'+i)), "push", body); code != http.StatusAccepted {
+			t.Fatalf("body %d: code %d", i, code)
+		}
+	}
+	if len(got) != 4 {
+		t.Fatalf("expected 4 pushes, got %d", len(got))
+	}
+	for i, p := range got {
+		if p.Files != nil {
+			t.Errorf("push %d: expected nil files, got %d", i, len(p.Files))
+		}
+	}
+	if !got[3].Deleted {
+		t.Error("deleted flag not passed")
+	}
+	// Negative control: 2047 commits with file lists are all read.
+	h2, _, secret2, _ := setupWebhookTest(t, func(_ context.Context, p webhook.Push) { got = append(got, p) })
+	few := strings.TrimSuffix(strings.Repeat(`{"added":["a"],"modified":[],"removed":[]},`, 2047), ",")
+	_ = postSigned(t, h2, secret2, "", "n-1", "push", `{"ref":"refs/heads/main","after":"a4","repository":{"full_name":"octo/web"},"commits":[`+few+`]}`)
+	if len(got) != 5 || len(got[4].Files) != 2047 {
+		t.Fatalf("2047 commits: expected 2047 files, got %d", len(got[len(got)-1].Files))
 	}
 }

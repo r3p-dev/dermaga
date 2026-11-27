@@ -203,6 +203,7 @@ func runDaemon(args []string) error {
 		SocketPath: paths.HookSock,
 		Store:      st,
 		MasterKey:  masterKey,
+		OnPush:     depEng.HandlePush, // APP-8: push-to-deploy
 	})
 
 	// Signal handling for graceful shutdown

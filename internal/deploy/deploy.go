@@ -57,6 +57,7 @@ type Engine struct {
 	activeStop  context.CancelFunc
 	cancelled   map[string]bool
 	appLocks    map[string]chan struct{} // one release per app starts or switches at a time
+	pushMu      sync.Mutex               // serializes HandlePush's duplicate check and enqueue
 	baseCtx     context.Context          // daemon lifetime, for rollbacks that outlive the request
 	wake        chan struct{}
 	stopCh      chan struct{}

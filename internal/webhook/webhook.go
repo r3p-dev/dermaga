@@ -35,8 +35,25 @@ type Config struct {
 	MasterKey  []byte
 	Logger     *slog.Logger
 	Now        func() time.Time
-	OnPush     func(ctx context.Context, fullName, ref, commitSHA, commitMsg string)
+	OnPush     func(ctx context.Context, p Push)
 }
+
+// Push is a verified push delivery, reduced to what deciding on a deployment needs (APP-8).
+type Push struct {
+	DeliveryID string
+	Repo       string // owner/name
+	Ref        string // refs/heads/<branch> or refs/tags/<tag>
+	SHA        string // the commit the ref now points at
+	Message    string // head commit message
+	Deleted    bool   // the ref was deleted
+	// Files changed by the pushed commits; nil when the payload does not say (no commits listed,
+	// a commit without file lists, or the 2048-commit cap reached), which means "deploy anyway".
+	Files []string
+}
+
+// maxPushCommits is GitHub's cap on the commits array of a push payload: "The array includes a
+// maximum of 2048 commits" (docs.github.com/en/webhooks/webhook-events-and-payloads#push).
+const maxPushCommits = 2048
 
 // Handler handles GitHub App webhook deliveries on /hooks/github-app.
 type Handler struct {
@@ -199,9 +216,15 @@ func (h *Handler) serveHook(w http.ResponseWriter, r *http.Request) {
 		Action     string `json:"action"`
 		Ref        string `json:"ref"`
 		After      string `json:"after"`
+		Deleted    bool   `json:"deleted"`
 		HeadCommit *struct {
 			Message string `json:"message"`
 		} `json:"head_commit"`
+		Commits []struct {
+			Added    *[]string `json:"added"`
+			Modified *[]string `json:"modified"`
+			Removed  *[]string `json:"removed"`
+		} `json:"commits"`
 		Repository *struct {
 			FullName string `json:"full_name"`
 		} `json:"repository"`
@@ -301,11 +324,24 @@ func (h *Handler) serveHook(w http.ResponseWriter, r *http.Request) {
 		}
 	case "push":
 		if h.cfg.OnPush != nil && repoName != "" {
-			msg := ""
+			p := Push{DeliveryID: deliveryID, Repo: repoName, Ref: env.Ref, SHA: env.After, Deleted: env.Deleted}
 			if env.HeadCommit != nil {
-				msg = env.HeadCommit.Message
+				p.Message = env.HeadCommit.Message
 			}
-			h.cfg.OnPush(ctx, repoName, env.Ref, env.After, msg)
+			if len(env.Commits) < maxPushCommits {
+				for _, c := range env.Commits {
+					if c.Added == nil && c.Modified == nil && c.Removed == nil {
+						p.Files = nil
+						break
+					}
+					for _, l := range []*[]string{c.Added, c.Modified, c.Removed} {
+						if l != nil {
+							p.Files = append(p.Files, *l...)
+						}
+					}
+				}
+			}
+			h.cfg.OnPush(ctx, p)
 		}
 	}
 

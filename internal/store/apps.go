@@ -193,7 +193,16 @@ func (s *Store) GetAppByName(ctx context.Context, name string) (*App, error) {
 
 // ListApps returns all registered applications.
 func (s *Store) ListApps(ctx context.Context) ([]App, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT `+appSelectCols+` FROM apps ORDER BY name ASC`)
+	return s.listApps(ctx, ``)
+}
+
+// ListAppsByRepo returns the apps built from owner/name; GitHub names are case-insensitive (APP-8).
+func (s *Store) ListAppsByRepo(ctx context.Context, owner, name string) ([]App, error) {
+	return s.listApps(ctx, `WHERE repo_owner = ? COLLATE NOCASE AND repo_name = ? COLLATE NOCASE`, owner, name)
+}
+
+func (s *Store) listApps(ctx context.Context, where string, args ...any) ([]App, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+appSelectCols+` FROM apps `+where+` ORDER BY name ASC`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("querying apps: %w", err)
 	}
